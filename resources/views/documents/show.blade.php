@@ -32,42 +32,12 @@
             @if ($structure)
                 @php
                     $data = $structure->structure ?? [];
-                    $titlesMarkdown = $data['titles'] ?? '';
+                    $titres = $data['titres'] ?? [];
+                    $sousTitres = $data['sous_titres'] ?? [];
+                    $enTetes = $data['en_tetes'] ?? [];
+                    $piedsDePage = $data['pieds_de_page'] ?? [];
                     $legends = $data['legends'] ?? [];
-
-                    // Parse les lignes markdown de titres, en ignorant :
-                    // - l'en-tête généré par le LLM ("# Arborescence des titres extraits")
-                    // - les sections de synthèse du LLM ("## Récapitulatif", "## Ambiguïtés…")
-                    $parsedTitles = [];
-                    foreach (preg_split('/\r\n|\r|\n/', (string) $titlesMarkdown) as $line) {
-                        $line = trim($line);
-                        if ($line === '' || $line === '---') {
-                            continue;
-                        }
-                        // Supporte "# Titre" et "- # Titre" (liste markdown)
-                        if (str_starts_with($line, '- ')) {
-                            $line = trim(substr($line, 2));
-                        }
-                        // En-tête de la réponse LLM : on l'ignore (formats variables observés)
-                        if (preg_match('/^#{1,6}\s+Arborescence des titres/iu', $line)) {
-                            continue;
-                        }
-                        // Lignes d'introduction avant la liste (phrases sans #)
-                        if (!preg_match('/^#{1,6}\s+/', $line)) {
-                            continue;
-                        }
-                        // Sections de synthèse du LLM : tout ce qui suit n'est plus un titre du document
-                        if (preg_match('/^#{1,6}\s+(Récapitulatif|Ambiguïtés)/iu', $line)) {
-                            break;
-                        }
-                        if (preg_match('/^(#{1,6})\s+(.+)$/', $line, $m)) {
-                            $parsedTitles[] = [
-                                'level' => strlen($m[1]),
-                                'text' => $m[2],
-                            ];
-                        }
-                    }
-                    $titleCount = count($parsedTitles);
+                    $titreCount = count($titres) + count($sousTitres);
                 @endphp
 
                 <div class="card shadow-sm border-0 mb-4">
@@ -75,15 +45,17 @@
                         <h2 class="h5 mb-0">Hiérarchie des titres détectée</h2>
                     </div>
                     <div class="card-body">
-                        @if ($titleCount > 0)
+                        @if ($titreCount > 0)
                             <div class="mb-3">
-                                <span class="badge text-bg-primary">{{ $titleCount }} titres détectés</span>
+                                <span class="badge text-bg-primary">{{ $titreCount }} titres détectés</span>
                             </div>
-                            {{-- Rendu hiérarchique des titres --}}
+                            {{-- Rendu hiérarchique : titres niveau 1, sous-titres niveau 2+ --}}
                             <div class="bg-light p-3 rounded">
-                                @foreach ($parsedTitles as $titre)
-                                    @php $niveau = $titre['level']; @endphp
-                                    <h{{ $niveau }} class="mb-1">{{ $titre['text'] }}</h{{ $niveau }}>
+                                @foreach ($titres as $titre)
+                                    <h3 class="mb-1 fw-bold">{{ $titre['texte'] ?? '' }}</h3>
+                                @endforeach
+                                @foreach ($sousTitres as $sousTitre)
+                                    <h5 class="mb-1 text-secondary">{{ $sousTitre['texte'] ?? '' }}</h5>
                                 @endforeach
                             </div>
                         @else
@@ -91,6 +63,38 @@
                         @endif
                     </div>
                 </div>
+
+                @if (count($enTetes) > 0 || count($piedsDePage) > 0)
+                    <div class="card shadow-sm border-0 mb-4">
+                        <div class="card-header bg-white">
+                            <h2 class="h5 mb-0">En-têtes et pieds de page détectés</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="text-muted">En-têtes</h6>
+                                    <ul class="list-unstyled mb-0">
+                                        @forelse ($enTetes as $enTete)
+                                            <li>{{ $enTete['texte'] ?? '' }}</li>
+                                        @empty
+                                            <li class="text-muted">Aucun en-tête.</li>
+                                        @endforelse
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="text-muted">Pieds de page</h6>
+                                    <ul class="list-unstyled mb-0">
+                                        @forelse ($piedsDePage as $pied)
+                                            <li>{{ $pied['texte'] ?? '' }}</li>
+                                        @empty
+                                            <li class="text-muted">Aucun pied de page.</li>
+                                        @endforelse
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                @endif
 
                 <div class="card shadow-sm border-0 mb-4">
                     <div class="card-header bg-white">

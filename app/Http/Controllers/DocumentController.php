@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\DocAnalyzer\DocAnalyzer;
 use App\Http\Requests\StoreDocumentRequest;
 use App\Models\Document;
 use App\Models\DocumentStructure;
 use App\Services\Detection\LegendDetectionService;
 use App\Services\Detection\TextExtractionService;
-use App\Services\Detection\TitleDetectionService;
 use Exception;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
@@ -16,15 +16,18 @@ use Illuminate\View\View;
 /**
  * Gestion des documents : upload, analyse de structure, affichage.
  *
- * V1 — pipeline synchrone :
- *   upload → extraction texte → détection titres (LLM) → détection légendes (regex)
- *   → sauvegarde de la structure → affichage.
+ * V2 — pipeline synchrone (architecture DocAnalyzer) :
+ *   upload → DocumentAnalyzer::analyze() (parse → règles déterministes → IA
+ *   complémentaire si nécessaire → fusion) → détection légendes (regex)
+ *   → sauvegarde de la structure JSON → affichage.
+ *
+ * Les règles (styles réels du document) sont prioritaires : l'IA n'intervient
+ * que pour compléter les catégories critiques vides, et n'est jamais fatale.
  */
 class DocumentController extends Controller
 {
     public function __construct(
         private readonly TextExtractionService $textExtraction,
-        private readonly TitleDetectionService $titleDetection,
         private readonly LegendDetectionService $legendDetection,
     ) {
     }
@@ -104,27 +107,36 @@ class DocumentController extends Controller
     }
 
     /**
-     * Pipeline de détection complet (extraction → titres → légendes → sauvegarde).
+     * Pipeline de détection complet (DocAnalyzer → légendes → sauvegarde).
      */
     private function runDetection(Document $document): void
     {
-        // 1. Extraction du texte depuis storage/uploads/
+        // 1. Chemin absolu du fichier stocké
         $absolutePath = storage_path('uploads/' . $document->path);
+
+        // 2. Analyse structurelle : parse → règles déterministes → IA si
+        //    catégorie critique vide → fusion (règles prioritaires)
+        $analyzer = new DocAnalyzer(config_path('analyzer.php'));
+        $analysis = $analyzer->analyze($absolutePath);
+
+        // 3. Détection des légendes (regex — déterministe, conservée)
         $text = $this->textExtraction->execute($absolutePath);
-
-        // 2. Détection des titres (LLM — seul usage autorisé)
-        $titleResult = $this->titleDetection->execute($text);
-
-        // 3. Détection des légendes (regex — déterministe)
         $legends = $this->legendDetection->execute($text);
 
-        // 4. Sauvegarde de la structure
+        // 4. Sauvegarde de la structure JSON (colonne 'structure', cast array)
         DocumentStructure::updateOrCreate(
             ['document_id' => $document->id],
             [
                 'structure' => [
-                    'titles' => $titleResult['markdown'],
-                    'titles_raw' => $titleResult['raw'],
+                    // Résultat normalisé du DocAnalyzer (catégories)
+                    'titres' => $analysis['titres'],
+                    'sous_titres' => $analysis['sous_titres'],
+                    'en_tetes' => $analysis['en_tetes'],
+                    'pieds_de_page' => $analysis['pieds_de_page'],
+                    'tableaux' => $analysis['tableaux'],
+                    'images' => $analysis['images'],
+                    'elements_flottants' => $analysis['elements_flottants'],
+                    // Légendes détectées par regex (complément)
                     'legends' => $legends,
                 ],
             ]
