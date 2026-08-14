@@ -34,8 +34,40 @@
                     $data = $structure->structure ?? [];
                     $titlesMarkdown = $data['titles'] ?? '';
                     $legends = $data['legends'] ?? [];
-                    $titleLines = array_filter(array_map('trim', explode("\n", (string) $titlesMarkdown)));
-                    $titleCount = count(preg_grep('/^#{1,6}\s+/', $titleLines) ?: []);
+
+                    // Parse les lignes markdown de titres, en ignorant :
+                    // - l'en-tête généré par le LLM ("# Arborescence des titres extraits")
+                    // - les sections de synthèse du LLM ("## Récapitulatif", "## Ambiguïtés…")
+                    $parsedTitles = [];
+                    foreach (preg_split('/\r\n|\r|\n/', (string) $titlesMarkdown) as $line) {
+                        $line = trim($line);
+                        if ($line === '' || $line === '---') {
+                            continue;
+                        }
+                        // Supporte "# Titre" et "- # Titre" (liste markdown)
+                        if (str_starts_with($line, '- ')) {
+                            $line = trim(substr($line, 2));
+                        }
+                        // En-tête de la réponse LLM : on l'ignore (formats variables observés)
+                        if (preg_match('/^#{1,6}\s+Arborescence des titres/iu', $line)) {
+                            continue;
+                        }
+                        // Lignes d'introduction avant la liste (phrases sans #)
+                        if (!preg_match('/^#{1,6}\s+/', $line)) {
+                            continue;
+                        }
+                        // Sections de synthèse du LLM : tout ce qui suit n'est plus un titre du document
+                        if (preg_match('/^#{1,6}\s+(Récapitulatif|Ambiguïtés)/iu', $line)) {
+                            break;
+                        }
+                        if (preg_match('/^(#{1,6})\s+(.+)$/', $line, $m)) {
+                            $parsedTitles[] = [
+                                'level' => strlen($m[1]),
+                                'text' => $m[2],
+                            ];
+                        }
+                    }
+                    $titleCount = count($parsedTitles);
                 @endphp
 
                 <div class="card shadow-sm border-0 mb-4">
@@ -47,7 +79,13 @@
                             <div class="mb-3">
                                 <span class="badge text-bg-primary">{{ $titleCount }} titres détectés</span>
                             </div>
-                            <pre class="bg-light p-3 rounded mb-0" style="white-space: pre-wrap; font-size: 0.9rem;">{{ $titlesMarkdown }}</pre>
+                            {{-- Rendu hiérarchique des titres --}}
+                            <div class="bg-light p-3 rounded">
+                                @foreach ($parsedTitles as $titre)
+                                    @php $niveau = $titre['level']; @endphp
+                                    <h{{ $niveau }} class="mb-1">{{ $titre['text'] }}</h{{ $niveau }}>
+                                @endforeach
+                            </div>
                         @else
                             <p class="text-muted mb-0">Aucun titre détecté dans ce document.</p>
                         @endif
