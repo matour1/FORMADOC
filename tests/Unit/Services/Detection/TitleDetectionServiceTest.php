@@ -21,6 +21,9 @@ class TitleDetectionServiceTest extends TestCase
     {
         parent::setUp();
         $this->service = new TitleDetectionService();
+
+        // Pas d'attente réelle entre les tentatives dans les tests
+        config(['deepseek.retry_delays_ms' => [0, 0, 0, 0]]);
     }
 
     public function test_appelle_l_api_avec_le_bon_modele_et_la_bonne_url(): void
@@ -71,6 +74,56 @@ class TitleDetectionServiceTest extends TestCase
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('DeepSeek API error');
         $this->service->execute("Un texte suffisamment long pour être analysé.");
+    }
+
+    public function test_ne_relance_pas_sur_une_erreur_http_applicative(): void
+    {
+        Http::fake([
+            'api.deepseek.com/*' => Http::response(['error' => 'rate limit'], 429),
+        ]);
+
+        try {
+            $this->service->execute("Un texte suffisamment long pour être analysé.");
+        } catch (\Exception $e) {
+            // Ignoré : on vérifie juste le nombre de requêtes
+        }
+
+        // Une erreur 429 ne doit pas être retentée (une seule requête émise)
+        Http::assertSentCount(1);
+    }
+
+    public function test_relance_apres_un_timeout_avec_intervalle(): void
+    {
+        // D'abord un timeout (connexion), puis une réponse valide
+        Http::fake([
+            'api.deepseek.com/*' => Http::sequence()
+                ->pushFailedConnection('cURL error 28: Operation timed out')
+                ->push([
+                    'choices' => [
+                        ['message' => ['content' => "# Introduction\n## 1. Contexte"]],
+                    ],
+                ], 200),
+        ]);
+
+        $result = $this->service->execute("Un rapport de test suffisamment long.");
+
+        $this->assertStringContainsString('# Introduction', $result['markdown']);
+
+        // 2 requêtes émises (1 échec + 1 succès)
+        Http::assertSentCount(2);
+    }
+
+    public function test_abandonne_apres_epuisement_des_tentatives(): void
+    {
+        Http::fake([
+            'api.deepseek.com/*' => Http::failedConnection('cURL error 28: Operation timed out'),
+        ]);
+
+        $this->expectException(\Exception::class);
+        $this->service->execute("Un texte suffisamment long pour être analysé.");
+
+        // max_retries=2 → 3 tentatives au total
+        Http::assertSentCount(3);
     }
 
     public function test_leve_une_exception_si_la_reponse_est_vide(): void

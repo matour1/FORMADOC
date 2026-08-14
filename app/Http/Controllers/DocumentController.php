@@ -43,6 +43,15 @@ class DocumentController extends Controller
     public function upload(StoreDocumentRequest $request): RedirectResponse
     {
         try {
+            // Le LLM peut être lent (modèle avec raisonnement) et le timeout est
+            // dynamique selon la taille du document (jusqu'à DEEPSEEK_TIMEOUT_MAX,
+            // 600 s par défaut). On prolonge l'exécution PHP au-delà de la valeur
+            // par défaut (120 s WAMP). En CLI (artisan serve) le serveur intégré
+            // respecte cette valeur.
+            if (function_exists('set_time_limit')) {
+                set_time_limit((int) config('deepseek.timeout.max', 600) + 60);
+            }
+
             $file = $request->file('document');
 
             // MIME réel détecté par Symfony (pas juste l'extension)
