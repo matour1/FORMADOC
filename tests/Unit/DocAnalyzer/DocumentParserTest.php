@@ -248,4 +248,66 @@ class DocumentParserTest extends TestCase
         $this->assertStringContainsString('Figure 1: Architecture générale de la plateforme', $result['raw_text']);
         $this->assertNotEmpty($result['sections'][0]['body']);
     }
+
+    /**
+     * Injecte une textbox (wps:txbx) contenant un texte dans l'en-tête
+     * du DOCX généré — comme le font Word pour les en-têtes "graphiques".
+     * PhpWord ignore ces textboxes : c'est le cas que le parser doit couvrir
+     * en relisant le XML brut.
+     */
+    private function createDocxWithGraphicalHeader(string $filename = 'graphique.docx'): string
+    {
+        $phpWord = new PhpWord();
+        $section = $phpWord->addSection();
+        $header = $section->addHeader();
+        $header->addText('480695'); // Artefact que PhpWord lit (coordonnée)
+        $section->addText('Contenu du corps.');
+
+        $path = $this->tempDir . '/' . $filename;
+        IOFactory::createWriter($phpWord, 'Word2007')->save($path);
+
+        // Injecter une textbox dans header1.xml avec le texte du "thème"
+        $zip = new \ZipArchive();
+        $zip->open($path);
+        $headerXml = $zip->getFromName('word/header1.xml');
+
+        $textboxXml = '<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            . '<w:pPr><w:jc w:val="center"/></w:pPr>'
+            . '<w:r><w:t>THEME: ETAPE DE CONCEPTION DU PROJET MEDORIA</w:t></w:r>'
+            . '</w:p>';
+
+        // Remplacer le dernier </w:hdr> par textbox + </w:hdr>
+        $textboxWrapper = '<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
+            . '<mc:Choice Requires="wps"><w:drawing><wp:anchor xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">'
+            . '<wps:txbx xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">'
+            . '<w:txbxContent>' . $textboxXml . '</w:txbxContent></wps:txbx>'
+            . '</wp:anchor></w:drawing></mc:Choice>'
+            . '<mc:Fallback><w:pict><v:rect xmlns:v="urn:schemas-microsoft-com:vml">'
+            . '<v:textbox><w:txbxContent>' . $textboxXml . '</w:txbxContent></v:textbox>'
+            . '</v:rect></w:pict></mc:Fallback></mc:AlternateContent>';
+
+        $headerXml = str_replace('</w:hdr>', $textboxWrapper . '</w:hdr>', $headerXml);
+
+        $zip->addFromString('word/header1.xml', $headerXml);
+        $zip->close();
+
+        return $path;
+    }
+
+    public function test_les_en_tetes_graphiques_textboxes_sont_extraits_via_xml(): void
+    {
+        $path = $this->createDocxWithGraphicalHeader();
+        $result = (new DocumentParser($path))->parse();
+
+        $headers = $result['sections'][0]['headers'];
+
+        $this->assertNotEmpty($headers, 'L\'en-tête doit contenir un élément');
+
+        // Le texte du thème (dans la textbox) doit être détecté, pas l'artefact
+        $allText = implode(' ', array_column($headers, 'text'));
+        $this->assertStringContainsString('ETAPE DE CONCEPTION DU PROJET MEDORIA', $allText);
+
+        // L'artefact numérique '480695' ne doit plus apparaître seul
+        $this->assertStringNotContainsString('480695', $allText);
+    }
 }
