@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\DocAnalyzer;
 
+use App\Services\DocumentGeneration\CoverGenerationService;
 use DOMDocument;
 use DOMXPath;
 use PhpOffice\PhpWord\Element\Section;
@@ -78,17 +79,30 @@ class DocumentReconstructor
      *
      * @param array<string, mixed> $analysis   Résultat du DocAnalyzer (+ legends)
      * @param string               $outputPath Chemin absolu du fichier à créer
+     * @param null|array<string, mixed> $cover  Couverture optionnelle (Phase 3) :
+     *                                           { detection, values }. Si fournie,
+     *                                           une section couverture est préfixée.
      *
      * @return string Le chemin du fichier généré
      *
      * @throws \RuntimeException Si l'écriture du DOCX échoue
      */
-    public function reconstruct(array $analysis, string $outputPath): string
+    public function reconstruct(array $analysis, string $outputPath, ?array $cover = null): string
     {
         $phpWord = new PhpWord();
         $phpWord->getSettings()->setUpdateFields(true);
 
         $this->registerTitleStyles($phpWord);
+
+        // ── Section 0 : couverture (Phase 3, optionnelle) ─────────────────────
+        // Sans pageNumberingStart : pas de numéro de page, pas d'en-tête/pied.
+        if (!empty($cover['detection']) && is_array($cover['values'] ?? null)) {
+            (new CoverGenerationService())->addCoverSection(
+                $phpWord,
+                $cover['detection'],
+                $cover['values']
+            );
+        }
 
         // ── Section 1 : frontispice (numérotation romaine) ────────────────────
         $frontSection = $phpWord->addSection(['pageNumberingStart' => 1]);
@@ -310,11 +324,11 @@ class DocumentReconstructor
 
     /**
      * Post-traitement XML : ajoute w:fmt (lowerRoman / decimal) à chaque
-     * section, car PhpWord n'écrit que w:start dans w:pgNumType.
+     * section NUMÉROTÉE (celles qui possèdent déjà un w:pgNumType, créé par
+     * PhpWord via pageNumberingStart), car PhpWord n'écrit que w:start.
      *
-     * L'ordre des sectPr dans document.xml correspond à l'ordre des sections :
-     *  - 1er sectPr  → section frontispice (lowerRoman)
-     *  - 2e sectPr   → section corps (decimal, redémarre à 1)
+     * La section couverture (Phase 3), ajoutée sans pageNumberingStart, n'a
+     * pas de w:pgNumType : on la laisse sans format de numérotation.
      *
      * En cas d'échec (ZIP illisible, XML invalide), on laisse le fichier tel
      * quel : la génération ne doit jamais être bloquée par ce raffinement.
@@ -346,13 +360,11 @@ class DocumentReconstructor
         $sectPrs = $xpath->query('//w:sectPr');
 
         if ($sectPrs !== false) {
-            foreach ($sectPrs as $index => $sectPr) {
-                if (!isset(self::PAGE_NUMBERING_FORMATS[$index])) {
-                    break;
-                }
+            $formatIndex = 0;
 
-                // w:pgNumType existe déjà (pageNumberingStart=1) : on le trouve,
-                // sinon on le crée
+            foreach ($sectPrs as $sectPr) {
+                // w:pgNumType existe déjà (pageNumberingStart=1) : on le trouve.
+                // Une section sans w:pgNumType (couverture) est ignorée.
                 $pgNumType = null;
                 foreach ($sectPr->childNodes as $child) {
                     if ($child instanceof \DOMElement && $child->nodeName === 'w:pgNumType') {
@@ -363,12 +375,17 @@ class DocumentReconstructor
                 }
 
                 if ($pgNumType === null) {
-                    $pgNumType = $dom->createElementNS(self::WORD_NS, 'w:pgNumType');
-                    $sectPr->appendChild($pgNumType);
+                    continue;
                 }
 
-                $pgNumType->setAttributeNS(self::WORD_NS, 'w:fmt', self::PAGE_NUMBERING_FORMATS[$index]);
+                if (!isset(self::PAGE_NUMBERING_FORMATS[$formatIndex])) {
+                    break;
+                }
+
+                $pgNumType->setAttributeNS(self::WORD_NS, 'w:fmt', self::PAGE_NUMBERING_FORMATS[$formatIndex]);
                 $pgNumType->setAttributeNS(self::WORD_NS, 'w:start', '1');
+
+                $formatIndex++;
             }
         }
 

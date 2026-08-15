@@ -304,4 +304,66 @@ class DocumentReconstructorTest extends TestCase
         $this->assertInstanceOf(PhpWord::class, $phpWord);
         $this->assertNotEmpty($phpWord->getSections());
     }
+
+    // ── Couverture (Phase 3) ─────────────────────────────────────────────────
+
+    public function test_prefixe_une_section_couverture_si_fournie(): void
+    {
+        $outputPath = $this->tempDir . '/avec_couverture.docx';
+
+        $cover = [
+            'detection' => [
+                'lines' => [
+                    [
+                        'text' => 'UNIVERSITE EXEMPLE',
+                        'styles' => ['font' => null, 'paragraph' => null],
+                        'role' => null,
+                    ],
+                    [
+                        'text' => 'Présenté par : ANCIEN NOM',
+                        'styles' => ['font' => null, 'paragraph' => null],
+                        'role' => 'nom',
+                    ],
+                ],
+                'zones' => [
+                    [
+                        'type' => 'nom',
+                        'label' => 'Présenté par :',
+                        'value' => 'ANCIEN NOM',
+                        'line_index' => 1,
+                    ],
+                ],
+            ],
+            'values' => ['nom' => 'NOUVEAU NOM'],
+        ];
+
+        (new DocumentReconstructor())->reconstruct($this->sampleAnalysis(), $outputPath, $cover);
+
+        $xml = $this->readPart($outputPath, 'word/document.xml');
+
+        // La couverture est préfixée : lignes non-zones conservées, valeur remplacée
+        $this->assertStringContainsString('UNIVERSITE EXEMPLE', $xml);
+        $this->assertStringContainsString('NOUVEAU NOM', $xml);
+        $this->assertStringNotContainsString('ANCIEN NOM', $xml);
+
+        // Trois sections : couverture + frontispice + corps
+        $this->assertSame(3, substr_count($xml, '<w:sectPr'));
+
+        // La numérotation romaine/arabe reste appliquée aux sections numérotées
+        $this->assertStringContainsString('w:fmt="lowerRoman"', $xml);
+        $this->assertStringContainsString('w:fmt="decimal"', $xml);
+    }
+
+    public function test_sans_couverture_le_document_reste_a_deux_sections(): void
+    {
+        $outputPath = $this->tempDir . '/sans_couverture.docx';
+
+        (new DocumentReconstructor())->reconstruct($this->sampleAnalysis(), $outputPath);
+
+        $xml = $this->readPart($outputPath, 'word/document.xml');
+
+        $this->assertSame(2, substr_count($xml, '<w:sectPr'));
+        $this->assertStringContainsString('w:fmt="lowerRoman"', $xml);
+        $this->assertStringContainsString('w:fmt="decimal"', $xml);
+    }
 }

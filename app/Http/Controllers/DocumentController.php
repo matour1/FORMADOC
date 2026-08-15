@@ -4,12 +4,15 @@ namespace App\Http\Controllers;
 
 use App\DocAnalyzer\DocAnalyzer;
 use App\DocAnalyzer\DocumentReconstructor;
+use App\Http\Requests\GenerateCoverRequest;
 use App\Http\Requests\StoreDocumentRequest;
+use App\Models\CoverTemplate;
 use App\Models\Document;
 use App\Models\DocumentStructure;
 use App\Models\GeneratedDocument;
 use App\Services\Detection\LegendDetectionService;
 use App\Services\Detection\TextExtractionService;
+use App\Services\DocumentGeneration\CoverDetectionService;
 use Exception;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Response;
@@ -120,6 +123,31 @@ class DocumentController extends Controller
      */
     public function generate(Document $document): Response|RedirectResponse|BinaryFileResponse
     {
+        return $this->generateAndDownload($document, null);
+    }
+
+    /**
+     * Génère le DOCX reconstruit AVEC une couverture (Phase 3).
+     *
+     * L'étudiant fournit une couverture d'exemple (DOCX) + les valeurs à
+     * substituer (nom, titre, encadrant, date). Les zones sont détectées
+     * (déterministe), puis la couverture est préfixée au document reconstruit
+     * en conservant la structure et les styles de l'exemple.
+     */
+    public function generateWithCover(GenerateCoverRequest $request, Document $document): Response|RedirectResponse|BinaryFileResponse
+    {
+        $cover = $this->prepareCover($request);
+
+        return $this->generateAndDownload($document, $cover);
+    }
+
+    /**
+     * Flux commun de génération + téléchargement (avec ou sans couverture).
+     *
+     * @param null|array<string, mixed> $cover { detection, values, cover_template_id }
+     */
+    private function generateAndDownload(Document $document, ?array $cover): Response|RedirectResponse|BinaryFileResponse
+    {
         try {
             $structure = $document->structure?->structure;
 
@@ -131,11 +159,10 @@ class DocumentController extends Controller
                 set_time_limit((int) config('deepseek.timeout.max', 600) + 60);
             }
 
-            $absolutePath = storage_path('uploads/' . $document->path);
             $generatedPath = $this->generateOutputPath($document);
 
             $reconstructor = new DocumentReconstructor();
-            $outputPath = $reconstructor->reconstruct($structure, $generatedPath);
+            $outputPath = $reconstructor->reconstruct($structure, $generatedPath, $cover);
 
             // Mémorise la génération (tableau de bord / historique)
             $generated = GeneratedDocument::updateOrCreate(
@@ -143,12 +170,15 @@ class DocumentController extends Controller
                 [
                     'output_path' => $outputPath,
                     'status' => 'generated',
+                    'cover_values' => $cover['values'] ?? null,
+                    'cover_template_id' => $cover['cover_template_id'] ?? null,
                 ]
             );
 
             Log::info('Document généré', [
                 'document_id' => $document->id,
                 'output_path' => $outputPath,
+                'with_cover' => $cover !== null,
             ]);
 
             return response()
@@ -163,6 +193,43 @@ class DocumentController extends Controller
 
             return back()->withErrors(['document' => 'Erreur lors de la génération : ' . $e->getMessage()]);
         }
+    }
+
+    /**
+     * Prépare la couverture : stocke l'exemple, détecte les zones et
+     * enregistre le gabarit de couverture.
+     *
+     * @return array{detection: array<string, mixed>, values: array<string, string>, cover_template_id: int}
+     */
+    private function prepareCover(GenerateCoverRequest $request): array
+    {
+        $file = $request->file('cover');
+
+        $coverPath = $file->store('cover_templates', 'storage');
+        $absoluteCoverPath = storage_path('uploads/' . $coverPath);
+
+        $detection = (new CoverDetectionService())->detect($absoluteCoverPath);
+
+        $values = array_filter([
+            'nom' => $request->input('nom'),
+            'titre' => $request->input('titre'),
+            'encadrant' => $request->input('encadrant'),
+            'date' => $request->input('date'),
+        ], static fn ($value) => is_string($value) && trim($value) !== '');
+
+        // Gabarit de couverture : zones détectées + mapping automatique (V1)
+        $coverTemplate = CoverTemplate::create([
+            'name' => 'Couverture — ' . $file->getClientOriginalName(),
+            'example_docx_path' => $coverPath,
+            'detected_zones' => $detection['zones'],
+            'zone_mapping' => $detection['zones'],
+        ]);
+
+        return [
+            'detection' => $detection,
+            'values' => $values,
+            'cover_template_id' => $coverTemplate->id,
+        ];
     }
 
     /**
