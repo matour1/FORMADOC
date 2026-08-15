@@ -26,6 +26,23 @@
                         </div>
                         <span class="badge text-bg-success fs-6">✔ Analysé</span>
                     </div>
+
+                    {{-- Phase 2 : génération du DOCX reconstruit --}}
+                    @if ($document->structure)
+                        <div class="d-flex gap-2 mt-3 pt-3 border-top">
+                            <form method="POST" action="{{ route('documents.generate', $document) }}">
+                                @csrf
+                                <button type="submit" class="btn btn-primary">
+                                    ⬇ Générer le DOCX reconstruit
+                                </button>
+                            </form>
+                            @if ($errors->any())
+                                <div class="alert alert-danger py-2 px-3 mb-0">
+                                    {{ $errors->first() }}
+                                </div>
+                            @endif
+                        </div>
+                    @endif
                 </div>
             </div>
 
