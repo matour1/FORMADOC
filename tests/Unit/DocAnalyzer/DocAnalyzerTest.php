@@ -202,12 +202,18 @@ class DocAnalyzerTest extends TestCase
         $analyzer->analyze($this->createControlledDocx());
     }
 
-    public function test_apply_styles_n_est_pas_implemente_en_v1(): void
+    public function test_apply_styles_reconstruit_le_document(): void
     {
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('gabarit non implémenté');
-
         $analyzer = new DocAnalyzer(config_path('analyzer.php'));
-        $analyzer->applyStyles($this->createControlledDocx(), ['police' => 'Arial']);
+        $result = $analyzer->applyStyles($this->createControlledDocx(), ['police' => 'Arial']);
+
+        // Le document reconstruit existe
+        $this->assertTrue($result['success']);
+        $this->assertFileExists($result['output_path']);
+
+        // C'est un DOCX valide, rechargeable
+        $phpWord = IOFactory::load($result['output_path']);
+        $this->assertInstanceOf(PhpWord::class, $phpWord);
+        $this->assertNotEmpty($phpWord->getSections());
     }
 }
