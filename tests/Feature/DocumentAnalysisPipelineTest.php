@@ -130,4 +130,37 @@ class DocumentAnalysisPipelineTest extends TestCase
         $response->assertSessionHasErrors('document');
         $this->assertDatabaseCount('documents', 0);
     }
+
+    public function test_generation_docx_depuis_la_structure(): void
+    {
+        Http::fake();
+
+        // 1. Upload + analyse (structure sauvegardée)
+        $docxPath = $this->createTestDocx();
+        $this->post('/documents/upload', [
+            'document' => new \Illuminate\Http\UploadedFile(
+                $docxPath,
+                'rapport_test.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true
+            ),
+        ]);
+
+        $document = Document::first();
+        $this->assertNotNull($document);
+
+        // 2. Génération du DOCX reconstruit
+        $response = $this->post("/documents/{$document->id}/generate");
+        $response->assertOk();
+
+        // 3. Le fichier généré est un DOCX valide et rechargable
+        $generated = \App\Models\GeneratedDocument::where('document_id', $document->id)->first();
+        $this->assertNotNull($generated);
+        $this->assertSame('generated', $generated->status);
+        $this->assertFileExists($generated->output_path);
+
+        $reloaded = IOFactory::load($generated->output_path);
+        $this->assertInstanceOf(\PhpOffice\PhpWord\PhpWord::class, $reloaded);
+    }
 }

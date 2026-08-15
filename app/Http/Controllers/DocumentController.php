@@ -3,15 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\DocAnalyzer\DocAnalyzer;
+use App\DocAnalyzer\DocumentReconstructor;
 use App\Http\Requests\StoreDocumentRequest;
 use App\Models\Document;
 use App\Models\DocumentStructure;
+use App\Models\GeneratedDocument;
 use App\Services\Detection\LegendDetectionService;
 use App\Services\Detection\TextExtractionService;
 use Exception;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * Gestion des documents : upload, analyse de structure, affichage.
@@ -104,6 +108,83 @@ class DocumentController extends Controller
             'document' => $document,
             'structure' => $document->structure,
         ]);
+    }
+
+    /**
+     * Génère (reconstruit) le DOCX à partir de la structure détectée
+     * et le renvoie en téléchargement.
+     *
+     * Phase 2 — Génération DOCX : le document généré reprend les styles
+     * natifs de titres (Heading 1-3), la numérotation romaine/arabe, le
+     * sommaire, les en-têtes/pieds de page et les listes de figures/tableaux.
+     */
+    public function generate(Document $document): Response|RedirectResponse|BinaryFileResponse
+    {
+        try {
+            $structure = $document->structure?->structure;
+
+            if (empty($structure) || empty($structure['titres'] ?? [])) {
+                return back()->withErrors(['document' => 'Aucune structure détectée pour ce document.']);
+            }
+
+            if (function_exists('set_time_limit')) {
+                set_time_limit((int) config('deepseek.timeout.max', 600) + 60);
+            }
+
+            $absolutePath = storage_path('uploads/' . $document->path);
+            $generatedPath = $this->generateOutputPath($document);
+
+            $reconstructor = new DocumentReconstructor();
+            $outputPath = $reconstructor->reconstruct($structure, $generatedPath);
+
+            // Mémorise la génération (tableau de bord / historique)
+            $generated = GeneratedDocument::updateOrCreate(
+                ['document_id' => $document->id],
+                [
+                    'output_path' => $outputPath,
+                    'status' => 'generated',
+                ]
+            );
+
+            Log::info('Document généré', [
+                'document_id' => $document->id,
+                'output_path' => $outputPath,
+            ]);
+
+            return response()
+                ->download($outputPath, $this->generatedFilename($document))
+                ->deleteFileAfterSend(false);
+        } catch (Exception $e) {
+            Log::error('Erreur lors de la génération du document', [
+                'document_id' => $document->id,
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ]);
+
+            return back()->withErrors(['document' => 'Erreur lors de la génération : ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Chemin de sortie du DOCX généré (dossier storage/test_scripts).
+     */
+    private function generateOutputPath(Document $document): string
+    {
+        $dir = storage_path('test_scripts');
+        if (!is_dir($dir)) {
+            mkdir($dir, 0777, true);
+        }
+
+        return $dir . '/gen_' . $document->id . '_' . date('Ymd_His') . '.docx';
+    }
+
+    /**
+     * Nom de fichier proposé au téléchargement.
+     */
+    private function generatedFilename(Document $document): string
+    {
+        $base = pathinfo($document->filename, PATHINFO_FILENAME);
+        return $base . '_reconstruit.docx';
     }
 
     /**

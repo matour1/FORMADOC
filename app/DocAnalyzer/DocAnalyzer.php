@@ -86,21 +86,46 @@ class DocAnalyzer
     /**
      * Applique un gabarit de mise en forme à un document.
      *
-     * Phase 2 (gabarit) : expérimental, hors scope V1. Déclenche une erreur
-     * explicite tant que DocumentReconstructor n'est pas implémenté.
+     * Phase 2 : le gabarit est appliqué en reconstruisant le document à
+     * partir de sa structure détectée (DocumentReconstructor). Le paramètre
+     * $gabarit est transmis comme options de reconstruction (non utilisées
+     * pour l'instant, conservées pour la compatibilité Phase 3).
      *
      * @param string $filePath Chemin absolu du fichier DOCX à formater
      * @param array<string, mixed> $gabarit Règles de mise en forme (police, taille, interligne…)
      *
      * @return array<string, mixed> Informations sur l'application du gabarit
-     *
-     * @throws \RuntimeException Toujours (non implémenté en V1)
      */
     public function applyStyles(string $filePath, array $gabarit): array
     {
-        throw new \RuntimeException(
-            'DocAnalyzer::applyStyles : gabarit non implémenté en V1 (Phase 2 — DocumentReconstructor).'
-        );
+        // 1. Analyse de la structure existante (règles déterministes)
+        $analysis = $this->analyze($filePath);
+
+        // 2. Reconstruction du document avec la structure détectée
+        $reconstructor = new DocumentReconstructor();
+        $outputPath = $this->outputPathFor($filePath);
+
+        $reconstructor->reconstruct($analysis, $outputPath);
+
+        return [
+            'success' => true,
+            'output_path' => $outputPath,
+            'gabarit' => $gabarit,
+            'message' => 'Document reconstruit avec la structure détectée (Phase 2).',
+        ];
+    }
+
+    /**
+     * Détermine le chemin du fichier reconstruit (même dossier, suffixe
+     * "-reconstruit").
+     */
+    private function outputPathFor(string $filePath): string
+    {
+        $dir = dirname($filePath);
+        $base = pathinfo($filePath, PATHINFO_FILENAME);
+        $ext = pathinfo($filePath, PATHINFO_EXTENSION);
+
+        return $dir . DIRECTORY_SEPARATOR . $base . '-reconstruit.' . $ext;
     }
 
     /**
