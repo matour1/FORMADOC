@@ -32,10 +32,12 @@
             @if ($structure)
                 @php
                     $data = $structure->structure ?? [];
-                    $titlesMarkdown = $data['titles'] ?? '';
+                    $titres = $data['titres'] ?? [];
+                    $sousTitres = $data['sous_titres'] ?? [];
+                    $enTetes = $data['en_tetes'] ?? [];
+                    $piedsDePage = $data['pieds_de_page'] ?? [];
                     $legends = $data['legends'] ?? [];
-                    $titleLines = array_filter(array_map('trim', explode("\n", (string) $titlesMarkdown)));
-                    $titleCount = count(preg_grep('/^#{1,6}\s+/', $titleLines) ?: []);
+                    $titreCount = count($titres) + count($sousTitres);
                 @endphp
 
                 <div class="card shadow-sm border-0 mb-4">
@@ -43,16 +45,56 @@
                         <h2 class="h5 mb-0">Hiérarchie des titres détectée</h2>
                     </div>
                     <div class="card-body">
-                        @if ($titleCount > 0)
+                        @if ($titreCount > 0)
                             <div class="mb-3">
-                                <span class="badge text-bg-primary">{{ $titleCount }} titres détectés</span>
+                                <span class="badge text-bg-primary">{{ $titreCount }} titres détectés</span>
                             </div>
-                            <pre class="bg-light p-3 rounded mb-0" style="white-space: pre-wrap; font-size: 0.9rem;">{{ $titlesMarkdown }}</pre>
+                            {{-- Rendu hiérarchique : titres niveau 1, sous-titres niveau 2+ --}}
+                            <div class="bg-light p-3 rounded">
+                                @foreach ($titres as $titre)
+                                    <h3 class="mb-1 fw-bold">{{ $titre['texte'] ?? '' }}</h3>
+                                @endforeach
+                                @foreach ($sousTitres as $sousTitre)
+                                    <h5 class="mb-1 text-secondary">{{ $sousTitre['texte'] ?? '' }}</h5>
+                                @endforeach
+                            </div>
                         @else
                             <p class="text-muted mb-0">Aucun titre détecté dans ce document.</p>
                         @endif
                     </div>
                 </div>
+
+                @if (count($enTetes) > 0 || count($piedsDePage) > 0)
+                    <div class="card shadow-sm border-0 mb-4">
+                        <div class="card-header bg-white">
+                            <h2 class="h5 mb-0">En-têtes et pieds de page détectés</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="text-muted">En-têtes</h6>
+                                    <ul class="list-unstyled mb-0">
+                                        @forelse ($enTetes as $enTete)
+                                            <li>{{ $enTete['texte'] ?? '' }}</li>
+                                        @empty
+                                            <li class="text-muted">Aucun en-tête.</li>
+                                        @endforelse
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="text-muted">Pieds de page</h6>
+                                    <ul class="list-unstyled mb-0">
+                                        @forelse ($piedsDePage as $pied)
+                                            <li>{{ $pied['texte'] ?? '' }}</li>
+                                        @empty
+                                            <li class="text-muted">Aucun pied de page.</li>
+                                        @endforelse
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                @endif
 
                 <div class="card shadow-sm border-0 mb-4">
                     <div class="card-header bg-white">

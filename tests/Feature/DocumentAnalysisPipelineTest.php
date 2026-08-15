@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\Document;
 use App\Models\DocumentStructure;
-use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpWord\IOFactory;
@@ -12,11 +11,11 @@ use PhpOffice\PhpWord\PhpWord;
 use Tests\TestCase;
 
 /**
- * Test de bout en bout du pipeline d'analyse (Phase 1).
+ * Test de bout en bout du pipeline d'analyse (Phase E — DocAnalyzer).
  *
  * Simule un upload réel de DOCX puis vérifie :
- *   upload → stockage → extraction texte → détection titres (LLM mocké)
- *   → détection légendes (regex) → sauvegarde structure → affichage.
+ *   upload → stockage → analyse (DocAnalyzer : règles déterministes)
+ *   → détection légendes (regex) → sauvegarde structure JSON → affichage.
  */
 class DocumentAnalysisPipelineTest extends TestCase
 {
@@ -46,14 +45,9 @@ class DocumentAnalysisPipelineTest extends TestCase
 
     public function test_pipeline_complet_upload_analyse_affichage(): void
     {
-        // Mock de l'API DeepSeek (aucun appel réseau réel)
-        Http::fake([
-            'api.deepseek.com/*' => Http::response([
-                'choices' => [
-                    ['message' => ['content' => "# Introduction\n## 1. Contexte\n### 1.1 Institution"]],
-                ],
-            ], 200),
-        ]);
+        // Le DOCX utilise des styles HeadingN (addTitle) : les règles
+        // déterministes suffisent → l'API DeepSeek ne doit PAS être appelée.
+        Http::fake();
 
         $docxPath = $this->createTestDocx();
 
@@ -75,25 +69,30 @@ class DocumentAnalysisPipelineTest extends TestCase
         $this->assertNotNull($document);
         $this->assertSame('detected', $document->status);
 
-        // La structure a été sauvegardée
+        // La structure a été sauvegardée (format DocAnalyzer : catégories)
         $structure = DocumentStructure::where('document_id', $document->id)->first();
         $this->assertNotNull($structure);
 
         $data = $structure->structure;
-        $this->assertArrayHasKey('titles', $data);
-        $this->assertStringContainsString('# Introduction', $data['titles']);
-        $this->assertStringContainsString('## 1. Contexte', $data['titles']);
+        $this->assertArrayHasKey('titres', $data);
+        $this->assertArrayHasKey('sous_titres', $data);
+        $this->assertArrayHasKey('legends', $data);
+
+        // Les titres HeadingN sont détectés par les règles (déterministe)
+        $titres = array_column($data['titres'], 'texte');
+        $this->assertContains('Introduction', $titres);
+        $this->assertContains('1. Contexte', $titres);
+
+        $sousTitres = array_column($data['sous_titres'], 'texte');
+        $this->assertContains('1.1 Institution', $sousTitres);
 
         // Les légendes ont été détectées par regex
-        $this->assertArrayHasKey('legends', $data);
         $legendTypes = array_column($data['legends'], 'type');
         $this->assertContains('Figure', $legendTypes);
         $this->assertContains('Tableau', $legendTypes);
 
-        // L'API a bien été appelée avec le bon modèle
-        Http::assertSent(function (Request $request) {
-            return $request['model'] === config('deepseek.model');
-        });
+        // Les règles suffisent → AUCUN appel à l'API
+        Http::assertNothingSent();
 
         // La page d'affichage est accessible et montre le résultat
         $page = $this->get("/documents/{$document->id}");

@@ -61,41 +61,126 @@ class TitleDetectionService
     {
         $apiUrl = rtrim(config('deepseek.api_url'), '/') . '/chat/completions';
 
-        $response = Http::retry(
-            (int) config('deepseek.max_retries', 3),
-            (int) config('deepseek.retry_delay', 100),
-            null,
-            false // ne pas lever RequestException : géré par $response->failed() ci-dessous
-        )
-            ->timeout((int) config('deepseek.timeout', 30))
-            ->withHeaders([
-                'Authorization' => 'Bearer ' . config('deepseek.api_key'),
-                'Content-Type' => 'application/json',
-            ])
-            ->post($apiUrl, [
-                'model' => config('deepseek.model', 'deepseek-v4-flash'),
-                'messages' => [
-                    ['role' => 'system', 'content' => $this->systemPrompt()],
-                    ['role' => 'user', 'content' => $text],
-                ],
+        // Nombre total de tentatives (1 + retries)
+        $maxAttempts = 1 + (int) config('deepseek.max_retries', 2);
+        $delays = (array) config('deepseek.retry_delays_ms', [2000, 4000, 8000, 15000]);
+        $growth = (float) config('deepseek.timeout_growth', 1.5);
+
+        $lastError = null;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            // Timeout dynamique selon la taille du texte, croissant à chaque tentative
+            $timeout = $this->dynamicTimeout($text, $attempt, $growth);
+
+            Log::info('TitleDetectionService tentative', [
+                'attempt' => $attempt,
+                'max_attempts' => $maxAttempts,
+                'timeout' => $timeout,
+                'text_length' => mb_strlen($text),
             ]);
 
-        if ($response->failed()) {
-            throw new Exception('DeepSeek API error: ' . $response->body());
+            try {
+                $response = Http::timeout($timeout)
+                    ->withHeaders([
+                        'Authorization' => 'Bearer ' . config('deepseek.api_key'),
+                        'Content-Type' => 'application/json',
+                    ])
+                    ->post($apiUrl, [
+                        'model' => config('deepseek.model', 'deepseek-v4-flash'),
+                        'messages' => [
+                            ['role' => 'system', 'content' => $this->systemPrompt()],
+                            ['role' => 'user', 'content' => $text],
+                        ],
+                    ]);
+
+                if ($response->failed()) {
+                    throw new Exception('DeepSeek API error: ' . $response->body());
+                }
+
+                $json = $response->json();
+
+                if (empty($json['choices'][0]['message']['content'])) {
+                    throw new Exception('DeepSeek API : réponse sans contenu exploitable');
+                }
+
+                $markdown = $json['choices'][0]['message']['content'];
+
+                return [
+                    'markdown' => $markdown,
+                    'raw' => json_encode($json, JSON_UNESCAPED_UNICODE),
+                ];
+            } catch (Exception $e) {
+                $lastError = $e;
+
+                // Dernière tentative : on remonte l'erreur
+                if ($attempt >= $maxAttempts) {
+                    throw $e;
+                }
+
+                // Seul un timeout ou une erreur réseau justifie une nouvelle
+                // tentative (le serveur n'a peut-être pas reçu/terminé la requête).
+                // Une erreur HTTP applicative (429/500/…) ne sera pas résolue
+                // en relançant : on remonte immédiatement.
+                if (!$this->isRetryable($e)) {
+                    throw $e;
+                }
+
+                // Attendre l'intervalle de vérification avant la prochaine tentative
+                $delayMs = $delays[$attempt - 1] ?? (int) config('deepseek.retry_delay', 2000);
+                Log::warning('TitleDetectionService retry', [
+                    'attempt' => $attempt,
+                    'delay_ms' => $delayMs,
+                    'error' => $e->getMessage(),
+                ]);
+                usleep($delayMs * 1000);
+            }
         }
 
-        $json = $response->json();
+        // Ne devrait jamais être atteint, mais satisfait le type de retour
+        throw $lastError ?? new Exception('DeepSeek API : échec inconnu');
+    }
 
-        if (empty($json['choices'][0]['message']['content'])) {
-            throw new Exception('DeepSeek API : réponse sans contenu exploitable');
-        }
+    /**
+     * Détermine si une erreur mérite une nouvelle tentative.
+     *
+     * Seuls les timeouts (cURL error 28) et les erreurs de connexion sont
+     * retentables — une erreur HTTP applicative (429, 5xx) ne sera pas
+     * résolue en relançant la même requête.
+     */
+    private function isRetryable(Exception $e): bool
+    {
+        return $e instanceof \Illuminate\Http\Client\ConnectionException
+            || str_contains($e->getMessage(), 'cURL error');
+    }
 
-        $markdown = $json['choices'][0]['message']['content'];
+    /**
+     * Calcule un timeout proportionnel à la taille du texte.
+     *
+     * Le modèle DeepSeek "raisonne" : la latence croît avec la longueur du
+     * document. On part d'un temps de base incompressible et on ajoute un
+     * coût par caractère, borné par [min, max]. Chaque tentative successive
+     * dispose d'un timeout plus large (× growth) pour laisser le modèle
+     * terminer son raisonnement.
+     *
+     * @param string $text
+     * @param int $attempt Numéro de tentative (1 = première)
+     * @param float $growth Multiplicateur par tentative
+     * @return float Nombre de secondes (arrondi à l'entier supérieur)
+     */
+    private function dynamicTimeout(string $text, int $attempt = 1, float $growth = 1.5): float
+    {
+        $chars = mb_strlen($text);
 
-        return [
-            'markdown' => $markdown,
-            'raw' => json_encode($json, JSON_UNESCAPED_UNICODE),
-        ];
+        $timeout = (float) config('deepseek.timeout.base', 180)
+            + ($chars * (float) config('deepseek.timeout.per_char', 0.008));
+
+        $min = (float) config('deepseek.timeout.min', 120);
+        $max = (float) config('deepseek.timeout.max', 600);
+
+        // Croissance du timeout par tentative (plafonnée à max)
+        $timeout = $timeout * ($growth ** ($attempt - 1));
+
+        return (float) max($min, min($max, $timeout));
     }
 
     /**

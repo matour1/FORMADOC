@@ -1,0 +1,319 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\DocAnalyzer;
+
+use Exception;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * Analyse structurelle complémentaire via l'API DeepSeek (LLM).
+ *
+ * Ce service n'est PAS le détecteur principal : il vient en complément des
+ * règles déterministes (RuleBasedDetector). Il reçoit le texte contextuel
+ * positionné du DocumentParser (format [POS:section_X,element_Y,parent_Z])
+ * et retourne une classification JSON STRICT de chaque élément dans les
+ * catégories du contrat AnalyzerResult::CATEGORIES.
+ *
+ * Fiabilité :
+ *  - Le prompt exige un JSON strict (aucun markdown, aucune explication).
+ *  - La réponse est nettoyée par extractJson() (fences ```json, texte autour,
+ *    accolades équilibrées) avant json_decode.
+ *  - En cas d'échec (timeout, clé invalide, JSON invalide), analyze() retourne
+ *    un résultat VIDE (jamais d'exception fatale) : l'orchestrateur DocAnalyzer
+ *    se rabat sur les règles seules.
+ */
+class DeepSeekAnalyzer
+{
+    /**
+     * Clé API DeepSeek.
+     *
+     * @var string
+     */
+    private string $apiKey;
+
+    /**
+     * Options d'appel (fusionnées avec config('deepseek.*')).
+     *
+     * @var array<string, mixed>
+     */
+    private array $options;
+
+    /**
+     * @param string               $apiKey  Clé API DeepSeek
+     * @param array<string, mixed> $options Options : model, api_url, timeout, max_retries…
+     */
+    public function __construct(string $apiKey, array $options = [])
+    {
+        $this->apiKey = $apiKey;
+        $this->options = $options;
+    }
+
+    /**
+     * Analyse le texte contextuel positionné et retourne les catégories.
+     *
+     * @param string $contextTextWithPositions Sortie context_text_with_positions du DocumentParser
+     *
+     * @return array<string, array<int, array<string, mixed>>> Résultat conforme à AnalyzerResult
+     */
+    public function analyze(string $contextTextWithPositions): array
+    {
+        $empty = AnalyzerResult::empty();
+
+        if (mb_strlen(trim($contextTextWithPositions)) < 20) {
+            Log::warning('DeepSeekAnalyzer : texte trop court, résultat vide', [
+                'length' => mb_strlen($contextTextWithPositions),
+            ]);
+
+            return $empty;
+        }
+
+        try {
+            $json = $this->callLlm($contextTextWithPositions);
+            $decoded = $this->extractJson($json);
+
+            if ($decoded === null) {
+                Log::warning('DeepSeekAnalyzer : JSON invalide après extraction', [
+                    'raw_prefix' => mb_substr($json, 0, 300),
+                ]);
+
+                return $empty;
+            }
+
+            $result = AnalyzerResult::normalize($decoded);
+
+            Log::info('DeepSeekAnalyzer : analyse réussie', [
+                'counts' => array_map('count', $result),
+            ]);
+
+            return $result;
+        } catch (Exception $e) {
+            // Jamais fatal : l'orchestrateur retombe sur les règles seules.
+            Log::error('DeepSeekAnalyzer : échec, résultat vide', [
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ]);
+
+            return $empty;
+        }
+    }
+
+    /**
+     * Appelle l'API DeepSeek avec timeout dynamique et retries progressifs.
+     *
+     * @throws Exception Si toutes les tentatives échouent
+     */
+    private function callLlm(string $text): string
+    {
+        $apiUrl = rtrim((string) ($this->options['api_url'] ?? config('deepseek.api_url', 'https://api.deepseek.com/v1')), '/')
+            . '/chat/completions';
+
+        $model = (string) ($this->options['model'] ?? config('deepseek.model', 'deepseek-v4-flash'));
+        $maxAttempts = 1 + (int) ($this->options['max_retries'] ?? config('deepseek.max_retries', 2));
+        $delays = (array) ($this->options['retry_delays_ms'] ?? config('deepseek.retry_delays_ms', [2000, 4000, 8000, 15000]));
+        $growth = (float) ($this->options['timeout_growth'] ?? config('deepseek.timeout_growth', 1.5));
+
+        $lastError = null;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $timeout = $this->dynamicTimeout($text, $attempt, $growth);
+
+            Log::info('DeepSeekAnalyzer tentative', [
+                'attempt' => $attempt,
+                'max_attempts' => $maxAttempts,
+                'timeout' => $timeout,
+                'text_length' => mb_strlen($text),
+            ]);
+
+            try {
+                $response = Http::timeout($timeout)
+                    ->withHeaders([
+                        'Authorization' => 'Bearer ' . $this->apiKey,
+                        'Content-Type' => 'application/json',
+                    ])
+                    ->post($apiUrl, [
+                        'model' => $model,
+                        'messages' => [
+                            ['role' => 'system', 'content' => $this->systemPrompt()],
+                            ['role' => 'user', 'content' => $text],
+                        ],
+                        // JSON mode : le modèle est contraint à produire du JSON valide
+                        'response_format' => ['type' => 'json_object'],
+                    ]);
+
+                if ($response->failed()) {
+                    throw new Exception('DeepSeek API error: ' . $response->body());
+                }
+
+                $json = $response->json();
+
+                if (empty($json['choices'][0]['message']['content'])) {
+                    throw new Exception('DeepSeek API : réponse sans contenu exploitable');
+                }
+
+                return (string) $json['choices'][0]['message']['content'];
+            } catch (Exception $e) {
+                $lastError = $e;
+
+                if ($attempt >= $maxAttempts || !$this->isRetryable($e)) {
+                    throw $e;
+                }
+
+                $delayMs = $delays[$attempt - 1] ?? (int) ($this->options['retry_delay'] ?? config('deepseek.retry_delay', 2000));
+                Log::warning('DeepSeekAnalyzer retry', [
+                    'attempt' => $attempt,
+                    'delay_ms' => $delayMs,
+                    'error' => $e->getMessage(),
+                ]);
+                usleep($delayMs * 1000);
+            }
+        }
+
+        throw $lastError ?? new Exception('DeepSeek API : échec inconnu');
+    }
+
+    /**
+     * Détermine si une erreur mérite une nouvelle tentative (timeout/réseau).
+     */
+    private function isRetryable(Exception $e): bool
+    {
+        return $e instanceof \Illuminate\Http\Client\ConnectionException
+            || str_contains($e->getMessage(), 'cURL error');
+    }
+
+    /**
+     * Calcule un timeout proportionnel à la taille du texte, croissant par tentative.
+     */
+    private function dynamicTimeout(string $text, int $attempt = 1, float $growth = 1.5): float
+    {
+        $chars = mb_strlen($text);
+
+        $timeout = (float) ($this->options['timeout_base'] ?? config('deepseek.timeout.base', 180))
+            + ($chars * (float) ($this->options['timeout_per_char'] ?? config('deepseek.timeout.per_char', 0.008)));
+
+        $min = (float) ($this->options['timeout_min'] ?? config('deepseek.timeout.min', 120));
+        $max = (float) ($this->options['timeout_max'] ?? config('deepseek.timeout.max', 600));
+
+        $timeout *= $growth ** ($attempt - 1);
+
+        return (float) max($min, min($max, $timeout));
+    }
+
+    /**
+     * Extrait et décode le JSON d'une réponse LLM potentiellement bruitée.
+     *
+     * Gère :
+     *  - les fences markdown ```json … ``` et ``` … ```
+     *  - du texte avant/après le JSON (explications du modèle)
+     *  - les accolades équilibrées (extraction robuste du bloc JSON)
+     *
+     * @return null|array<string, mixed>
+     */
+    public function extractJson(string $raw): ?array
+    {
+        $content = trim($raw);
+
+        // Retire les fences markdown ```json … ``` (ou ``` … ```)
+        if (preg_match('/```(?:json)?\s*(.*?)```/is', $content, $m)) {
+            $content = trim($m[1]);
+        }
+
+        // Cherche la première accolade ouvrante et le bloc équilibré correspondant
+        $start = strpos($content, '{');
+        if ($start === false) {
+            return null;
+        }
+
+        $depth = 0;
+        $inString = false;
+        $escaped = false;
+        $length = strlen($content);
+
+        for ($i = $start; $i < $length; $i++) {
+            $char = $content[$i];
+
+            if ($inString) {
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($char === '\\') {
+                    $escaped = true;
+                } elseif ($char === '"') {
+                    $inString = false;
+                }
+
+                continue;
+            }
+
+            if ($char === '"') {
+                $inString = true;
+            } elseif ($char === '{') {
+                $depth++;
+            } elseif ($char === '}') {
+                $depth--;
+
+                if ($depth === 0) {
+                    $json = substr($content, $start, $i - $start + 1);
+                    $decoded = json_decode($json, true);
+
+                    return is_array($decoded) ? $decoded : null;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Prompt système : classification JSON STRICT des éléments positionnés.
+     */
+    private function systemPrompt(): string
+    {
+        return <<<'PROMPT'
+Tu es un outil de classification structurelle de documents Word.
+
+On te fournit le contenu d'un rapport sous forme d'éléments précédés de leur
+position exacte dans le document :
+  [POS:section_INDEX,element_INDEX,parent_INDEX]TEXTE
+
+Le parent est l'un de : body, header, footer.
+Chaque élément a une position UNIQUE qui ne doit JAMAIS être modifiée.
+
+Classifie CHAQUE élément dans EXACTEMENT une des catégories suivantes :
+  - titres           : titre de niveau 1 (chapitre, partie, introduction, conclusion…)
+  - sous_titres      : titres de niveau 2, 3 et plus (sections, sous-sections)
+  - en_tetes         : éléments situés dans un en-tête (parent=header)
+  - pieds_de_page    : éléments situés dans un pied de page (parent=footer)
+  - tableaux         : contenu tabulaire
+  - images           : images ou schémas
+  - elements_flottants : tout ce qui ne rentre pas dans les catégories ci-dessus
+
+Règles :
+1. Un élément de parent=header appartient TOUJOURS à en_tetes (sauf s'il s'agit
+   manifestement d'un tableau ou d'une image, auquel cas priorité à ces derniers).
+2. Un élément de parent=footer appartient TOUJOURS à pieds_de_page.
+3. Les titres et sous_titres doivent conserver la position [POS:...] d'origine.
+4. Ne fusionne jamais deux éléments : chaque élément est classifié individuellement.
+5. Un élément déjà identifié comme titre par son style n'est pas du texte normal.
+
+Réponds UNIQUEMENT avec un objet JSON valide, sans markdown, sans commentaire,
+sans texte avant ou après. Format EXACT :
+
+{
+  "titres": [
+    {"texte": "...", "position": {"section_index": 0, "element_index": 4, "parent": "body"}}
+  ],
+  "sous_titres": [...],
+  "en_tetes": [...],
+  "pieds_de_page": [...],
+  "tableaux": [...],
+  "images": [...],
+  "elements_flottants": [...]
+}
+
+Les catégories vides doivent être présentes avec []. Les positions (section_index,
+element_index, parent) doivent être copiées telles quelles depuis [POS:...].
+PROMPT;
+    }
+}
