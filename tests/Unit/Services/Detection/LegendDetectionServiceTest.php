@@ -108,4 +108,38 @@ class LegendDetectionServiceTest extends TestCase
         $this->assertSame('Figure', $legends[0]['type']);
         $this->assertSame('Tableau', $legends[1]['type']);
     }
+
+    public function test_dedup_ignore_les_variantes_typographiques(): void
+    {
+        // Même légende écrite différemment (accents, apostrophes, espaces)
+        // → une seule occurrence doit être conservée.
+        $text = "Tableau 4: critere evaluation d un project\n"
+            . "Tableau 4: critère évaluation d'un Project\n"
+            . "Figure 2: Tableau de bord\n"
+            . "Figure 2: tableau de bord\n";
+
+        $legends = $this->service->execute($text);
+
+        $this->assertCount(2, $legends);
+        $this->assertSame('Tableau', $legends[0]['type']);
+        $this->assertSame('4', $legends[0]['number']);
+        $this->assertSame('critere evaluation d un project', $legends[0]['label']);
+        $this->assertSame('Figure', $legends[1]['type']);
+    }
+
+    public function test_dedup_tolere_le_pluriel_final(): void
+    {
+        // "bilan des charge" (légende du corps) vs "bilan des charges"
+        // (référence en annexe) : même légende → une seule occurrence.
+        $text = "Tableau 5: bilan des charge\n"
+            . "Tableau 5: bilan des charges\n"
+            . "Tableau 6: organisation des tache\n"
+            . "Tableau 6: organisation des taches\n";
+
+        $legends = $this->service->execute($text);
+
+        $this->assertCount(2, $legends);
+        $this->assertSame('bilan des charge', $legends[0]['label']);
+        $this->assertSame('organisation des tache', $legends[1]['label']);
+    }
 }

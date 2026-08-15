@@ -237,9 +237,10 @@ class LegendDetectionService
     }
 
     /**
-     * Supprime les doublons : deux légendes identiques (type + numéro +
-     * libellé normalisé en minuscules) ne sont conservées qu'une fois.
-     * La première occurrence (numéro de ligne le plus bas) gagne.
+     * Supprime les doublons : deux légendes dont le type, le numéro et le
+     * libellé sont équivalents après normalisation typographique ne sont
+     * conservées qu'une fois. La première occurrence (numéro de ligne le
+     * plus bas) gagne.
      *
      * @param array<int, array{type: string, number: string, label: string, line: int, raw: string}> $legends
      * @return array<int, array{type: string, number: string, label: string, line: int, raw: string}>
@@ -250,7 +251,7 @@ class LegendDetectionService
         $unique = [];
 
         foreach ($legends as $legend) {
-            $key = mb_strtolower($legend['type'] . '|' . $legend['number'] . '|' . $legend['label']);
+            $key = $this->normalizeDedupKey($legend['type'] . '|' . $legend['number'] . '|' . $legend['label']);
 
             if (isset($seen[$key])) {
                 continue;
@@ -261,5 +262,29 @@ class LegendDetectionService
         }
 
         return $unique;
+    }
+
+    /**
+     * Normalise une clé de déduplication : minuscules, suppression des
+     * accents (translitération), des apostrophes (droites/courbes/backtick),
+     * des espaces et du "s" final (tolérance singulier/pluriel). Permet de
+     * rapprocher deux variantes typographiques du même libellé
+     * ("critere evaluation d un project" vs "critère évaluation d'un
+     * Project", "bilan des charge" vs "bilan des charges").
+     */
+    private function normalizeDedupKey(string $key): string
+    {
+        $key = mb_strtolower($key);
+        $key = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $key) ?: $key;
+        $key = preg_replace('/[\'\x{2018}\x{2019}`\s]+/u', '', $key) ?? $key;
+
+        // Tolérance singulier/pluriel : on retire un "s" final uniquement
+        // si la clé reste suffisamment longue (évite les collisions sur
+        // les libellés très courts).
+        if (str_ends_with($key, 's') && mb_strlen($key) > 5) {
+            $key = mb_substr($key, 0, -1);
+        }
+
+        return $key;
     }
 }
