@@ -46,6 +46,58 @@
                 </div>
             </div>
 
+            {{-- Phase 3 : génération avec couverture personnalisée --}}
+            @if ($document->structure)
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-white">
+                        <h2 class="h5 mb-0">Couverture personnalisée</h2>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">
+                            Fournissez une couverture d'exemple (<code>.docx</code>) : le système
+                            détecte les zones (nom, titre, encadrant, date) et les remplace en
+                            conservant la structure et les styles.
+                        </p>
+                        <form method="POST" action="{{ route('documents.generate-cover', $document) }}" enctype="multipart/form-data">
+                            @csrf
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label for="cover" class="form-label">Couverture d'exemple (.docx)</label>
+                                    <input type="file" class="form-control @error('cover') is-invalid @enderror"
+                                           id="cover" name="cover" accept=".docx" required>
+                                    @error('cover')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="nom" class="form-label">Nom</label>
+                                    <input type="text" class="form-control" id="nom" name="nom"
+                                           placeholder="Ex : JEAN DUPONT">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="titre" class="form-label">Titre</label>
+                                    <input type="text" class="form-control" id="titre" name="titre"
+                                           placeholder="Ex : CONCEPTION D'UNE APPLICATION WEB">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="encadrant" class="form-label">Encadrant</label>
+                                    <input type="text" class="form-control" id="encadrant" name="encadrant"
+                                           placeholder="Ex : Dr. MARTIN">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="date" class="form-label">Date / Année académique</label>
+                                    <input type="text" class="form-control" id="date" name="date"
+                                           placeholder="Ex : 2025-2026">
+                                </div>
+                                <div class="col-12">
+                                    <button type="submit" class="btn btn-success">🎓 Générer le DOCX avec couverture</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            @endif
+
             @if ($structure)
                 @php
                     $data = $structure->structure ?? [];

@@ -19,4 +19,5 @@ Route::group(['prefix' => 'documents'], function () {
     Route::post('/upload', [DocumentController::class, 'upload'])->name('documents.upload');
     Route::get('/{document}', [DocumentController::class, 'show'])->name('documents.show');
     Route::post('/{document}/generate', [DocumentController::class, 'generate'])->name('documents.generate');
+    Route::post('/{document}/generate-cover', [DocumentController::class, 'generateWithCover'])->name('documents.generate-cover');
 });
