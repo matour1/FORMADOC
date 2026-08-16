@@ -69,7 +69,7 @@ app/
 | **2** | ✅ Terminée | Extraction gabarit auto + génération DOCX stylisée |
 | **3** | ✅ Terminée | Détection/génération de couverture |
 | **4** | ✅ Terminée | Interface validation ambiguïtés |
-| **5** | ⏳ | Parcours complet (upload → téléchargement) |
+| **5** | ✅ Terminée | Parcours complet (upload → validation → traitement → export) |
 
 ## 🔑 Variables d'environnement
 

@@ -106,11 +106,36 @@ class DocumentController extends Controller
     }
 
     /**
-     * Affiche le document et sa structure détectée.
+     * Affiche le document et sa structure détectée (étape 2 — validation).
      */
     public function show(Document $document): View
     {
         return view('documents.show', [
+            'document' => $document,
+            'structure' => $document->structure,
+        ]);
+    }
+
+    /**
+     * Écran de traitement (étape 3) — transition visuelle avant l'export.
+     *
+     * La génération du DOCX reste déclenchée depuis la page d'export afin de
+     * conserver un flux déterministe : cette page redirige le navigateur vers
+     * l'export une fois l'animation terminée.
+     */
+    public function processing(Document $document): View
+    {
+        return view('documents.processing', [
+            'document' => $document,
+        ]);
+    }
+
+    /**
+     * Page d'export (étape 4) — récapitulatif + téléchargement du DOCX.
+     */
+    public function export(Document $document): View
+    {
+        return view('documents.export', [
             'document' => $document,
             'structure' => $document->structure,
         ]);
@@ -330,7 +355,7 @@ class DocumentController extends Controller
         $document->update(['status' => 'validated']);
 
         return redirect()
-            ->route('documents.show', $document)
-            ->with('success', 'Structure validée. Vous pouvez générer le document.');
+            ->route('documents.processing', $document)
+            ->with('success', 'Structure validée. Lancement du traitement…');
     }
 }

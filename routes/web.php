@@ -18,6 +18,8 @@ Route::group(['prefix' => 'documents'], function () {
     Route::get('/upload', [DocumentController::class, 'create'])->name('documents.create');
     Route::post('/upload', [DocumentController::class, 'upload'])->name('documents.upload');
     Route::get('/{document}', [DocumentController::class, 'show'])->name('documents.show');
+    Route::get('/{document}/processing', [DocumentController::class, 'processing'])->name('documents.processing');
+    Route::get('/{document}/export', [DocumentController::class, 'export'])->name('documents.export');
     Route::post('/{document}/validate', [DocumentController::class, 'validate'])->name('documents.validate');
     Route::post('/{document}/generate', [DocumentController::class, 'generate'])->name('documents.generate');
     Route::post('/{document}/generate-cover', [DocumentController::class, 'generateWithCover'])->name('documents.generate-cover');

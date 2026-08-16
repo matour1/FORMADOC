@@ -28,6 +28,7 @@ class FeedbackController extends Controller
                 'email' => 'required|email|max:255',
                 'avis' => 'required|string|min:10|max:2000',
                 'note' => 'required|integer|min:1|max:5',
+                'recommander' => 'nullable|boolean',
                 'problemes_rencontres' => 'nullable|string|max:1000'
             ]);
 
@@ -57,7 +58,8 @@ class FeedbackController extends Controller
         
         $emailContent = "Nouvel avis reçu sur FORMADOC\n\n";
         $emailContent .= "Email : {$feedback->email}\n";
-        $emailContent .= "Note : {$feedback->note}/5 ⭐\n\n";
+        $emailContent .= "Note : {$feedback->note}/5 ⭐\n";
+        $emailContent .= "Recommande FORMADOC : " . ($feedback->recommander ? 'Oui' : 'Non') . "\n\n";
         $emailContent .= "Avis :\n{$feedback->avis}\n\n";
         
         if ($feedback->problemes_rencontres) {
