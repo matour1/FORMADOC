@@ -6,11 +6,14 @@ use App\DocAnalyzer\DocAnalyzer;
 use App\DocAnalyzer\DocumentReconstructor;
 use App\Http\Requests\GenerateCoverRequest;
 use App\Http\Requests\StoreDocumentRequest;
+use App\Http\Requests\ValidateStructureRequest;
 use App\Models\CoverTemplate;
 use App\Models\Document;
 use App\Models\DocumentStructure;
 use App\Models\GeneratedDocument;
+use App\Services\Detection\AmbiguityDetectionService;
 use App\Services\Detection\LegendDetectionService;
+use App\Services\Detection\StructureCorrectionService;
 use App\Services\Detection\TextExtractionService;
 use App\Services\DocumentGeneration\CoverDetectionService;
 use Exception;
@@ -271,25 +274,63 @@ class DocumentController extends Controller
         $text = $this->textExtraction->execute($absolutePath);
         $legends = $this->legendDetection->execute($text);
 
-        // 4. Sauvegarde de la structure JSON (colonne 'structure', cast array)
+        // 4. Assemblage de la structure normalisée
+        $structure = [
+            // Résultat normalisé du DocAnalyzer (catégories)
+            'titres' => $analysis['titres'],
+            'sous_titres' => $analysis['sous_titres'],
+            'en_tetes' => $analysis['en_tetes'],
+            'pieds_de_page' => $analysis['pieds_de_page'],
+            'tableaux' => $analysis['tableaux'],
+            'images' => $analysis['images'],
+            'elements_flottants' => $analysis['elements_flottants'],
+            // Légendes détectées par regex (complément)
+            'legends' => $legends,
+        ];
+
+        // 5. Détection des ambiguïtés (déterministe — numérotation vs niveau)
+        $ambiguities = (new AmbiguityDetectionService())->detect($structure);
+
+        // 6. Sauvegarde (colonne 'structure' et 'ambiguities', casts array)
         DocumentStructure::updateOrCreate(
             ['document_id' => $document->id],
             [
-                'structure' => [
-                    // Résultat normalisé du DocAnalyzer (catégories)
-                    'titres' => $analysis['titres'],
-                    'sous_titres' => $analysis['sous_titres'],
-                    'en_tetes' => $analysis['en_tetes'],
-                    'pieds_de_page' => $analysis['pieds_de_page'],
-                    'tableaux' => $analysis['tableaux'],
-                    'images' => $analysis['images'],
-                    'elements_flottants' => $analysis['elements_flottants'],
-                    // Légendes détectées par regex (complément)
-                    'legends' => $legends,
-                ],
+                'structure' => $structure,
+                'ambiguities' => $ambiguities,
             ]
         );
 
         $document->update(['status' => 'detected']);
+    }
+
+    /**
+     * Enregistre la validation utilisateur de la structure (Phase 4).
+     *
+     * Les corrections validées sont appliquées à la structure, mémorisées
+     * dans 'validated_corrections', puis les ambiguïtés sont purgées et le
+     * statut passe à « validated ».
+     */
+    public function validate(ValidateStructureRequest $request, Document $document): RedirectResponse
+    {
+        $structure = $document->structure;
+
+        if ($structure === null) {
+            return back()->withErrors(['document' => 'Aucune structure détectée pour ce document.']);
+        }
+
+        $corrections = $request->validated('corrections') ?? [];
+        $corrected = (new StructureCorrectionService())->apply($structure->structure, $corrections);
+
+        $structure->update([
+            'structure' => $corrected,
+            'validated_corrections' => $corrections,
+            'ambiguities' => [],
+        ]);
+
+        $document->update(['status' => 'validated']);
+
+        return redirect()
+            ->route('documents.show', $document)
+            ->with('success', 'Structure validée. Vous pouvez générer le document.');
     }
 }

@@ -50,7 +50,9 @@ app/
 └── Services/
     ├── Detection/              # Détection de structure
     │   ├── TitleDetectionService.php   # Détection titres via DeepSeek (LLM)
-    │   └── LegendDetectionService.php  # Détection légendes via regex
+    │   ├── LegendDetectionService.php  # Détection légendes via regex
+    │   ├── AmbiguityDetectionService.php # Ambiguïtés (numérotation vs niveau, déterministe)
+    │   └── StructureCorrectionService.php # Application des corrections validées
     └── DocumentGeneration/     # Génération DOCX
         ├── TemplateExtractionService.php
         ├── StyleApplicationService.php
@@ -66,7 +68,7 @@ app/
 | **1** | ✅ Terminée | Pipeline de détection (titres via DeepSeek + légendes via regex) |
 | **2** | ✅ Terminée | Extraction gabarit auto + génération DOCX stylisée |
 | **3** | ✅ Terminée | Détection/génération de couverture |
-| **4** | ⏳ | Interface validation ambiguïtés |
+| **4** | ✅ Terminée | Interface validation ambiguïtés |
 | **5** | ⏳ | Parcours complet (upload → téléchargement) |
 
 ## 🔑 Variables d'environnement
