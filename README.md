@@ -63,9 +63,9 @@ app/
 | Phase | Statut | Fonctionnalité |
 |-------|--------|----------------|
 | **0** | ✅ Terminée | Squelette Laravel, DB MySQL, migrations, formulaire feedback |
-| **1** | ⏳ En cours | Pipeline de détection (titres via DeepSeek + légendes via regex) |
-| **2** | ⏳ | Extraction gabarit auto + génération DOCX stylisée |
-| **3** | ⏳ | Détection/génération de couverture |
+| **1** | ✅ Terminée | Pipeline de détection (titres via DeepSeek + légendes via regex) |
+| **2** | ✅ Terminée | Extraction gabarit auto + génération DOCX stylisée |
+| **3** | ✅ Terminée | Détection/génération de couverture |
 | **4** | ⏳ | Interface validation ambiguïtés |
 | **5** | ⏳ | Parcours complet (upload → téléchargement) |
 
