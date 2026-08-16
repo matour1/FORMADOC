@@ -10,11 +10,13 @@ class Feedback extends Model
         'email',
         'avis',
         'note',
+        'recommander',
         'problemes_rencontres',
         'status'
     ];
 
     protected $casts = [
         'note' => 'integer',
+        'recommander' => 'boolean',
     ];
 }
