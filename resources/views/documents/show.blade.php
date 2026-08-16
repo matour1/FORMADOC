@@ -24,7 +24,9 @@
                                 — Type : {{ $document->metadata['mime_type'] ?? 'inconnu' }}
                             </p>
                         </div>
-                        <span class="badge text-bg-success fs-6">✔ Analysé</span>
+                        <span class="badge text-bg-success fs-6">
+                            {{ $document->status === 'validated' ? '✔ Validé' : '✔ Analysé' }}
+                        </span>
                     </div>
 
                     {{-- Phase 2 : génération du DOCX reconstruit --}}
@@ -45,6 +47,75 @@
                     @endif
                 </div>
             </div>
+
+            {{-- Phase 4 : validation des ambiguïtés --}}
+            @if ($document->structure)
+                @php
+                    $ambiguities = $structure->ambiguities ?? [];
+                @endphp
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-white">
+                        <h2 class="h5 mb-0">Validation des ambiguïtés</h2>
+                    </div>
+                    <div class="card-body">
+                        @if ($document->status === 'validated')
+                            <div class="alert alert-success mb-0">
+                                ✔ Structure validée. Les corrections ont été appliquées au plan.
+                            </div>
+                        @elseif (count($ambiguities) > 0)
+                            <p class="text-muted">
+                                Certaines numérotations ne correspondent pas au niveau détecté.
+                                Vérifiez et corrigez si nécessaire, puis validez la structure.
+                            </p>
+                            <form method="POST" action="{{ route('documents.validate', $document) }}">
+                                @csrf
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-3">
+                                        <thead>
+                                            <tr>
+                                                <th>Titre</th>
+                                                <th>Niveau détecté</th>
+                                                <th>Motif</th>
+                                                <th style="min-width: 200px;">Correction</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach ($ambiguities as $ambiguity)
+                                                <tr>
+                                                    <td class="fw-semibold">{{ $ambiguity['texte'] }}</td>
+                                                    <td>Niveau {{ $ambiguity['niveau_detecte'] }}</td>
+                                                    <td class="text-muted">
+                                                        {{ $ambiguity['raison'] }}
+                                                        <span class="badge text-bg-warning text-dark ms-1">
+                                                            Suggéré : niveau {{ $ambiguity['niveau_suggere'] }}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <select name="corrections[{{ $ambiguity['id'] }}]"
+                                                                class="form-select form-select-sm" aria-label="Correction pour {{ $ambiguity['texte'] }}">
+                                                            <option value="1" @selected(($ambiguity['niveau_detecte'] ?? null) === 1)>Titre (niveau 1)</option>
+                                                            <option value="2" @selected(($ambiguity['niveau_detecte'] ?? null) === 2)>Sous-titre (niveau 2)</option>
+                                                            <option value="3">Sous-titre (niveau 3)</option>
+                                                            <option value="remove">Retirer du plan</option>
+                                                        </select>
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <button type="submit" class="btn btn-success">✔ Valider la structure</button>
+                            </form>
+                        @else
+                            <p class="text-muted mb-3">Aucune ambiguïté détectée. La structure semble cohérente.</p>
+                            <form method="POST" action="{{ route('documents.validate', $document) }}">
+                                @csrf
+                                <button type="submit" class="btn btn-success">✔ Valider la structure</button>
+                            </form>
+                        @endif
+                    </div>
+                </div>
+            @endif
 
             {{-- Phase 3 : génération avec couverture personnalisée --}}
             @if ($document->structure)
