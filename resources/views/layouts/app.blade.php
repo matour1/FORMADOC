@@ -14,6 +14,8 @@
 
     {{-- Tailwind CDN + design system (gabarit ScholarForm) --}}
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    {{-- Alpine.js (builder visuel de page de garde) --}}
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script>
         tailwind.config = {
             darkMode: "class",

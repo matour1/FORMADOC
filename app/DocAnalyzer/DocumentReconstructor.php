@@ -129,6 +129,9 @@ class DocumentReconstructor
         // ── Post-traitement : w:pgNumType w:fmt (romain/arabe) ────────────────
         $this->applyPageNumberingFormats($outputPath);
 
+        // ── Post-traitement : w:gridSpan sur cellules fusionnées (page de garde)
+        $this->applyGridSpan($outputPath);
+
         return $outputPath;
     }
 
@@ -396,5 +399,135 @@ class DocumentReconstructor
         }
 
         $zip->close();
+    }
+
+    /**
+     * Post-traitement : nettoie les marqueurs `<!--gridspan:N-->` résiduels
+     * et garantit `w:gridSpan` sur les cellules fusionnées (page de garde).
+     *
+     * Depuis PhpWord 1.4, `w:gridSpan` est écrit nativement par le writer
+     * Word2007 : ce post-traitement ne sert donc que de filet de sécurité
+     * pour les DOCX générés par des versions antérieures (marqueur HTML
+     * injecté par le CoverPageRenderer). Public car utilisé aussi par
+     * l'aperçu serveur (CoverPageTemplateController::preview).
+     */
+    public function applyGridSpan(string $docxPath): void
+    {
+        try {
+            $zip = new ZipArchive();
+            if ($zip->open($docxPath) !== true) {
+                return;
+            }
+
+            $xml = $zip->getFromName('word/document.xml');
+            if ($xml === false) {
+                $zip->close();
+                return;
+            }
+
+            // Aucun marqueur → rien à faire (PhpWord natif a déjà écrit gridSpan)
+            if (strpos($xml, 'gridspan') === false) {
+                $zip->close();
+                return;
+            }
+
+            $dom = new DOMDocument();
+            if (!$dom->loadXML($xml)) {
+                $zip->close();
+                return;
+            }
+
+            $xpath = new DOMXPath($dom);
+            $xpath->registerNamespace('w', self::WORD_NS);
+            $ns = self::WORD_NS;
+
+            // 1) Cellules portant un marqueur (ancien format) : injecte gridSpan
+            $markerTcs = $xpath->query('//w:tc[contains(., "gridspan")]');
+            if ($markerTcs !== false) {
+                foreach ($markerTcs as $tc) {
+                    if (!$tc instanceof \DOMElement) {
+                        continue;
+                    }
+                    // Le marqueur est soit un commentaire XML, soit du texte échappé
+                    $span = $this->extractGridSpanMarker($xpath, $tc);
+                    if ($span <= 1) {
+                        continue;
+                    }
+
+                    $tcPr = $xpath->query('./w:tcPr', $tc)->item(0);
+                    if (!$tcPr instanceof \DOMElement) {
+                        $tcPr = $dom->createElementNS($ns, 'w:tcPr');
+                        $tc->insertBefore($tcPr, $tc->firstChild);
+                    }
+                    if (!$xpath->query('./w:gridSpan', $tcPr)->item(0) instanceof \DOMElement) {
+                        $gridSpan = $dom->createElementNS($ns, 'w:gridSpan');
+                        $gridSpan->setAttributeNS($ns, 'w:val', (string) $span);
+                        $tcPr->appendChild($gridSpan);
+                    }
+                }
+            }
+
+            // 2) Supprime les commentaires XML marqueurs
+            foreach ($xpath->query('//comment()') as $comment) {
+                if ($comment instanceof \DOMComment && preg_match('/gridspan:\d+/', $comment->nodeValue ?? '')) {
+                    $comment->parentNode?->removeChild($comment);
+                }
+            }
+
+            // 3) Supprime les paragraphes dont le texte n'est QUE le marqueur
+            $markerPs = $xpath->query('//w:p[contains(., "gridspan")]');
+            if ($markerPs !== false) {
+                $toRemove = [];
+                foreach ($markerPs as $p) {
+                    if (!$p instanceof \DOMElement) {
+                        continue;
+                    }
+                    $clean = preg_replace('/<!--gridspan:\d+-->/', '', trim($p->textContent ?? '')) ?? '';
+                    if (trim($clean) === '') {
+                        $toRemove[] = $p;
+                    }
+                }
+                foreach ($toRemove as $p) {
+                    $p->parentNode?->removeChild($p);
+                }
+            }
+
+            // 4) Filet de sécurité : retire le marqueur du texte résiduel
+            foreach ($xpath->query('//w:t[contains(., "gridspan")]') as $t) {
+                if ($t instanceof \DOMText) {
+                    $t->nodeValue = preg_replace('/<!--gridspan:\d+-->/', '', $t->nodeValue ?? '') ?? $t->nodeValue;
+                }
+            }
+
+            $newXml = $dom->saveXML();
+            if (is_string($newXml) && $newXml !== '') {
+                $zip->deleteName('word/document.xml');
+                $zip->addFromString('word/document.xml', $newXml);
+            }
+
+            $zip->close();
+        } catch (\Throwable $e) {
+            // Post-traitement best-effort : jamais bloquant
+        }
+    }
+
+    /**
+     * Extrait la valeur d'un marqueur gridspan (commentaire XML ou texte)
+     * présent dans la cellule.
+     */
+    private function extractGridSpanMarker(DOMXPath $xpath, \DOMElement $tc): int
+    {
+        // 1) Commentaires XML directs
+        foreach ($xpath->query('.//comment()', $tc) as $comment) {
+            if ($comment instanceof \DOMComment
+                && preg_match('/<!--\s*gridspan:\s*(\d+)\s*-->/', $comment->nodeValue ?? '', $m)) {
+                return max(1, min(12, (int) $m[1]));
+            }
+        }
+        // 2) Texte échappé
+        if (preg_match('/<!--\s*gridspan:\s*(\d+)\s*-->/', $tc->textContent ?? '', $m)) {
+            return max(1, min(12, (int) $m[1]));
+        }
+        return 1;
     }
 }

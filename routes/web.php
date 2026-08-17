@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\CoverPageTemplateController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\FeedbackController;
 
@@ -12,6 +13,18 @@ Route::get('/', function () {
 // Routes Feedback (collecte d'avis sans compte utilisateur)
 Route::get('/feedback', [FeedbackController::class, 'showForm'])->name('feedback.form');
 Route::post('/feedback', [FeedbackController::class, 'store'])->name('feedback.store');
+
+// Routes modèles de page de garde (builder visuel)
+Route::post('/cover-templates/check', [CoverPageTemplateController::class, 'exists'])
+    ->name('cover-templates.check');
+Route::post('/cover-templates/{coverTemplate}/preview', [CoverPageTemplateController::class, 'preview'])
+    ->name('cover-templates.preview');
+Route::get('/cover-templates/preview/{token}', [CoverPageTemplateController::class, 'previewFile'])
+    ->name('cover-templates.preview.file');
+Route::post('/cover-templates/{coverTemplate}/duplicate', [CoverPageTemplateController::class, 'duplicate'])
+    ->name('cover-templates.duplicate');
+Route::resource('cover-templates', CoverPageTemplateController::class)
+    ->parameters(['cover-templates' => 'coverTemplate']);
 
 // Routes documents (upload + analyse de structure + génération DOCX)
 Route::group(['prefix' => 'documents'], function () {
