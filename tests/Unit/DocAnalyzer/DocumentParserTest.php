@@ -97,6 +97,30 @@ class DocumentParserTest extends TestCase
         (new DocumentParser($path))->parse();
     }
 
+    public function test_parse_supporte_le_texte_brut_txt(): void
+    {
+        // Un .txt n'est pas une archive ZIP : le parser doit le traiter
+        // comme un PhpWord virtuel (1 section, 1 paragraphe par ligne).
+        $path = $this->tempDir . '/rapport.txt';
+        file_put_contents($path, "RAPPORT DE STAGE\n\n1. Introduction\nCeci est un paragraphe.\n1.1 Contexte\nFin du rapport.\n");
+
+        $result = (new DocumentParser($path))->parse();
+
+        $this->assertStringContainsString('1. Introduction', $result['raw_text']);
+        $this->assertStringContainsString('Ceci est un paragraphe.', $result['raw_text']);
+
+        $body = $result['sections'][0]['body'];
+        $textes = array_column($body, 'text');
+        $this->assertContains('1. Introduction', $textes);
+        $this->assertContains('1.1 Contexte', $textes);
+
+        // Positions préservées : les lignes sont dans le body de la section 0
+        foreach ($body as $el) {
+            $this->assertSame('body', $el['position']['parent']);
+            $this->assertSame(0, $el['position']['section_index']);
+        }
+    }
+
     public function test_raw_text_contient_tous_les_contenus(): void
     {
         $path = $this->createControlledDocx();

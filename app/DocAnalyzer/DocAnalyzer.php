@@ -50,16 +50,28 @@ class DocAnalyzer
     }
 
     /**
+     * Méthodes de détection des titres.
+     *
+     *  - 'regex' : déterministe et rapide (styles Word + motifs regex).
+     *    Si aucun titre n'est trouvé, un fallback automatique lance l'IA.
+     *  - 'ia'    : appel systématique à l'IA (DeepSeek), plus lent.
+     */
+    public const METHOD_REGEX = 'regex';
+    public const METHOD_IA = 'ia';
+
+    /**
      * Analyse un document et retourne la structure détectée.
      *
      * @param string $filePath Chemin absolu du fichier DOCX
      * @param bool   $forceIA  Force l'appel à l'IA même si les règles suffisent
+     * @param string $titleMethod Méthode de détection des titres :
+     *                           'regex' (défaut, avec fallback IA) ou 'ia'
      *
      * @return array<string, array<int, array<string, mixed>>> Résultat conforme au contrat
      *
      * @throws InvalidArgumentException Si le fichier de règles est introuvable
      */
-    public function analyze(string $filePath, bool $forceIA = false): array
+    public function analyze(string $filePath, bool $forceIA = false, string $titleMethod = self::METHOD_REGEX): array
     {
         // 1. Extraction structurelle
         $parser = new DocumentParser($filePath);
@@ -70,10 +82,29 @@ class DocAnalyzer
         $detector = new RuleBasedDetector($rules);
         $rulesResult = $detector->detect($parsed);
 
+        // 2bis. Méthode 'regex' : complément par motifs textuels (numérotation,
+        //       mots-clés). Le RuleBasedDetector reste toujours actif pour les
+        //       catégories non-titres (en-têtes, pieds de page, tableaux…).
+        $regexResult = AnalyzerResult::empty();
+        if ($titleMethod === self::METHOD_REGEX) {
+            $regexTitles = (new RegexTitleDetector())->detect($parsed['context_text_with_positions']);
+            $regexResult['titres'] = $regexTitles['titres'];
+            $regexResult['sous_titres'] = $regexTitles['sous_titres'];
+        }
+
+        $rulesResult = (new ResultMerger())->merge($rulesResult, $regexResult);
+
         // 3. IA complémentaire si nécessaire
         $iaResult = AnalyzerResult::empty();
+        $callIa = $forceIA || $titleMethod === self::METHOD_IA;
 
-        if ($forceIA || $this->criticalCategoriesEmpty($rulesResult)) {
+        // Fallback automatique : la méthode regex n'a rien trouvé → l'IA
+        // prend le relais pour tenter de compléter les titres.
+        if (!$callIa && $titleMethod === self::METHOD_REGEX && $this->criticalCategoriesEmpty($rulesResult)) {
+            $callIa = true;
+        }
+
+        if ($callIa) {
             $iaResult = $this->analyzeWithIa($parsed['context_text_with_positions']);
         }
 

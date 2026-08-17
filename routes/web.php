@@ -30,6 +30,7 @@ Route::resource('cover-templates', CoverPageTemplateController::class)
 Route::group(['prefix' => 'documents'], function () {
     Route::get('/upload', [DocumentController::class, 'create'])->name('documents.create');
     Route::post('/upload', [DocumentController::class, 'upload'])->name('documents.upload');
+    Route::get('/{document}/preview', [DocumentController::class, 'preview'])->name('documents.preview');
     Route::get('/{document}', [DocumentController::class, 'show'])->name('documents.show');
     Route::get('/{document}/processing', [DocumentController::class, 'processing'])->name('documents.processing');
     Route::get('/{document}/export', [DocumentController::class, 'export'])->name('documents.export');

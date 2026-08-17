@@ -29,6 +29,10 @@ class StoreDocumentRequest extends FormRequest
                 'mimes:docx,doc,txt',
                 'mimetypes:application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,text/plain',
             ],
+            // Méthode de détection des titres choisie par l'utilisateur :
+            //   - 'regex' : rapide (styles Word + motifs regex), fallback IA
+            //   - 'ia'    : analyse par intelligence artificielle
+            'title_method' => ['sometimes', 'in:regex,ia'],
         ];
     }
 

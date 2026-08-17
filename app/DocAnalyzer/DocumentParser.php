@@ -211,11 +211,21 @@ class DocumentParser
     /**
      * Charge le document via PhpWord.
      *
+     * Les fichiers texte brut (.txt) ne sont pas des archives ZIP : on
+     * construit alors un PhpWord virtuel (1 section, 1 paragraphe par ligne)
+     * pour que le pipeline d'analyse (positions, regex, IA) fonctionne
+     * identiquement.
+     *
      * @throws RuntimeException Si le chargement échoue (fichier corrompu, format non supporté…)
      */
     private function load(): PhpWord
     {
         try {
+            // Extension .txt → PhpWord ne sait pas le lire (ZIP) → texte brut
+            if (strtolower(pathinfo($this->filePath, PATHINFO_EXTENSION)) === 'txt') {
+                return $this->phpWordFromPlainText();
+            }
+
             return IOFactory::load($this->filePath);
         } catch (\Throwable $e) {
             throw new RuntimeException(
@@ -224,6 +234,35 @@ class DocumentParser
                 $e
             );
         }
+    }
+
+    /**
+     * Construit un PhpWord virtuel depuis un fichier texte brut.
+     *
+     * Chaque ligne non vide devient un paragraphe Text (styles vides) : le
+     * RuleBasedDetector ne trouvera pas de titres par styles (aucun Heading),
+     * ce qui déclenchera la passe regex, ou le fallback IA en cas d'échec.
+     */
+    private function phpWordFromPlainText(): PhpWord
+    {
+        $content = file_get_contents($this->filePath);
+
+        if ($content === false) {
+            throw new RuntimeException('DocumentParser : fichier texte illisible.');
+        }
+
+        $phpWord = new PhpWord();
+        $section = $phpWord->addSection();
+
+        foreach (preg_split('/\r?\n/', $content) ?: [] as $line) {
+            $trimmed = trim($line);
+            if ($trimmed === '') {
+                continue;
+            }
+            $section->addText($trimmed);
+        }
+
+        return $phpWord;
     }
 
     /**
@@ -244,6 +283,11 @@ class DocumentParser
     {
         $result = [];
         $zip = null;
+
+        // Les fichiers texte brut ne sont pas des archives ZIP : rien à lire.
+        if (strtolower(pathinfo($this->filePath, PATHINFO_EXTENSION)) === 'txt') {
+            return $result;
+        }
 
         try {
             $zip = new \ZipArchive();

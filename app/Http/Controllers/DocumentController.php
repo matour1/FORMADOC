@@ -79,6 +79,9 @@ class DocumentController extends Controller
             // Stockage hors web root
             $path = $file->store('documents', 'storage');
 
+            // Méthode de détection des titres (regex par défaut, fallback IA)
+            $titleMethod = $request->input('title_method', DocAnalyzer::METHOD_REGEX);
+
             $document = Document::create([
                 'filename' => $file->getClientOriginalName(),
                 'path' => $path,
@@ -86,10 +89,11 @@ class DocumentController extends Controller
                 'metadata' => [
                     'mime_type' => $mimeType,
                     'size' => $file->getSize(),
+                    'title_method' => $titleMethod,
                 ],
             ]);
 
-            $this->runDetection($document);
+            $this->runDetection($document, $titleMethod);
 
             return redirect()
                 ->route('documents.show', $document)
@@ -114,6 +118,37 @@ class DocumentController extends Controller
         return view('documents.show', [
             'document' => $document,
             'structure' => $document->structure,
+        ]);
+    }
+
+    /**
+     * Aperçu du fichier uploadé (étape 1 — après sélection).
+     *
+     * Renvoie le fichier en inline (Content-Disposition) pour que le
+     * navigateur puisse l'afficher, ou un extrait de texte pour les .txt.
+     */
+    public function preview(Document $document): Response|BinaryFileResponse
+    {
+        $path = storage_path('uploads/' . $document->path);
+
+        if (!is_file($path)) {
+            abort(404, 'Fichier introuvable.');
+        }
+
+        $mime = $document->metadata['mime_type'] ?? mime_content_type($path);
+
+        // TXT : renvoie le contenu brut (affichage direct dans l'aperçu)
+        if (strtolower(pathinfo($document->path, PATHINFO_EXTENSION)) === 'txt') {
+            return response(file_get_contents($path), 200, [
+                'Content-Type' => 'text/plain; charset=UTF-8',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
+        // DOCX/DOC : renvoie le fichier en inline (aperçu navigateur natif)
+        return response()->file($path, [
+            'Content-Type' => $mime,
+            'Content-Disposition' => 'inline; filename="' . $document->filename . '"',
         ]);
     }
 
@@ -318,16 +353,18 @@ class DocumentController extends Controller
 
     /**
      * Pipeline de détection complet (DocAnalyzer → légendes → sauvegarde).
+     *
+     * @param string $titleMethod 'regex' (défaut, fallback IA) ou 'ia'
      */
-    private function runDetection(Document $document): void
+    private function runDetection(Document $document, string $titleMethod = DocAnalyzer::METHOD_REGEX): void
     {
         // 1. Chemin absolu du fichier stocké
         $absolutePath = storage_path('uploads/' . $document->path);
 
-        // 2. Analyse structurelle : parse → règles déterministes → IA si
-        //    catégorie critique vide → fusion (règles prioritaires)
+        // 2. Analyse structurelle : parse → règles déterministes → regex
+        //    (si demandé) → IA (si demandée ou en fallback) → fusion
         $analyzer = new DocAnalyzer(config_path('analyzer.php'));
-        $analysis = $analyzer->analyze($absolutePath);
+        $analysis = $analyzer->analyze($absolutePath, titleMethod: $titleMethod);
 
         // 3. Détection des légendes (regex — déterministe, conservée)
         $text = $this->textExtraction->execute($absolutePath);

@@ -118,6 +118,138 @@ class DocumentAnalysisPipelineTest extends TestCase
         $this->assertDatabaseCount('documents', 0);
     }
 
+    public function test_upload_avec_title_method_regex_est_stocke(): void
+    {
+        Http::fake();
+
+        $docxPath = $this->createTestDocx();
+
+        $response = $this->post('/documents/upload', [
+            'document' => new \Illuminate\Http\UploadedFile(
+                $docxPath,
+                'rapport_regex.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true
+            ),
+            'title_method' => 'regex',
+        ]);
+
+        $response->assertRedirect();
+
+        $document = Document::first();
+        $this->assertNotNull($document);
+        $this->assertSame('detected', $document->status);
+        $this->assertSame('regex', $document->metadata['title_method']);
+
+        // Les règles + regex suffisent → pas d'appel IA
+        Http::assertNothingSent();
+    }
+
+    public function test_upload_avec_title_method_ia_appelle_l_ia(): void
+    {
+        // L'IA est appelée car la méthode 'ia' force le recours à DeepSeek
+        $iaJson = json_encode([
+            'titres' => [
+                ['texte' => 'Introduction', 'position' => ['section_index' => 0, 'element_index' => 0, 'parent' => 'body']],
+            ],
+            'sous_titres' => [],
+            'en_tetes' => [],
+            'pieds_de_page' => [],
+            'tableaux' => [],
+            'images' => [],
+            'elements_flottants' => [],
+        ], JSON_UNESCAPED_UNICODE);
+
+        Http::fake([
+            'api.deepseek.com/*' => Http::response([
+                'choices' => [['message' => ['content' => $iaJson]]],
+            ], 200),
+        ]);
+
+        $docxPath = $this->createTestDocx();
+
+        $response = $this->post('/documents/upload', [
+            'document' => new \Illuminate\Http\UploadedFile(
+                $docxPath,
+                'rapport_ia.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true
+            ),
+            'title_method' => 'ia',
+        ]);
+
+        $response->assertRedirect();
+
+        $document = Document::first();
+        $this->assertNotNull($document);
+        $this->assertSame('ia', $document->metadata['title_method']);
+
+        // La méthode IA force l'appel à DeepSeek
+        Http::assertSentCount(1);
+    }
+
+    public function test_upload_title_method_invalide_est_refuse(): void
+    {
+        $docxPath = $this->createTestDocx();
+
+        $response = $this->post('/documents/upload', [
+            'document' => new \Illuminate\Http\UploadedFile(
+                $docxPath,
+                'rapport_invalide.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true
+            ),
+            'title_method' => 'magique',
+        ]);
+
+        $response->assertSessionHasErrors('title_method');
+        $this->assertDatabaseCount('documents', 0);
+    }
+
+    public function test_upload_fichier_txt_est_analyse_avec_regex(): void
+    {
+        Http::fake();
+
+        // Fichier texte brut : pas de styles Word → la passe regex détecte
+        // les titres numérotés, sans appel IA.
+        $txtPath = storage_path('app/test_tmp_txt_' . uniqid() . '.txt');
+        file_put_contents($txtPath, "RAPPORT DE STAGE\n\n1. Introduction\nCeci est un paragraphe.\n1.1 Contexte\nFin du rapport.\n");
+
+        $response = $this->post('/documents/upload', [
+            'document' => new \Illuminate\Http\UploadedFile(
+                $txtPath,
+                'rapport_texte.txt',
+                'text/plain',
+                null,
+                true
+            ),
+            'title_method' => 'regex',
+        ]);
+
+        $response->assertRedirect();
+
+        $document = Document::first();
+        $this->assertNotNull($document);
+        $this->assertSame('detected', $document->status);
+        $this->assertSame('regex', $document->metadata['title_method']);
+
+        $structure = DocumentStructure::where('document_id', $document->id)->first();
+        $this->assertNotNull($structure);
+
+        $data = $structure->structure;
+        $titres = array_column($data['titres'], 'texte');
+        $this->assertContains('1. Introduction', $titres);
+
+        $sousTitres = array_column($data['sous_titres'], 'texte');
+        $this->assertContains('1.1 Contexte', $sousTitres);
+
+        // La passe regex a suffi → aucun appel IA
+        Http::assertNothingSent();
+    }
+
     public function test_upload_fichier_trop_gros_est_refuse(): void
     {
         $response = $this->post('/documents/upload', [

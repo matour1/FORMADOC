@@ -216,4 +216,111 @@ class DocAnalyzerTest extends TestCase
         $this->assertInstanceOf(PhpWord::class, $phpWord);
         $this->assertNotEmpty($phpWord->getSections());
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Choix de la méthode de détection des titres (titleMethod)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * DOCX SANS styles HeadingN mais avec des titres numérotés détectables
+     * par la passe regex ("1. Introduction", "1.1 Contexte").
+     */
+    private function createDocxWithNumberedTitles(string $filename = 'numerote.docx'): string
+    {
+        $phpWord = new PhpWord();
+        $section = $phpWord->addSection();
+        $section->addText('1. Introduction', ['size' => 11]);
+        $section->addText('1.1 Contexte', ['size' => 11]);
+        $section->addText('Ceci est un paragraphe normal.', ['size' => 11]);
+
+        $path = $this->tempDir . '/' . $filename;
+        IOFactory::createWriter($phpWord, 'Word2007')->save($path);
+
+        return $path;
+    }
+
+    public function test_title_method_regex_trouve_titres_sans_appel_ia(): void
+    {
+        Http::fake();
+
+        $analyzer = new DocAnalyzer(config_path('analyzer.php'));
+        // Méthode 'regex' (défaut) : la passe regex complète les règles.
+        $result = $analyzer->analyze($this->createDocxWithNumberedTitles(), titleMethod: DocAnalyzer::METHOD_REGEX);
+
+        // Les titres numérotés sont détectés par la passe regex…
+        $this->assertCount(1, $result['titres']);
+        $this->assertSame('1. Introduction', $result['titres'][0]['texte']);
+        $this->assertSame('regex', $result['titres'][0]['source']);
+
+        $this->assertCount(1, $result['sous_titres']);
+        $this->assertSame('1.1 Contexte', $result['sous_titres'][0]['texte']);
+
+        // …et l'IA n'a PAS été appelée (la catégorie critique n'est plus vide)
+        Http::assertNothingSent();
+    }
+
+    public function test_title_method_regex_sans_titres_fallback_ia(): void
+    {
+        // L'IA est appelée en fallback : elle complète les titres
+        $iaJson = json_encode([
+            'titres' => [
+                ['texte' => 'Titre IA fallback', 'position' => ['section_index' => 0, 'element_index' => 0, 'parent' => 'body']],
+            ],
+            'sous_titres' => [],
+            'en_tetes' => [],
+            'pieds_de_page' => [],
+            'tableaux' => [],
+            'images' => [],
+            'elements_flottants' => [],
+        ], JSON_UNESCAPED_UNICODE);
+
+        Http::fake([
+            'api.deepseek.com/*' => Http::response([
+                'choices' => [['message' => ['content' => $iaJson]]],
+            ], 200),
+        ]);
+
+        $analyzer = new DocAnalyzer(config_path('analyzer.php'));
+        // Aucun titre détectable (ni styles ni numérotation) → fallback IA
+        $result = $analyzer->analyze($this->createDocxWithoutTitles(), titleMethod: DocAnalyzer::METHOD_REGEX);
+
+        // L'IA a pris le relais automatiquement
+        $this->assertCount(1, $result['titres']);
+        $this->assertSame('Titre IA fallback', $result['titres'][0]['texte']);
+        Http::assertSentCount(1);
+    }
+
+    public function test_title_method_ia_force_l_appel(): void
+    {
+        // L'IA est appelée même si les règles suffisent
+        Http::fake([
+            'api.deepseek.com/*' => Http::response([
+                'choices' => [['message' => ['content' => $this->iaJsonResponse()]]],
+            ], 200),
+        ]);
+
+        $analyzer = new DocAnalyzer(config_path('analyzer.php'));
+        // Méthode 'ia' : appel systématique (même si le DOCX a des HeadingN)
+        $result = $analyzer->analyze($this->createControlledDocx(), titleMethod: DocAnalyzer::METHOD_IA);
+
+        $this->assertCount(1, $result['titres']);
+        $this->assertSame('Résumé', $result['titres'][0]['texte']);
+        Http::assertSentCount(1);
+    }
+
+    public function test_title_method_ia_sans_cle_api_n_est_pas_fatal(): void
+    {
+        // Pas de clé API configurée → l'IA ne peut rien faire, mais l'analyse
+        // ne doit pas planter (on retombe sur les règles seules).
+        config(['deepseek.api_key' => '']);
+        Http::fake();
+
+        $analyzer = new DocAnalyzer(config_path('analyzer.php'));
+        $result = $analyzer->analyze($this->createControlledDocx(), titleMethod: DocAnalyzer::METHOD_IA);
+
+        $this->assertTrue(AnalyzerResult::isValid($result));
+        $this->assertCount(1, $result['titres']);
+        $this->assertSame('Résumé', $result['titres'][0]['texte']);
+        Http::assertNothingSent();
+    }
 }
