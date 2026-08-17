@@ -36,4 +36,6 @@ Route::group(['prefix' => 'documents'], function () {
     Route::post('/{document}/validate', [DocumentController::class, 'validate'])->name('documents.validate');
     Route::post('/{document}/generate', [DocumentController::class, 'generate'])->name('documents.generate');
     Route::post('/{document}/generate-cover', [DocumentController::class, 'generateWithCover'])->name('documents.generate-cover');
+    Route::post('/{document}/generate-cover-page', [DocumentController::class, 'generateWithCoverPageTemplate'])
+        ->name('documents.generate-cover-page');
 });

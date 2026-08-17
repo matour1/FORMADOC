@@ -18,6 +18,7 @@ use App\Services\Detection\TextExtractionService;
 use App\Services\DocumentGeneration\CoverDetectionService;
 use Exception;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
@@ -132,12 +133,44 @@ class DocumentController extends Controller
 
     /**
      * Page d'export (étape 4) — récapitulatif + téléchargement du DOCX.
+     *
+     * Les modèles de page de garde publics (builder visuel) sont proposés à
+     * la sélection pour préfixer le DOCX généré.
      */
     public function export(Document $document): View
     {
+        $coverTemplates = \App\Models\CoverPageTemplate::query()
+            ->where('is_public', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'description', 'elements']);
+
         return view('documents.export', [
             'document' => $document,
             'structure' => $document->structure,
+            'coverTemplates' => $coverTemplates,
+        ]);
+    }
+
+    /**
+     * Génère le DOCX reconstruit AVEC une page de garde issue du builder
+     * visuel (Phase 6).
+     *
+     * L'utilisateur sélectionne un modèle + fournit les valeurs des
+     * placeholders. La page de garde est rendue (ghost-table) puis préfixée
+     * au document reconstruit.
+     */
+    public function generateWithCoverPageTemplate(Request $request, Document $document): Response|RedirectResponse|BinaryFileResponse
+    {
+        $template = \App\Models\CoverPageTemplate::find($request->integer('cover_page_template_id'));
+
+        if (!$template) {
+            return back()->withErrors(['cover_page_template_id' => 'Modèle de page de garde introuvable.']);
+        }
+
+        return $this->generateAndDownload($document, [
+            'cover_page_template' => $template,
+            'values' => (array) $request->input('values', []),
+            'cover_page_template_id' => $template->id,
         ]);
     }
 
@@ -200,6 +233,7 @@ class DocumentController extends Controller
                     'status' => 'generated',
                     'cover_values' => $cover['values'] ?? null,
                     'cover_template_id' => $cover['cover_template_id'] ?? null,
+                    'cover_page_template_id' => $cover['cover_page_template_id'] ?? null,
                 ]
             );
 

@@ -37,6 +37,65 @@
                 {{-- Colonne principale : récapitulatif (bento) --}}
                 <div class="lg:col-span-2 space-y-6">
 
+                    {{-- Page de garde : sélection d'un modèle visuel (facultatif) --}}
+                    <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 md:p-6">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="material-symbols-outlined text-primary">auto_stories</span>
+                            <h2 class="font-h2 text-h2 text-on-surface">Ajouter une page de garde</h2>
+                        </div>
+                        <p class="font-caption text-caption text-on-surface-variant mb-4">
+                            Choisissez un modèle visuel de couverture (facultatif). Les champs
+                            <code class="font-mono text-[12px] bg-surface-container-high px-1 rounded">&lcub;&lcub;placeholder&rcub;&rcub;</code>
+                            du modèle seront pré-remplis ci-dessous.
+                        </p>
+
+                        <form method="POST" action="{{ route('documents.generate-cover-page', $document) }}"
+                              class="space-y-4" x-data="coverExport({{ \Illuminate\Support\Js::from($coverTemplates) }})">
+                            @csrf
+
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-2">Modèle de page de garde</label>
+                                <select name="cover_page_template_id" x-model="selectedId"
+                                        class="w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3 text-body-md text-on-surface focus:border-primary focus:outline-none">
+                                    <option value="">— Aucune page de garde —</option>
+                                    <template x-for="t in templates" :key="t.id">
+                                        <option :value="t.id" x-text="t.name"></option>
+                                    </template>
+                                </select>
+                                @error('cover_page_template_id')
+                                    <p class="mt-1 text-sm text-error">{{ $message }}</p>
+                                @enderror
+                            </div>
+
+                            {{-- Champs des placeholders du modèle sélectionné --}}
+                            <template x-if="selected">
+                                <div>
+                                    <p class="text-sm font-medium text-slate-700 mb-2">
+                                        Valeurs pour « <span x-text="selected.name"></span> »
+                                    </p>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <template x-for="key in placeholderKeys(selected)" :key="key">
+                                            <div>
+                                                <label class="block text-xs font-medium text-on-surface-variant mb-1"
+                                                       x-text="key"></label>
+                                                <input type="text" :name="`values[${key}]`"
+                                                       class="w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2 text-body-md text-on-surface focus:border-primary focus:outline-none"
+                                                       :placeholder="ph(key)">
+                                            </div>
+                                        </template>
+                                    </div>
+                                    <div class="flex justify-end mt-4">
+                                        <button type="submit"
+                                                class="inline-flex items-center gap-2 bg-primary text-on-primary hover:bg-primary-fixed px-5 py-2.5 rounded-xl font-body-md font-semibold transition-colors">
+                                            <span class="material-symbols-outlined">auto_awesome</span>
+                                            Télécharger avec page de garde
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </form>
+                    </div>
+
                     {{-- Carte de téléchargement --}}
                     <div class="bg-primary text-on-primary rounded-xl p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
                         <div>
@@ -155,3 +214,34 @@
         </div>
     </div>
 @endsection
+
+@push('scripts')
+<script>
+    function coverExport(templates) {
+        return {
+            templates: templates || [],
+            selectedId: '',
+            get selected() {
+                return this.templates.find(t => String(t.id) === String(this.selectedId)) || null;
+            },
+            placeholderKeys(t) {
+                if (!t || !t.elements) return [];
+                const set = new Set();
+                const walk = (blocks) => (blocks || []).forEach(b => {
+                    if (b.kind === 'text' && b.text) {
+                        (String(b.text).match(/\{\{\s*([\w\.]+)\s*\}\}/g) || []).forEach(m => {
+                            set.add(m.replace(/[{}\s]/g, ''));
+                        });
+                    }
+                });
+                (t.elements || []).forEach(r => (r.cells || []).forEach(c => walk(c.blocks)));
+                return [...set];
+            },
+            ph(key) {
+                // Évite les accolades littérales (interprétées par Blade)
+                return '{' + '{' + key + '}' + '}';
+            },
+        };
+    }
+</script>
+@endpush

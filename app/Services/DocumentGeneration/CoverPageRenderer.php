@@ -3,6 +3,7 @@
 namespace App\Services\DocumentGeneration;
 
 use App\Models\CoverPageTemplate;
+use PhpOffice\PhpWord\Element\Section;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\SimpleType\Jc;
 
@@ -25,10 +26,13 @@ class CoverPageRenderer
         array $values = [],
         array $imageMap = []
     ): void {
-        $this->applyPageStyle($phpWord, $template->page_style ?? []);
+        $phpWord->setDefaultFontName('Calibri');
+        $phpWord->setDefaultFontSize(11);
 
+        // La section est créée d'abord, puis son style de page est appliqué
+        // directement (format, orientation, marges).
         $section = $phpWord->addSection();
-        $section->setPageSizeH(intval($template->page_style['marginTopMm'] ?? 25) * 56.7);
+        $this->applyPageStyle($section, $template->page_style ?? []);
 
         $table = $section->addTable([
             'borderSize' => 0,
@@ -46,22 +50,13 @@ class CoverPageRenderer
         $section->addPageBreak();
     }
 
-    private function applyPageStyle(PhpWord $phpWord, array $style): void
+    private function applyPageStyle(Section $section, array $style): void
     {
         $size = $style['size'] ?? 'A4';
         $orientation = $style['orientation'] ?? 'portrait';
 
-        $phpWord->setDefaultFontName('Calibri');
-        $phpWord->setDefaultFontSize(11);
-
-        // Le style s'applique à toute nouvelle section créée ; la garde utilise
-        // la première section (par défaut).
-        $section = $phpWord->getSections()[0] ?? null;
-        if (!$section) {
-            return;
-        }
-
         $section->setPageSize($size, $orientation);
+        // Marges en twips : 1 mm = 56.7 twips
         $section->setMarginTop(intval($style['marginTopMm'] ?? 25) * 56.7);
         $section->setMarginBottom(intval($style['marginBottomMm'] ?? 25) * 56.7);
         $section->setMarginLeft(intval($style['marginLeftMm'] ?? 25) * 56.7);

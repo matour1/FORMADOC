@@ -11,6 +11,7 @@ class GeneratedDocument extends Model
         'document_id',
         'template_id',
         'cover_template_id',
+        'cover_page_template_id',
         'output_path',
         'cover_values',
         'status'
@@ -33,5 +34,10 @@ class GeneratedDocument extends Model
     public function coverTemplate(): BelongsTo
     {
         return $this->belongsTo(CoverTemplate::class);
+    }
+
+    public function coverPageTemplate(): BelongsTo
+    {
+        return $this->belongsTo(CoverPageTemplate::class);
     }
 }
