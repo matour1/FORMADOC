@@ -77,6 +77,13 @@ class DocumentReconstructor
     private const PAGE_NUMBERING_FORMATS = ['lowerRoman', 'decimal'];
 
     /**
+     * Gabarit de mise en forme normalisé (TemplateStyleResolver::normalize).
+     *
+     * @var array<string, mixed>
+     */
+    private array $gabarit = [];
+
+    /**
      * Génère un DOCX complet à partir de la structure analysée.
      *
      * @param array<string, mixed> $analysis   Résultat du DocAnalyzer (+ legends)
@@ -94,11 +101,13 @@ class DocumentReconstructor
      *
      * @throws \RuntimeException Si l'écriture du DOCX échoue
      */
-    public function reconstruct(array $analysis, string $outputPath, ?array $cover = null): string
+    public function reconstruct(array $analysis, string $outputPath, ?array $cover = null, ?array $gabarit = null): string
     {
         $phpWord = new PhpWord();
         $phpWord->getSettings()->setUpdateFields(true);
 
+        // Gabarit de mise en forme (params normalisés). null → défauts.
+        $this->gabarit = \App\Services\DocumentGeneration\TemplateStyleResolver::normalize($gabarit);
         $this->registerTitleStyles($phpWord);
 
         // ── Section 0 : couverture (optionnelle) ──────────────────────────────
@@ -108,12 +117,13 @@ class DocumentReconstructor
         }
 
         // ── Section 1 : frontispice (numérotation romaine) ────────────────────
-        $frontSection = $phpWord->addSection(['pageNumberingStart' => 1]);
+        $sectionStyle = \App\Services\DocumentGeneration\TemplateStyleResolver::sectionStyle($this->gabarit);
+        $frontSection = $phpWord->addSection(array_merge(['pageNumberingStart' => 1], $sectionStyle));
         $this->applyHeaderFooter($frontSection, $analysis, 'roman');
         $this->writeFrontispiece($frontSection, $analysis);
 
         // ── Section 2 : corps (numérotation arabe, redémarre à 1) ─────────────
-        $bodySection = $phpWord->addSection(['pageNumberingStart' => 1]);
+        $bodySection = $phpWord->addSection(array_merge(['pageNumberingStart' => 1], $sectionStyle));
         $this->applyHeaderFooter($bodySection, $analysis, 'Arabic');
         $this->writeBody($bodySection, $analysis);
 
@@ -166,12 +176,18 @@ class DocumentReconstructor
     /**
      * Enregistre les styles de titres natifs (nécessaire pour que PhpWord
      * associe chaque Title au style HeadingN → utilisé par le TOC).
+     *
+     * Les tailles/couleurs/polices ET le style de paragraphe (alignement,
+     * espacements, interligne) proviennent du gabarit choisi.
      */
     private function registerTitleStyles(PhpWord $phpWord): void
     {
-        $phpWord->addTitleStyle(1, ['bold' => true, 'size' => 16, 'color' => '000000']);
-        $phpWord->addTitleStyle(2, ['bold' => true, 'size' => 14, 'color' => '000000']);
-        $phpWord->addTitleStyle(3, ['bold' => true, 'size' => 12, 'color' => '000000']);
+        $resolver = \App\Services\DocumentGeneration\TemplateStyleResolver::class;
+        $paragraphStyle = $resolver::titleParagraphStyle($this->gabarit);
+
+        $phpWord->addTitleStyle(1, $resolver::fontStyle($this->gabarit, 'titre1'), $paragraphStyle);
+        $phpWord->addTitleStyle(2, $resolver::fontStyle($this->gabarit, 'titre2'), $paragraphStyle);
+        $phpWord->addTitleStyle(3, $resolver::fontStyle($this->gabarit, 'titre3'), $paragraphStyle);
     }
 
     /**
@@ -258,13 +274,44 @@ class DocumentReconstructor
     }
 
     /**
-     * Écrit le corps du document : tous les titres et sous-titres (hors
-     * frontispice), triés par position, avec leur style HeadingN.
+     * Écrit le corps du document : TOUS les éléments détectés (titres,
+     * sous-titres, paragraphes, listes, tableaux, images) dans l'ordre
+     * d'apparition, avec la mise en forme du gabarit choisi.
+     *
+     * La source de vérité est `body_complet` (extrait par DocumentParser,
+     * conservé dans la structure) : chaque élément est restitué à sa
+     * position, sans perte de contenu. Les catégories `titres`/`sous_titres`
+     * servent uniquement de repli si `body_complet` est absent (anciens
+     * documents analysés avant cette version).
      *
      * @param array<string, mixed> $analysis
      */
     private function writeBody(Section $section, array $analysis): void
     {
+        $resolver = \App\Services\DocumentGeneration\TemplateStyleResolver::class;
+        $bodyComplet = $analysis['body_complet'] ?? [];
+
+        // ── Mode principal : body_complet présent (reconstruction fidèle) ──
+        if (is_array($bodyComplet) && $bodyComplet !== []) {
+            foreach ($bodyComplet as $element) {
+                $texte = trim((string) ($element['text'] ?? ''));
+                $type = (string) ($element['type'] ?? 'autre');
+                if ($texte === '' && !in_array($type, ['image', 'saut', 'tableau'], true)) {
+                    continue;
+                }
+
+                // Titres de frontispice (SOMMAIRE, listes…) : gérés en section 1
+                if (in_array(mb_strtoupper($texte), self::FRONTISPIECE_TITLES, true)) {
+                    continue;
+                }
+
+                $this->writeElement($section, $element, $resolver);
+            }
+
+            return;
+        }
+
+        // ── Repli : uniquement les catégories titres/sous_titres triées ─────
         $items = [];
 
         foreach (($analysis['titres'] ?? []) as $item) {
@@ -298,6 +345,133 @@ class DocumentReconstructor
 
             $niveau = min(3, max(1, (int) ($item['niveau'] ?? 1)));
             $section->addTitle($texte, $niveau);
+        }
+    }
+
+    /**
+     * Restitue un élément unique du body complet selon son type.
+     *
+     * @param array<string, mixed> $element
+     * @param class-string         $resolver
+     */
+    private function writeElement(Section $section, array $element, string $resolver): void
+    {
+        $type = $element['type'] ?? 'autre';
+        $texte = trim((string) ($element['text'] ?? ''));
+
+        switch ($type) {
+            case 'titre':
+                $niveau = min(3, max(1, (int) ($element['depth'] ?? 1)));
+                $section->addTitle($texte, $niveau);
+                break;
+
+            case 'liste':
+                $depth = (int) ($element['depth'] ?? 0);
+                $section->addListItem(
+                    $texte,
+                    $depth,
+                    $resolver::fontStyle($this->gabarit, 'corps'),
+                    null,
+                    $resolver::bodyParagraphStyle($this->gabarit)
+                );
+                break;
+
+            case 'tableau':
+                $this->writeTable($section, $element, $resolver);
+                break;
+
+            case 'image':
+                $this->writeImage($section, $element);
+                break;
+
+            case 'saut':
+                $section->addTextBreak();
+                break;
+
+            default:
+                // 'texte' et tout type inconnu : paragraphe de corps stylé
+                $section->addText(
+                    $texte,
+                    $resolver::fontStyle($this->gabarit, 'corps'),
+                    $resolver::bodyParagraphStyle($this->gabarit)
+                );
+                break;
+        }
+    }
+
+    /**
+     * Restitue un tableau avec son contenu (lignes → cellules) et le style
+     * de gabarit (bordure, en-tête coloré).
+     *
+     * @param array<string, mixed> $element
+     * @param class-string         $resolver
+     */
+    private function writeTable(Section $section, array $element, string $resolver): void
+    {
+        $rows = $element['rows'] ?? [];
+        if (!is_array($rows) || $rows === []) {
+            // Tableau sans contenu extrait : on le signale sans le perdre
+            $section->addText('[Tableau]', $resolver::fontStyle($this->gabarit, 'corps'));
+            return;
+        }
+
+        $table = $section->addTable($resolver::tableStyle($this->gabarit));
+        $headerStyle = $resolver::tableHeaderStyle($this->gabarit);
+        $cellStyle = ['valign' => 'center'];
+        $bodyFont = $resolver::fontStyle($this->gabarit, 'corps');
+
+        foreach ($rows as $rowIndex => $row) {
+            $cells = is_array($row['cells'] ?? null) ? $row['cells'] : [];
+            $table->addRow();
+
+            foreach ($cells as $cellIndex => $cellText) {
+                $isHeader = $rowIndex === 0;
+                $font = $isHeader ? $headerStyle : $bodyFont;
+
+                $table->addCell(null, $cellStyle)->addText(
+                    (string) $cellText,
+                    $font
+                );
+            }
+        }
+    }
+
+    /**
+     * Restitue une image depuis son binaire (base64 stocké dans la structure).
+     *
+     * @param array<string, mixed> $element
+     */
+    private function writeImage(Section $section, array $element): void
+    {
+        $data = $element['image_data'] ?? null;
+        if (!is_string($data) || $data === '') {
+            $name = (string) ($element['image_name'] ?? 'image');
+            $section->addText("[Image: {$name}]");
+
+            return;
+        }
+
+        $extension = (string) ($element['image_extension'] ?? 'png');
+        $tmpPath = tempnam(sys_get_temp_dir(), 'fdimg_');
+        if ($tmpPath === false) {
+            return;
+        }
+
+        // Extension correcte pour que PhpWord détecte le type MIME
+        $tmpPath = $tmpPath . '.' . $extension;
+        file_put_contents($tmpPath, base64_decode($data));
+
+        try {
+            $section->addImage($tmpPath, [
+                'width' => 320,
+                'height' => 240,
+                'alignment' => 'center',
+            ]);
+        } catch (\Throwable $e) {
+            // Image illisible : on la signale sans bloquer la génération
+            $section->addText('[Image: ' . ($element['image_name'] ?? '') . ']');
+        } finally {
+            @unlink($tmpPath);
         }
     }
 

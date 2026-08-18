@@ -12,6 +12,8 @@ use PhpOffice\PhpWord\Element\AbstractElement;
 use PhpOffice\PhpWord\Element\Footer;
 use PhpOffice\PhpWord\Element\Header;
 use PhpOffice\PhpWord\Element\Image;
+use PhpOffice\PhpWord\Element\ListItem;
+use PhpOffice\PhpWord\Element\ListItemRun;
 use PhpOffice\PhpWord\Element\PreserveText;
 use PhpOffice\PhpWord\Element\Section;
 use PhpOffice\PhpWord\Element\Table;
@@ -564,12 +566,30 @@ class DocumentParser
             $parsed['depth'] = (int) $element->getDepth();
         }
 
+        if ($element instanceof ListItem || $element instanceof ListItemRun) {
+            $parsed['depth'] = (int) $element->getDepth();
+        }
+
         if ($element instanceof Table) {
             $parsed['rows_count'] = count($element->getRows());
+            // Contenu réel des cellules : indispensable pour restituer le
+            // tableau à l'identique lors de la reconstruction.
+            $parsed['rows'] = $this->tableRows($element);
         }
 
         if ($element instanceof Image) {
             $parsed['image_name'] = $element->getName() ?: basename((string) $element->getSource());
+            $parsed['image_extension'] = strtolower(pathinfo(
+                $element->getSource() ?: '',
+                PATHINFO_EXTENSION
+            )) ?: null;
+
+            // Binaire de l'image en base64 : nécessaire pour la reconstruction
+            // (le DOCX généré embarque l'image dans son ZIP).
+            $source = $element->getSource();
+            if (is_string($source) && is_file($source)) {
+                $parsed['image_data'] = base64_encode((string) file_get_contents($source));
+            }
         }
 
         return $parsed;
@@ -584,6 +604,7 @@ class DocumentParser
     {
         return match (true) {
             $element instanceof Title => 'titre',
+            $element instanceof ListItem, $element instanceof ListItemRun => 'liste',
             $element instanceof Text, $element instanceof TextRun, $element instanceof PreserveText => 'texte',
             $element instanceof Table => 'tableau',
             $element instanceof Image => 'image',
@@ -600,6 +621,20 @@ class DocumentParser
     {
         if ($element instanceof Title) {
             return $this->titleText($element);
+        }
+
+        if ($element instanceof ListItem) {
+            $text = $element->getText();
+            if (is_string($text)) {
+                return $text;
+            }
+
+            return '';
+        }
+
+        if ($element instanceof ListItemRun) {
+            // ListItemRun extends TextRun : texte via le conteneur
+            return $this->containerText($element);
         }
 
         if ($element instanceof Text) {
@@ -845,6 +880,8 @@ class DocumentParser
                 $parts[] = $this->containerText($child);
             } elseif ($child instanceof Title) {
                 $parts[] = $this->titleText($child);
+            } elseif ($child instanceof ListItem) {
+                $parts[] = $this->getElementText($child);
             } elseif ($child instanceof PreserveText) {
                 $parts[] = $this->preserveText($child);
             } elseif ($child instanceof Table) {
@@ -856,6 +893,32 @@ class DocumentParser
         }
 
         return implode('', $parts);
+    }
+
+    /**
+     * Extrait le contenu structuré d'un tableau (lignes → cellules → texte).
+     *
+     * Chaque ligne : { cells: [texte cellule 1, texte cellule 2, …] }.
+     * Indispensable pour reconstruire le tableau à l'identique.
+     *
+     * @return array<int, array{cells: array<int, string>}>
+     */
+    public function tableRows(Table $table): array
+    {
+        $rows = [];
+
+        foreach ($table->getRows() as $row) {
+            $cells = [];
+
+            foreach ($row->getCells() as $cell) {
+                $cellText = trim($this->containerText($cell));
+                $cells[] = $cellText;
+            }
+
+            $rows[] = ['cells' => $cells];
+        }
+
+        return $rows;
     }
 
     /**

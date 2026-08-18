@@ -15,6 +15,9 @@
         $images = $data['images'] ?? [];
         $legends = $data['legends'] ?? [];
         $titreCount = count($titres) + count($sousTitres);
+        $selectedTemplateId = $document->metadata['preview_template_id'] ?? null;
+        $pdfAvailable = is_string($document->metadata['pdf_preview_path'] ?? null)
+            && trim($document->metadata['pdf_preview_path'] ?? '') !== '';
     @endphp
 
     <div class="md:ml-64">
@@ -35,7 +38,8 @@
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
                 {{-- Colonne principale : récapitulatif (bento) --}}
-                <div class="lg:col-span-2 space-y-6">
+                <div class="lg:col-span-2 space-y-6"
+                     x-data="formatExport({{ $selectedTemplateId ?: 'null' }})">
 
                     {{-- Page de garde : sélection d'un modèle visuel (facultatif) --}}
                     <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 md:p-6">
@@ -96,6 +100,79 @@
                         </form>
                     </div>
 
+                    {{-- Mise en forme : choix du gabarit + aperçu PDF --}}
+                    <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 md:p-6">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="material-symbols-outlined text-primary">palette</span>
+                            <h2 class="font-h2 text-h2 text-on-surface">Mise en forme du rapport</h2>
+                        </div>
+                        <p class="font-caption text-caption text-on-surface-variant mb-4">
+                            Choisissez un gabarit : il s'applique à l'ensemble du rapport
+                            (titres, corps du texte, tableaux, images, marges, interligne…).
+                            Changez de gabarit et relancez l'aperçu : aucune ré-importation nécessaire.
+                        </p>
+
+                        <form method="POST" action="{{ route('documents.preview-pdf', $document) }}"
+                              class="space-y-4">
+                            @csrf
+
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 mb-2">Gabarit de mise en forme</label>
+                                <select name="template_id" x-model="templateId"
+                                        class="w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3 text-body-md text-on-surface focus:border-primary focus:outline-none">
+                                    <option value="">— Mise en forme par défaut —</option>
+                                    @foreach ($templates as $template)
+                                        <option value="{{ $template->id }}" @selected($template->id === $selectedTemplateId)>
+                                            {{ $template->name }} — {{ $template->description }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error('template_id')
+                                    <p class="mt-1 text-sm text-error">{{ $message }}</p>
+                                @enderror
+                            </div>
+
+                            <div class="flex flex-wrap gap-3">
+                                <button type="submit"
+                                        class="inline-flex items-center gap-2 bg-primary text-on-primary hover:bg-primary-fixed px-5 py-2.5 rounded-xl font-body-md font-semibold transition-colors">
+                                    <span class="material-symbols-outlined">visibility</span>
+                                    Générer l'aperçu PDF
+                                </button>
+
+                                <button type="submit" form="download-form"
+                                        class="inline-flex items-center gap-2 bg-on-primary-container text-primary hover:bg-surface-container-high px-5 py-2.5 rounded-xl font-body-md font-semibold transition-colors">
+                                    <span class="material-symbols-outlined">download</span>
+                                    Télécharger le DOCX
+                                </button>
+                            </div>
+                        </form>
+
+                        {{-- Aperçu PDF (iframe) --}}
+                        @if ($pdfAvailable)
+                            <div class="mt-6">
+                                <div class="flex items-center justify-between mb-2">
+                                    <p class="font-label-mono text-label-mono text-secondary uppercase">Aperçu fidèle du document</p>
+                                    <span class="inline-flex items-center gap-1 font-caption text-caption text-secondary">
+                                        <span class="material-symbols-outlined text-[14px]">picture_as_pdf</span>
+                                        PDF généré par LibreOffice
+                                    </span>
+                                </div>
+                                <div class="bg-surface-container-low rounded-xl p-2 border border-outline-variant">
+                                    <iframe src="{{ route('documents.preview-pdf.file', $document) }}"
+                                            class="w-full h-[640px] rounded-lg bg-white" title="Aperçu du document"></iframe>
+                                </div>
+                            </div>
+                        @else
+                            <div class="mt-6 bg-surface-container-low rounded-xl p-5 border border-dashed border-outline-variant text-center">
+                                <span class="material-symbols-outlined text-primary text-3xl">picture_as_pdf</span>
+                                <p class="font-body-md text-body-md text-on-surface-variant mt-2">
+                                    Aucun aperçu généré pour l'instant. Cliquez sur
+                                    « Générer l'aperçu PDF » pour voir le rendu exact avant de télécharger.
+                                </p>
+                            </div>
+                        @endif
+                    </div>
+
                     {{-- Carte de téléchargement --}}
                     <div class="bg-primary text-on-primary rounded-xl p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
                         <div>
@@ -104,8 +181,9 @@
                                 Styles natifs de titres, sommaire, en-têtes, pieds de page et légendes.
                             </p>
                         </div>
-                        <form method="POST" action="{{ route('documents.generate', $document) }}">
+                        <form method="POST" action="{{ route('documents.generate', $document) }}" id="download-form">
                             @csrf
+                            <input type="hidden" name="template_id" :value="templateId" x-ref="downloadTemplateId">
                             <button type="submit"
                                     class="inline-flex items-center gap-2 bg-on-primary text-primary hover:bg-primary-fixed px-6 py-3 rounded-xl font-body-md font-semibold transition-colors">
                                 <span class="material-symbols-outlined">download</span>
@@ -240,6 +318,20 @@
             ph(key) {
                 // Évite les accolades littérales (interprétées par Blade)
                 return '{' + '{' + key + '}' + '}';
+            },
+        };
+    }
+
+    function formatExport(selectedId) {
+        return {
+            templateId: selectedId || '',
+            init() {
+                // Synchronise le champ caché du formulaire de téléchargement
+                this.$watch('templateId', (v) => {
+                    if (this.$refs.downloadTemplateId) {
+                        this.$refs.downloadTemplateId.value = v;
+                    }
+                });
             },
         };
     }

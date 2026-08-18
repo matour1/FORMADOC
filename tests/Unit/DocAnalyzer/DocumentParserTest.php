@@ -74,6 +74,10 @@ class DocumentParserTest extends TestCase
         $table->addCell()->addText('Cellule A');
         $table->addCell()->addText('Cellule B');
 
+        // Liste à puces (2 niveaux)
+        $section->addListItem('Premier item', 0);
+        $section->addListItem('Sous-item imbriqué', 1);
+
         $path = $this->tempDir . '/' . $filename;
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
 
@@ -233,6 +237,28 @@ class DocumentParserTest extends TestCase
         $this->assertCount(1, $tableaux);
         $this->assertStringContainsString('Cellule A', $tableaux[0]['text']);
         $this->assertSame(1, $tableaux[0]['rows_count']);
+
+        // Contenu réel des cellules : indispensable à la reconstruction fidèle
+        $this->assertIsArray($tableaux[0]['rows'] ?? null, 'Les lignes du tableau doivent être extraites');
+        $this->assertCount(1, $tableaux[0]['rows']);
+        $this->assertSame(['Cellule A', 'Cellule B'], $tableaux[0]['rows'][0]['cells']);
+    }
+
+    public function test_les_listes_sont_detectees_avec_leur_profondeur(): void
+    {
+        $path = $this->createControlledDocx();
+        $result = (new DocumentParser($path))->parse();
+
+        $listes = array_values(array_filter(
+            $result['sections'][0]['body'],
+            fn (array $el) => $el['type'] === 'liste'
+        ));
+
+        $this->assertCount(2, $listes);
+        $this->assertSame('Premier item', $listes[0]['text']);
+        $this->assertSame(0, $listes[0]['depth']);
+        $this->assertSame('Sous-item imbriqué', $listes[1]['text']);
+        $this->assertSame(1, $listes[1]['depth']);
     }
 
     public function test_context_text_contient_des_balises_de_style(): void

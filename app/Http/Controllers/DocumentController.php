@@ -169,8 +169,9 @@ class DocumentController extends Controller
     /**
      * Page d'export (étape 4) — récapitulatif + téléchargement du DOCX.
      *
-     * Les modèles de page de garde publics (builder visuel) sont proposés à
-     * la sélection pour préfixer le DOCX généré.
+     * L'utilisateur choisit un gabarit de mise en forme (parmi les gabarits
+     * prédéfinis) puis peut générer un aperçu PDF ou télécharger le DOCX.
+     * Le changement de gabarit ne nécessite pas de ré-uploader le fichier.
      */
     public function export(Document $document): View
     {
@@ -179,10 +180,16 @@ class DocumentController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'description', 'elements']);
 
+        $templates = \App\Models\Template::query()
+            ->where('is_public', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'description', 'params']);
+
         return view('documents.export', [
             'document' => $document,
             'structure' => $document->structure,
             'coverTemplates' => $coverTemplates,
+            'templates' => $templates,
         ]);
     }
 
@@ -217,9 +224,114 @@ class DocumentController extends Controller
      * natifs de titres (Heading 1-3), la numérotation romaine/arabe, le
      * sommaire, les en-têtes/pieds de page et les listes de figures/tableaux.
      */
-    public function generate(Document $document): Response|RedirectResponse|BinaryFileResponse
+    public function generate(Request $request, Document $document): Response|RedirectResponse|BinaryFileResponse
     {
-        return $this->generateAndDownload($document, null);
+        $template = $this->resolveTemplate($request);
+
+        return $this->generateAndDownload($document, null, $template);
+    }
+
+    /**
+     * Génère le DOCX reconstruit et renvoie son aperçu PDF (LibreOffice).
+     *
+     * L'utilisateur voit le rendu réel avant de télécharger. Le gabarit
+     * choisi est appliqué ; il peut être changé sans ré-uploader le fichier.
+     */
+    public function previewPdf(Request $request, Document $document): RedirectResponse
+    {
+        try {
+            $template = $this->resolveTemplate($request);
+
+            if (function_exists('set_time_limit')) {
+                set_time_limit(240);
+            }
+
+            $generatedPath = $this->generateOutputPath($document);
+            $reconstructor = new DocumentReconstructor();
+            $structure = $document->structure?->structure;
+
+            if (empty($structure)) {
+                return back()->withErrors(['document' => 'Aucune structure détectée pour ce document.']);
+            }
+
+            $outputPath = $reconstructor->reconstruct($structure, $generatedPath, null, $template?->params);
+
+            // Conversion PDF (LibreOffice) pour l'aperçu
+            $pdfPath = (new \App\Services\DocumentGeneration\PdfPreviewService())->convertToPdf($outputPath);
+
+            // Mémorise la génération
+            GeneratedDocument::updateOrCreate(
+                ['document_id' => $document->id],
+                [
+                    'output_path' => $outputPath,
+                    'status' => 'generated',
+                    'template_id' => $template?->id,
+                ]
+            );
+
+            // Stocke le chemin du PDF pour la route d'affichage (iframe)
+            $document->update([
+                'metadata' => array_merge($document->metadata ?? [], [
+                    // Chemin relatif au dossier storage/ (indépendant des séparateurs)
+                    'pdf_preview_path' => str_replace(
+                        [storage_path() . DIRECTORY_SEPARATOR, storage_path() . '/'],
+                        '',
+                        $pdfPath
+                    ),
+                    'preview_template_id' => $template?->id,
+                ]),
+            ]);
+
+            return back()->with('success', 'Aperçu PDF généré.');
+        } catch (Exception $e) {
+            Log::error('Erreur lors de la génération de l\'aperçu PDF', [
+                'document_id' => $document->id,
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ]);
+
+            return back()->withErrors(['document' => 'Erreur lors de l\'aperçu : ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Sert le PDF d'aperçu en inline (affichage dans une iframe).
+     */
+    public function previewPdfFile(Document $document): BinaryFileResponse
+    {
+        $pdfPath = $document->metadata['pdf_preview_path'] ?? null;
+
+        if (!is_string($pdfPath) || $pdfPath === '') {
+            abort(404, 'Aperçu non généré.');
+        }
+
+        // Chemin relatif à storage/ OU absolu (tolérance aux anciens enregistrements)
+        $absolute = is_file($pdfPath) ? $pdfPath : storage_path($pdfPath);
+
+        if (!is_file($absolute)) {
+            abort(404, 'Fichier PDF introuvable.');
+        }
+
+        return response()->file($absolute, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="apercu.pdf"',
+        ]);
+    }
+
+    /**
+     * Résout le gabarit de mise en forme depuis la requête (template_id).
+     */
+    private function resolveTemplate(Request $request): ?\App\Models\Template
+    {
+        $templateId = $request->integer('template_id');
+
+        if ($templateId <= 0) {
+            return null;
+        }
+
+        $template = \App\Models\Template::where('is_public', true)->find($templateId);
+
+        return $template ?: null;
     }
 
     /**
@@ -242,7 +354,7 @@ class DocumentController extends Controller
      *
      * @param null|array<string, mixed> $cover { detection, values, cover_template_id }
      */
-    private function generateAndDownload(Document $document, ?array $cover): Response|RedirectResponse|BinaryFileResponse
+    private function generateAndDownload(Document $document, ?array $cover, ?\App\Models\Template $template = null): Response|RedirectResponse|BinaryFileResponse
     {
         try {
             $structure = $document->structure?->structure;
@@ -258,7 +370,7 @@ class DocumentController extends Controller
             $generatedPath = $this->generateOutputPath($document);
 
             $reconstructor = new DocumentReconstructor();
-            $outputPath = $reconstructor->reconstruct($structure, $generatedPath, $cover);
+            $outputPath = $reconstructor->reconstruct($structure, $generatedPath, $cover, $template?->params);
 
             // Mémorise la génération (tableau de bord / historique)
             $generated = GeneratedDocument::updateOrCreate(
@@ -269,6 +381,7 @@ class DocumentController extends Controller
                     'cover_values' => $cover['values'] ?? null,
                     'cover_template_id' => $cover['cover_template_id'] ?? null,
                     'cover_page_template_id' => $cover['cover_page_template_id'] ?? null,
+                    'template_id' => $template?->id,
                 ]
             );
 
@@ -276,6 +389,7 @@ class DocumentController extends Controller
                 'document_id' => $document->id,
                 'output_path' => $outputPath,
                 'with_cover' => $cover !== null,
+                'template_id' => $template?->id,
             ]);
 
             return response()
@@ -370,6 +484,18 @@ class DocumentController extends Controller
         $text = $this->textExtraction->execute($absolutePath);
         $legends = $this->legendDetection->execute($text);
 
+        // 3bis. Body complet (paragraphes, listes, tableaux, images) : re-parse
+        //       pour conserver TOUS les éléments avec leurs styles. C'est la
+        //       source de vérité de la reconstruction (aucune perte de contenu).
+        $parser = new \App\DocAnalyzer\DocumentParser($absolutePath);
+        $parsed = $parser->parse();
+        $bodyComplet = [];
+        foreach (($parsed['sections'] ?? []) as $sectionIndex => $section) {
+            foreach (($section['body'] ?? []) as $element) {
+                $bodyComplet[] = $element;
+            }
+        }
+
         // 4. Assemblage de la structure normalisée
         $structure = [
             // Résultat normalisé du DocAnalyzer (catégories)
@@ -382,6 +508,9 @@ class DocumentController extends Controller
             'elements_flottants' => $analysis['elements_flottants'],
             // Légendes détectées par regex (complément)
             'legends' => $legends,
+            // Contenu complet du corps : paragraphes, listes, tableaux, images
+            // dans l'ordre d'apparition (reconstruction fidèle).
+            'body_complet' => $bodyComplet,
         ];
 
         // 5. Détection des ambiguïtés (déterministe — numérotation vs niveau)

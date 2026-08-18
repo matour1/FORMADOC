@@ -366,4 +366,167 @@ class DocumentReconstructorTest extends TestCase
         $this->assertStringContainsString('w:fmt="lowerRoman"', $xml);
         $this->assertStringContainsString('w:fmt="decimal"', $xml);
     }
+
+    // ── Body complet : reconstruction fidèle (paragraphes, listes, tableaux) ─
+
+    public function test_le_body_complet_restitue_paragraphes_listes_et_tableaux(): void
+    {
+        $analysis = $this->sampleAnalysis();
+        $analysis['body_complet'] = [
+            [
+                'type' => 'titre',
+                'text' => 'INTRODUCTION',
+                'depth' => 1,
+                'position' => ['section_index' => 1, 'element_index' => 10, 'parent' => 'body'],
+            ],
+            [
+                'type' => 'texte',
+                'text' => 'Ceci est le premier paragraphe d\'introduction.',
+                'position' => ['section_index' => 1, 'element_index' => 11, 'parent' => 'body'],
+                'styles' => [],
+            ],
+            [
+                'type' => 'liste',
+                'text' => 'Premier élément de liste',
+                'depth' => 0,
+                'position' => ['section_index' => 1, 'element_index' => 12, 'parent' => 'body'],
+            ],
+            [
+                'type' => 'liste',
+                'text' => 'Sous-élément imbriqué',
+                'depth' => 1,
+                'position' => ['section_index' => 1, 'element_index' => 13, 'parent' => 'body'],
+            ],
+            [
+                'type' => 'texte',
+                'text' => 'Paragraphe avec un tableau ci-dessous.',
+                'position' => ['section_index' => 1, 'element_index' => 14, 'parent' => 'body'],
+                'styles' => [],
+            ],
+            [
+                'type' => 'tableau',
+                'text' => '',
+                'rows' => [
+                    ['cells' => ['Colonne A', 'Colonne B']],
+                    ['cells' => ['Valeur 1', 'Valeur 2']],
+                ],
+                'rows_count' => 2,
+                'position' => ['section_index' => 1, 'element_index' => 15, 'parent' => 'body'],
+            ],
+        ];
+
+        $outputPath = $this->tempDir . '/body_complet.docx';
+        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+
+        $xml = $this->readPart($outputPath, 'word/document.xml');
+
+        // Paragraphes du corps présents
+        $this->assertStringContainsString('Ceci est le premier paragraphe', $xml);
+        $this->assertStringContainsString('Paragraphe avec un tableau', $xml);
+
+        // Éléments de liste restitués
+        $this->assertStringContainsString('Premier élément de liste', $xml);
+        $this->assertStringContainsString('Sous-élément imbriqué', $xml);
+        $this->assertStringContainsString('<w:numPr>', $xml);
+
+        // Tableau avec contenu des cellules
+        $this->assertStringContainsString('<w:tbl>', $xml);
+        $this->assertStringContainsString('Colonne A', $xml);
+        $this->assertStringContainsString('Valeur 2', $xml);
+
+        // Le titre INTRODUCTION (dans body_complet) est en style Heading1
+        $this->assertStringContainsString('w:val="Heading1"', $xml);
+    }
+
+    public function test_le_body_complet_ignore_les_titres_de_frontispice(): void
+    {
+        $analysis = $this->sampleAnalysis();
+        $analysis['body_complet'] = [
+            [
+                'type' => 'titre',
+                'text' => 'SOMMAIRE',
+                'depth' => 1,
+                'position' => ['section_index' => 0, 'element_index' => 0, 'parent' => 'body'],
+            ],
+            [
+                'type' => 'texte',
+                'text' => 'Contenu réel du rapport.',
+                'position' => ['section_index' => 1, 'element_index' => 5, 'parent' => 'body'],
+                'styles' => [],
+            ],
+        ];
+
+        $outputPath = $this->tempDir . '/frontispice.docx';
+        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+
+        $xml = $this->readPart($outputPath, 'word/document.xml');
+
+        // Le SOMMAIRE est géré par la section frontispice (champ TOC) — pas dupliqué
+        $this->assertStringContainsString('Contenu réel du rapport.', $xml);
+    }
+
+    // ── Gabarit de mise en forme ──────────────────────────────────────────────
+
+    public function test_le_gabarit_est_applique_aux_titres_et_au_corps(): void
+    {
+        $analysis = $this->sampleAnalysis();
+        $analysis['body_complet'] = [
+            [
+                'type' => 'titre',
+                'text' => 'TITRE AVEC GABARIT',
+                'depth' => 1,
+                'position' => ['section_index' => 1, 'element_index' => 10, 'parent' => 'body'],
+            ],
+            [
+                'type' => 'texte',
+                'text' => 'Corps de texte mis en forme avec le gabarit.',
+                'position' => ['section_index' => 1, 'element_index' => 11, 'parent' => 'body'],
+                'styles' => [],
+            ],
+        ];
+
+        $gabarit = [
+            'police' => 'Arial',
+            'tailles' => ['titre1' => 18, 'titre2' => 15, 'titre3' => 13, 'corps' => 11],
+            'couleurs' => ['titre1' => 'FF0000', 'titre2' => 'FF0000', 'titre3' => 'FF0000', 'corps' => '222222'],
+            'interligne' => 1.0,
+            'espacements' => ['avant_titre' => 200, 'apres_titre' => 100, 'apres_paragraphe' => 80],
+            'alignement_titres' => 'center',
+            'marges' => ['top' => 1000, 'right' => 1000, 'bottom' => 1000, 'left' => 1000, 'header' => 500, 'footer' => 500],
+            'tableau' => ['style' => 'TableGrid', 'header_couleur' => 'FF0000', 'header_texte' => 'FFFFFF', 'bordure' => true],
+        ];
+
+        $outputPath = $this->tempDir . '/gabarit.docx';
+        (new DocumentReconstructor())->reconstruct($analysis, $outputPath, null, $gabarit);
+
+        // styles.xml : police Arial + taille 18 pour les titres
+        $stylesXml = $this->readPart($outputPath, 'word/styles.xml');
+        $this->assertStringContainsString('Arial', $stylesXml);
+
+        // document.xml : alignement centré sur les titres
+        $xml = $this->readPart($outputPath, 'word/document.xml');
+        $this->assertStringContainsString('TITRE AVEC GABARIT', $xml);
+        $this->assertStringContainsString('Corps de texte mis en forme', $xml);
+    }
+
+    public function test_sans_gabarit_les_defauts_academiques_sont_utilises(): void
+    {
+        $analysis = $this->sampleAnalysis();
+        $analysis['body_complet'] = [
+            [
+                'type' => 'texte',
+                'text' => 'Texte de test par défaut.',
+                'position' => ['section_index' => 1, 'element_index' => 5, 'parent' => 'body'],
+                'styles' => [],
+            ],
+        ];
+
+        $outputPath = $this->tempDir . '/defauts.docx';
+        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+
+        $stylesXml = $this->readPart($outputPath, 'word/styles.xml');
+
+        // Police par défaut : Times New Roman
+        $this->assertStringContainsString('Times New Roman', $stylesXml);
+    }
 }
