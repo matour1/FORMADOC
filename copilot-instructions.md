@@ -20,6 +20,10 @@ Application web qui prend un rapport académique (stage/projet/mémoire), détec
 
 6. **Toute fonctionnalité listée comme "non résolue" ou "non testée" dans le cahier des charges (section 9) doit être signalée explicitement dans la suggestion de code, pas silencieusement implémentée avec une hypothèse arbitraire.**
 
+7. **Workflow Git : une fonctionnalité = une branche feature.** Chaque nouvelle fonctionnalité doit être développée sur sa propre branche `feature/<nom>` (créée depuis `main`), puis fusionnée dans `main` (merge ou PR). Ne jamais committer directement sur `main` pour une nouvelle fonctionnalité — seuls les correctifs et l'hygiène peuvent atterrir directement sur `main`.
+
+8. **Ne jamais modifier `routes/web.php`.** Les routes supplémentaires vivent dans `routes/saas.php` / `routes/auth.php` (chargés via `bootstrap/app.php`).
+
 ## Stack
 
 - Back-end : PHP avec Laravel. Utiliser Eloquent pour toutes les requêtes (jamais de SQL brut sans requête préparée), les Form Requests pour la validation des uploads, et les policies Laravel pour les autorisations dès qu'il y aura des rôles (étudiant / futur représentant établissement).
