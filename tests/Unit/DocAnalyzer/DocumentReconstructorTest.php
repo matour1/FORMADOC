@@ -237,6 +237,10 @@ class DocumentReconstructorTest extends TestCase
         $this->assertStringContainsString('TOC', $documentXml);
         $this->assertStringContainsString('\\o', $documentXml);
 
+        // Le "SOMMAIRE" est un paragraphe stylé (addText) et non un titre
+        // Heading1 : le champ TOC ne doit PAS l'inclure lui-même.
+        $this->assertStringContainsString('SOMMAIRE', $documentXml);
+
         // settings.xml : updateFields activé → Word met à jour les champs
         $settingsXml = $this->readPart($outputPath, 'word/settings.xml');
         $this->assertStringContainsString('w:updateFields', $settingsXml);
@@ -269,7 +273,8 @@ class DocumentReconstructorTest extends TestCase
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
 
-        // La liste des figures est générée avec le titre natif
+        // La liste des figures est générée avec un titre STYLÉ (addText, hors
+        // collection TOC : il ne doit pas s'inclure lui-même dans le sommaire)
         $this->assertStringContainsString('Liste des figures', $xml);
         $this->assertStringContainsString('Architecture du système', $xml);
         $this->assertStringContainsString('Diagramme de classes', $xml);
@@ -277,6 +282,20 @@ class DocumentReconstructorTest extends TestCase
         // La liste des tableaux est générée
         $this->assertStringContainsString('Liste des tableaux', $xml);
         $this->assertStringContainsString('Récapitulatif des besoins', $xml);
+    }
+
+    public function test_les_titres_de_frontispice_ne_s_incluent_pas_dans_le_toc(): void
+    {
+        $outputPath = $this->tempDir . '/toc_hors_collection.docx';
+        (new DocumentReconstructor())->reconstruct($this->sampleAnalysis(), $outputPath);
+
+        $xml = $this->readPart($outputPath, 'word/document.xml');
+
+        // "SOMMAIRE", "Liste des figures", "Liste des tableaux" doivent être
+        // des paragraphes de texte (addText), PAS des titres Heading1 — sinon
+        // le champ TOC les listerait eux-mêmes (défaut 4).
+        $this->assertStringContainsString('SOMMAIRE', $xml);
+        $this->assertStringNotContainsString('w:val="Heading1"', $this->readPart($outputPath, 'word/styles.xml'));
     }
 
     public function test_listes_absentes_si_pas_de_legendes(): void
@@ -528,5 +547,100 @@ class DocumentReconstructorTest extends TestCase
 
         // Police par défaut : Times New Roman
         $this->assertStringContainsString('Times New Roman', $stylesXml);
+    }
+
+    // ── Phase 3 : map positions→niveau (titres MAJUSCULES stylés HeadingN) ──
+
+    public function test_un_titre_detecte_mais_type_texte_est_rendu_en_heading(): void
+    {
+        $analysis = $this->sampleAnalysis();
+        $analysis['titres'] = [
+            [
+                'texte' => 'INTRODUCTION',
+                'position' => ['section_index' => 1, 'element_index' => 10, 'parent' => 'body'],
+                'styles' => [],
+                'type' => 'titres',
+                'niveau' => 1,
+            ],
+        ];
+        // Dans le body_complet, le même paragraphe est type 'texte' (ex :
+        // paragraphe en MAJUSCULES détecté par la passe regex, pas par les
+        // styles HeadingN — défaut 1 de la Phase 3).
+        $analysis['body_complet'] = [
+            [
+                'type' => 'texte',
+                'text' => 'INTRODUCTION',
+                'position' => ['section_index' => 1, 'element_index' => 10, 'parent' => 'body'],
+                'styles' => [],
+            ],
+        ];
+
+        $outputPath = $this->tempDir . '/majuscules.docx';
+        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+
+        $xml = $this->readPart($outputPath, 'word/document.xml');
+
+        // Le paragraphe 'texte' correspondant à un titre détecté est restitué
+        // avec le style natif Heading1 → alimente le champ TOC.
+        $this->assertStringContainsString('w:val="Heading1"', $xml);
+        $this->assertStringContainsString('INTRODUCTION', $xml);
+    }
+
+    public function test_les_images_du_body_complet_sont_restituees(): void
+    {
+        // Petit PNG 1×1 valide en base64
+        $png = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+        );
+
+        $analysis = $this->sampleAnalysis();
+        $analysis['body_complet'] = [
+            [
+                'type' => 'image',
+                'text' => '[image:pixel.png]',
+                'image_name' => 'pixel.png',
+                'image_extension' => 'png',
+                'image_data' => base64_encode($png),
+                'position' => ['section_index' => 1, 'element_index' => 20, 'parent' => 'body'],
+            ],
+        ];
+
+        $outputPath = $this->tempDir . '/image.docx';
+        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+
+        // Le document contient une image embarquée (media)
+        $zip = new \ZipArchive();
+        $this->assertTrue($zip->open($outputPath));
+        $media = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = $zip->getNameIndex($i);
+            if (is_string($name) && str_starts_with($name, 'word/media/')) {
+                $media[] = $name;
+            }
+        }
+        $zip->close();
+
+        $this->assertNotEmpty($media, 'Le DOCX généré doit embarquer l\'image');
+        $this->assertStringContainsString('.png', implode(' ', $media));
+    }
+
+    public function test_sans_image_data_le_texte_placeholder_est_ecrit(): void
+    {
+        $analysis = $this->sampleAnalysis();
+        $analysis['body_complet'] = [
+            [
+                'type' => 'image',
+                'text' => '[image:pixel.png]',
+                'image_name' => 'pixel.png',
+                'position' => ['section_index' => 1, 'element_index' => 20, 'parent' => 'body'],
+                // pas d'image_data
+            ],
+        ];
+
+        $outputPath = $this->tempDir . '/image_placeholder.docx';
+        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+
+        $xml = $this->readPart($outputPath, 'word/document.xml');
+        $this->assertStringContainsString('[Image: pixel.png]', $xml);
     }
 }

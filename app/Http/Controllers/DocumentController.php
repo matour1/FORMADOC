@@ -254,6 +254,11 @@ class DocumentController extends Controller
                 return back()->withErrors(['document' => 'Aucune structure détectée pour ce document.']);
             }
 
+            // Phase 3 : complète les images du body_complet par leur binaire
+            // (extrait depuis l'archive DOCX source — voir DocumentParser::readImageData).
+            // Sans cela les images sont perdues à la reconstruction (défaut 3).
+            $structure = $this->enrichBodyImages($document, $structure);
+
             $outputPath = $reconstructor->reconstruct($structure, $generatedPath, null, $template?->params);
 
             // Conversion PDF (LibreOffice) pour l'aperçu
@@ -370,6 +375,11 @@ class DocumentController extends Controller
             $generatedPath = $this->generateOutputPath($document);
 
             $reconstructor = new DocumentReconstructor();
+
+            // Phase 3 : mêmes complétions d'images que previewPdf (binaire
+            // extrait depuis le DOCX source — défaut 3).
+            $structure = $this->enrichBodyImages($document, $structure);
+
             $outputPath = $reconstructor->reconstruct($structure, $generatedPath, $cover, $template?->params);
 
             // Mémorise la génération (tableau de bord / historique)
@@ -526,6 +536,100 @@ class DocumentController extends Controller
         );
 
         $document->update(['status' => 'detected']);
+    }
+
+    /**
+     * Complète les images du body_complet par leur binaire (base64) et leur
+     * extension, extraits depuis le DOCX source.
+     *
+     * Phase 3 — défaut 3 : la structure sauvegardée au moment de l'analyse
+     * ne contient pas les binaires d'images (le Reader PhpWord renvoie une
+     * source "zip://doc.docx#word/media/x.png" non lisible par is_file()).
+     * Cette méthode re-parse le DOCX source et recopie pour chaque élément
+     * image du body_complet les données extraites par DocumentParser.
+     *
+     * @param Document              $document
+     * @param array<string, mixed>  $structure
+     *
+     * @return array<string, mixed> Structure complétée
+     */
+    private function enrichBodyImages(Document $document, array $structure): array
+    {
+        $bodyComplet = $structure['body_complet'] ?? null;
+        if (!is_array($bodyComplet) || $bodyComplet === []) {
+            return $structure;
+        }
+
+        // Document déjà enrichi (mémorisé) : aucun travail à refaire
+        $hasAll = true;
+        foreach ($bodyComplet as $element) {
+            if (($element['type'] ?? '') === 'image' && empty($element['image_data'] ?? '')) {
+                $hasAll = false;
+
+                break;
+            }
+        }
+        if ($hasAll) {
+            return $structure;
+        }
+
+        // Re-parse du DOCX source pour extraire les binaires d'images
+        $absolutePath = storage_path('uploads/' . $document->path);
+        if (!is_file($absolutePath)) {
+            return $structure;
+        }
+
+        try {
+            $parser = new \App\DocAnalyzer\DocumentParser($absolutePath);
+            $parsed = $parser->parse();
+
+            // Map position → données d'image (depuis le parse frais)
+            $imagesByPosition = [];
+            foreach (($parsed['sections'] ?? []) as $sectionIndex => $section) {
+                foreach (($section['body'] ?? []) as $element) {
+                    if (($element['type'] ?? '') !== 'image') {
+                        continue;
+                    }
+
+                    $pos = $element['position'] ?? [];
+                    $imagesByPosition[
+                        ($pos['section_index'] ?? 0) . ':' . ($pos['element_index'] ?? 0)
+                    ] = [
+                        'image_data' => $element['image_data'] ?? null,
+                        'image_extension' => $element['image_extension'] ?? null,
+                        'image_name' => $element['image_name'] ?? null,
+                    ];
+                }
+            }
+
+            // Complète les éléments image du body_complet mémorisé
+            foreach ($bodyComplet as &$element) {
+                if (($element['type'] ?? '') !== 'image') {
+                    continue;
+                }
+
+                $pos = $element['position'] ?? [];
+                $key = ($pos['section_index'] ?? 0) . ':' . ($pos['element_index'] ?? 0);
+
+                if (isset($imagesByPosition[$key])) {
+                    foreach ($imagesByPosition[$key] as $k => $v) {
+                        if (($element[$k] ?? null) === null || $element[$k] === '') {
+                            $element[$k] = $v;
+                        }
+                    }
+                }
+            }
+            unset($element);
+
+            $structure['body_complet'] = $bodyComplet;
+        } catch (\Throwable $e) {
+            Log::warning('enrichBodyImages : re-parse impossible, images non complétées', [
+                'document_id' => $document->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $structure;
     }
 
     /**

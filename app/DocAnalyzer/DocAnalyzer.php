@@ -98,8 +98,10 @@ class DocAnalyzer
         $iaResult = AnalyzerResult::empty();
         $callIa = $forceIA || $titleMethod === self::METHOD_IA;
 
-        // Fallback automatique : la méthode regex n'a rien trouvé → l'IA
-        // prend le relais pour tenter de compléter les titres.
+        // Fallback automatique : la méthode regex n'a trouvé AUCUN titre
+        // (titres ET sous_titres vides) → l'IA prend le relais pour tenter
+        // de compléter. Une seule catégorie vide ne suffit plus (Phase 3) :
+        // les règles + la passe regex sont fiables, l'IA n'est qu'un secours.
         if (!$callIa && $titleMethod === self::METHOD_REGEX && $this->criticalCategoriesEmpty($rulesResult)) {
             $callIa = true;
         }
@@ -213,18 +215,25 @@ class DocAnalyzer
     }
 
     /**
-     * Vérifie si une catégorie critique est vide (déclenche l'IA).
+     * Vérifie si les catégories critiques (titres ET sous_titres) sont TOUTES
+     * vides — seul cas où l'IA est appelée en fallback.
+     *
+     * Phase 3 : auparavant une SEULE catégorie vide déclenchait l'IA, ce qui
+     * produisait des résultats incohérents (l'IA réinventait des titres déjà
+     * correctement détectés par les règles ou la passe regex). Désormais
+     * l'IA n'intervient que si AUCUN titre n'a été trouvé, et la méthode
+     * demandée est 'regex' (fallback automatique).
      *
      * @param array<string, array<int, array<string, mixed>>> $result
      */
     private function criticalCategoriesEmpty(array $result): bool
     {
         foreach (self::CRITICAL_CATEGORIES as $category) {
-            if (empty($result[$category] ?? [])) {
-                return true;
+            if (!empty($result[$category] ?? [])) {
+                return false;
             }
         }
 
-        return false;
+        return true;
     }
 }

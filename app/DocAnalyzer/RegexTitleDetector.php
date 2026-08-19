@@ -58,6 +58,19 @@ class RegexTitleDetector
     private const LEGENDE_PATTERN = '/^(?:figure|tableau|image|schéma|schema|graphique)\s*\d+/iu';
 
     /**
+     * Titre en MAJUSCULES : ligne entièrement en capitales (lettres,
+     * chiffres, espaces, apostrophes, tirets, deux-points, parenthèses,
+     * points, virgules, signes degré/&/+/%…), longueur 4 à 60 caractères,
+     * se terminant par une lettre ou un chiffre (pas de point final :
+     * un point final = phrase, pas un titre).
+     *
+     * Exemples : "INTRODUCTION", "1. CONTEXTE GENERAL", "RÉSUMÉ DE STAGE"…
+     * Contre-exemples : phrases en majuscules ("IL FAUT NOTER QUE…"),
+     * légendes (déjà exclues par LEGENDE_PATTERN), sigles courts ("ONU").
+     */
+    private const MAJUSCULES_PATTERN = '/^[\p{Lu}][\p{Lu}\p{N}\s\'\x{2019}\x{2014}\-:.,()°&+%]{2,58}[\p{Lu}\p{N}]$/u';
+
+    /**
      * Détecte les titres et sous-titres par motifs regex.
      *
      * @param string $contextTextWithPositions Sortie context_text_with_positions du DocumentParser
@@ -134,6 +147,12 @@ class RegexTitleDetector
             $level = substr_count(rtrim($prefix, '.'), '.') + 1;
 
             return min($level, 3);
+        }
+
+        // Titre en MAJUSCULES (sans numérotation) : "INTRODUCTION",
+        // "CONTEXTE GENERAL", "ÉTAT DE L'ART"… → niveau 1.
+        if (preg_match(self::MAJUSCULES_PATTERN, $text) === 1) {
+            return 1;
         }
 
         return null;

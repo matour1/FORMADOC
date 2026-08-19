@@ -550,6 +550,15 @@ class DocumentParser
             return null;
         }
 
+        // Phase 3 — nettoyage des champs Word recopiés littéralement :
+        //  - les champs SEQ (numérotation automatique figures/tableaux) sont
+        //    résolus en numéros concrets (1, 2, 3…),
+        //  - les codes de champ TOC/PAGE/REF/NUMPAGES/STYLEREF sont retirés
+        //    (ce n'est pas du contenu, le reconstructeur régénère ses propres
+        //    champs).
+        $text = $this->resolveSeqFields($text);
+        $text = $this->stripFieldCodes($text);
+
         $parsed = [
             'text' => $text,
             'type' => $type,
@@ -586,13 +595,190 @@ class DocumentParser
 
             // Binaire de l'image en base64 : nécessaire pour la reconstruction
             // (le DOCX généré embarque l'image dans son ZIP).
-            $source = $element->getSource();
-            if (is_string($source) && is_file($source)) {
-                $parsed['image_data'] = base64_encode((string) file_get_contents($source));
+            //
+            // Phase 3 : le Reader PhpWord renvoie les images lues depuis un
+            // DOCX avec une source "zip:///chemin/doc.docx#word/media/image1.png"
+            // (et NON un chemin de fichier réel). is_file() échouait donc
+            // toujours → image_data jamais extrait → images perdues à la
+            // reconstruction (défaut 3). readImageData() gère ce format en
+            // extrayant le binaire directement depuis l'archive ZIP.
+            $raw = $this->readImageData($element->getSource());
+            $parsed['image_data'] = $raw !== null ? base64_encode($raw) : null;
+        }
+
+        // Phase 3 — images encapsulées dans un TextRun par le Reader PhpWord.
+        // Le Reader 1.4 ne renvoie PAS les images DOCX en élément Image de
+        // premier niveau : il les encapsule dans un TextRun dont le texte est
+        // "[image:section_image1.png]" (voir containerText). getElementType
+        // classe donc ce TextRun en 'texte' et le binaire n'est jamais extrait
+        // → images perdues à la reconstruction (défaut 3).
+        //
+        // On détecte ce cas : TextRun dont le texte correspond au motif
+        // "[image:xxx.ext]" ET contenant un enfant Image. On re-typifie alors
+        // l'élément en 'image' avec son binaire, son nom et son extension.
+        if ($type === 'texte' && $element instanceof TextRun
+            && preg_match('/^\[image:([^\]]+)\]$/u', trim($text), $m) === 1) {
+            foreach ($element->getElements() as $child) {
+                if (!$child instanceof Image) {
+                    continue;
+                }
+
+                $source = $child->getSource();
+                $name = $child->getName() ?: basename((string) $source);
+                $extension = strtolower(pathinfo((string) $source, PATHINFO_EXTENSION)) ?: 'png';
+
+                $parsed['type'] = 'image';
+                $parsed['text'] = "[image:{$name}]";
+                $parsed['image_name'] = $name;
+                $parsed['image_extension'] = $extension;
+                $raw = $this->readImageData($source);
+                $parsed['image_data'] = $raw !== null ? base64_encode($raw) : null;
+
+                break;
             }
         }
 
         return $parsed;
+    }
+
+    /**
+     * Lit le binaire d'une image, quel que soit le format de sa source.
+     *
+     * Formats gérés :
+     *  - chemin de fichier réel        : /chemin/vers/image.png
+     *  - source PhpWord Reader (DOCX)  : zip:///chemin/doc.docx#word/media/image1.png
+     *    (le préfixe "word/" peut manquer selon la version : on le normalise)
+     *
+     * @param mixed $source Source de l'image (Image::getSource())
+     *
+     * @return null|string Binaire brut, ou null si illisible
+     */
+    public function readImageData($source): ?string
+    {
+        if (!is_string($source) || $source === '') {
+            return null;
+        }
+
+        // 1. Source ZIP PhpWord Reader : "zip:///chemin/doc.docx#word/media/x.png"
+        if (preg_match('/^zip:\/\/(.+)#(.+)$/i', $source, $m) === 1) {
+            $docxPath = $m[1];
+            $target = ltrim((string) $m[2], '/');
+
+            // La cible est relative à la racine du ZIP ; les chemins DOCX
+            // commencent par "word/" (media sous word/media/).
+            $entry = (str_starts_with($target, 'word/') ? $target : 'word/' . $target);
+
+            $zip = new \ZipArchive();
+            try {
+                if ($zip->open($docxPath) === true) {
+                    $data = $zip->getFromName($entry);
+                    if (!is_string($data) || $data === '') {
+                        // Repli par basename : le nom du média peut varier
+                        // (ex: "section_image1.png" au lieu de "image1.png").
+                        $basename = basename($target);
+                        for ($i = 0; $i < $zip->numFiles; $i++) {
+                            $name = $zip->getNameIndex($i);
+                            if (is_string($name) && basename($name) === $basename) {
+                                $data = $zip->getFromIndex($i);
+                                break;
+                            }
+                        }
+                    }
+                    $zip->close();
+
+                    if (is_string($data) && $data !== '') {
+                        return $data;
+                    }
+                }
+            } catch (\Throwable) {
+                // Archive illisible → on retombe sur les autres formats
+            }
+
+            // Repli : le fichier ZIP est peut-être le DOCX source du parser
+            // (lecture directe de l'archive, sans passer par PhpWord).
+            if (is_file($docxPath)) {
+                $fallbackZip = new \ZipArchive();
+                if ($fallbackZip->open($docxPath) === true) {
+                    $data = $fallbackZip->getFromName($entry);
+                    if (!is_string($data) || $data === '') {
+                        $basename = basename($target);
+                        for ($i = 0; $i < $fallbackZip->numFiles; $i++) {
+                            $name = $fallbackZip->getNameIndex($i);
+                            if (is_string($name) && basename($name) === $basename) {
+                                $data = $fallbackZip->getFromIndex($i);
+                                break;
+                            }
+                        }
+                    }
+                    $fallbackZip->close();
+
+                    if (is_string($data) && $data !== '') {
+                        return $data;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        // 2. Chemin de fichier réel
+        if (is_file($source)) {
+            $data = @file_get_contents($source);
+
+            return is_string($data) && $data !== '' ? $data : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Résout les champs SEQ Word en numéros concrets, compteur par type.
+     *
+     * Word numérote automatiquement "Figure { SEQ Figure \* ARABIC }" →
+     * 1, 2, 3… Le Reader PhpWord recopie le code de champ littéralement
+     * (PreserveText "{ SEQ Figure \* ARABIC }") : ce texte apparaissait tel
+     * quel dans le document généré (défaut 6). On le remplace par le numéro
+     * réel, avec la même logique de compteur que LegendDetectionService.
+     *
+     * @param string $text Texte brut d'un élément
+     */
+    public function resolveSeqFields(string $text): string
+    {
+        $counters = [];
+
+        return (string) preg_replace_callback(
+            '/\{\s*SEQ\s+([A-Za-zÀ-ÿ]+)[^}]*\}/iu',
+            static function (array $m) use (&$counters): string {
+                $type = ucfirst(mb_strtolower(trim((string) $m[1])));
+                $counters[$type] = ($counters[$type] ?? 0) + 1;
+
+                return (string) $counters[$type];
+            },
+            $text
+        );
+    }
+
+    /**
+     * Retire les codes de champ Word recopiés littéralement par le Reader.
+     *
+     * Les champs TOC/PAGE/REF/NUMPAGES/STYLEREF deviennent des PreserveText
+     * "{ TOC \o 1-3 \h \z \u }", "{ PAGE }", "{ REF _Toc123 \h }"… Ce ne
+     * sont pas du contenu réel : on les supprime du texte extrait pour qu'ils
+     * ne soient pas recopiés dans le document généré (défaut 6).
+     *
+     * Les champs SEQ sont traités séparément (resolveSeqFields) car ils
+     * portent une information de numérotation exploitable.
+     *
+     * @param string $text Texte brut d'un élément
+     */
+    public function stripFieldCodes(string $text): string
+    {
+        // Retire "{ TOC ... }", "{ PAGE ... }", "{ REF ... }", "{ NUMPAGES ... }",
+        // "{ STYLEREF ... }" (insensible à la casse, espaces variables)
+        $cleaned = preg_replace('/\{\s*(?:TOC|PAGE|REF|NUMPAGES|STYLEREF)[^}]*\}/iu', '', $text) ?? $text;
+
+        // Nettoie les séparateurs résiduels (double espace après suppression)
+        return trim(preg_replace('/\s{2,}/u', ' ', $cleaned) ?? $cleaned);
     }
 
     /**

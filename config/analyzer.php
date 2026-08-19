@@ -92,6 +92,24 @@ return [
         ],
     ],
 
+    // ── Titre en MAJUSCULES (forme du texte) ─────────────────────────────────
+    // Complément déterministe : les paragraphes entièrement en capitales
+    // (sans style Heading ni taille/gras suffisants) sont des titres de
+    // niveau 1 — ex : "INTRODUCTION", "CONTEXTE GENERAL", "ÉTAT DE L'ART".
+    // Placée APRÈS les règles de style/taille (1re correspondance gagne)
+    // et avant en-têtes/pieds de page. Limitée aux paragraphes de corps
+    // (type 'texte') et aux non-légendes ("FIGURE 1: ..." est exclu).
+    [
+        'nom' => 'titre_majuscules',
+        'categorie' => 'titres',
+        'niveau' => 1,
+        'quand' => [
+            'type' => 'texte',
+            'parent' => 'body',
+            'texte_matche' => '/^(?!(?i:(?:figure|tableau|image|schéma|schema|graphique))\s*\d)[\p{Lu}][\p{Lu}\p{N}\s\'\x{2019}\x{2014}\-:.,()°&+%]{2,58}[\p{Lu}\p{N}]$/u',
+        ],
+    ],
+
     // ── En-têtes et pieds de page (position dans le document) ────────────────
     [
         'nom' => 'en_tete',

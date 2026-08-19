@@ -84,6 +84,16 @@ class DocumentReconstructor
     private array $gabarit = [];
 
     /**
+     * Fichiers temp des images embarquées, conservés jusqu'au save final :
+     * PhpWord ne lit le binaire des images qu'au moment de l'écriture du
+     * DOCX ($writer->save()). Supprimer le fichier temp dans writeImage
+     * faisait perdre l'image silencieusement (défaut 3 de la Phase 3).
+     *
+     * @var string[]
+     */
+    private array $tempImages = [];
+
+    /**
      * Génère un DOCX complet à partir de la structure analysée.
      *
      * @param array<string, mixed> $analysis   Résultat du DocAnalyzer (+ legends)
@@ -144,6 +154,12 @@ class DocumentReconstructor
 
         // ── Post-traitement : w:gridSpan sur cellules fusionnées (page de garde)
         $this->applyGridSpan($outputPath);
+
+        // ── Nettoyage des fichiers temp d'images ──────────────────────────────
+        foreach ($this->tempImages as $tmpFile) {
+            @unlink($tmpFile);
+        }
+        $this->tempImages = [];
 
         return $outputPath;
     }
@@ -242,14 +258,29 @@ class DocumentReconstructor
             return;
         }
 
-        // Sommaire : titre natif + champ TOC (niveaux 1-3, mis à jour à l'ouverture)
-        $section->addTitle('SOMMAIRE', 1);
+        $resolver = \App\Services\DocumentGeneration\TemplateStyleResolver::class;
+
+        // Sommaire : le titre est un paragraphe STYLÉ (et non un addTitle) :
+        // le champ TOC natif PhpWord liste UNE entrée par élément Title de
+        // la collection globale — un "SOMMAIRE" en addTitle s'inclurait
+        // lui-même dans la table des matières (défaut 4). On utilise donc
+        // addText avec les styles de titre du gabarit, puis le champ TOC
+        // (niveaux 1-3, mis à jour à l'ouverture via updateFields).
+        $section->addText(
+            'SOMMAIRE',
+            $resolver::fontStyle($this->gabarit, 'titre1'),
+            $resolver::titleParagraphStyle($this->gabarit)
+        );
         $section->addTOC(null, null, 1, 3);
 
         // Liste des figures (légendes de type Figure)
         $figures = $this->legendsByType($analysis, ['figure', 'fig']);
         if ($figures !== []) {
-            $section->addTitle('Liste des figures', 1);
+            $section->addText(
+                'Liste des figures',
+                $resolver::fontStyle($this->gabarit, 'titre1'),
+                $resolver::titleParagraphStyle($this->gabarit)
+            );
             foreach ($figures as $legend) {
                 $section->addText(sprintf(
                     'Figure %s : %s',
@@ -262,7 +293,11 @@ class DocumentReconstructor
         // Liste des tableaux (légendes de type Tableau)
         $tableaux = $this->legendsByType($analysis, ['tableau', 'table']);
         if ($tableaux !== []) {
-            $section->addTitle('Liste des tableaux', 1);
+            $section->addText(
+                'Liste des tableaux',
+                $resolver::fontStyle($this->gabarit, 'titre1'),
+                $resolver::titleParagraphStyle($this->gabarit)
+            );
             foreach ($tableaux as $legend) {
                 $section->addText(sprintf(
                     'Tableau %s : %s',
@@ -291,6 +326,15 @@ class DocumentReconstructor
         $resolver = \App\Services\DocumentGeneration\TemplateStyleResolver::class;
         $bodyComplet = $analysis['body_complet'] ?? [];
 
+        // Map position → niveau de titre (titres + sous_titres détectés).
+        // Permet de styler en HeadingN les paragraphes 'texte' du body_complet
+        // qui correspondent à des titres détectés par les règles/regex
+        // (ex : MAJUSCULES sans style Heading → type 'texte' dans le parse).
+        // Sans cette map, ces titres resteraient de simples paragraphes de
+        // corps et le TOC (champ natif, ne liste que les styles HeadingN)
+        // serait vide — défaut 1 de la Phase 3.
+        $titreLevels = $this->titreLevelMap($analysis);
+
         // ── Mode principal : body_complet présent (reconstruction fidèle) ──
         if (is_array($bodyComplet) && $bodyComplet !== []) {
             foreach ($bodyComplet as $element) {
@@ -302,6 +346,17 @@ class DocumentReconstructor
 
                 // Titres de frontispice (SOMMAIRE, listes…) : gérés en section 1
                 if (in_array(mb_strtoupper($texte), self::FRONTISPIECE_TITLES, true)) {
+                    continue;
+                }
+
+                // Titre détecté (règles/regex) mais rendu en 'texte' par le
+                // parse : on le restitue avec le style natif HeadingN afin
+                // qu'il alimente le champ TOC et reçoive le gabarit.
+                $positionKey = self::positionKey($element['position'] ?? null);
+                $niveau = $titreLevels[$positionKey] ?? null;
+                if ($niveau !== null && $type !== 'titre') {
+                    $section->addTitle($texte, min(3, max(1, (int) $niveau)));
+
                     continue;
                 }
 
@@ -467,10 +522,13 @@ class DocumentReconstructor
                 'height' => 240,
                 'alignment' => 'center',
             ]);
+            // Le fichier temp est CONSERVÉ jusqu'au save() final : PhpWord
+            // ne lit le binaire qu'à ce moment (défaut 3). Nettoyé dans
+            // reconstruct() après l'écriture du DOCX.
+            $this->tempImages[] = $tmpPath;
         } catch (\Throwable $e) {
             // Image illisible : on la signale sans bloquer la génération
             $section->addText('[Image: ' . ($element['image_name'] ?? '') . ']');
-        } finally {
             @unlink($tmpPath);
         }
     }
@@ -495,6 +553,44 @@ class DocumentReconstructor
         }
 
         return $legends;
+    }
+
+    /**
+     * Clé de position stable pour joindre les catégories détectées
+     * (titres/sous_titres) aux éléments du body_complet.
+     *
+     * @param null|array<string, mixed> $position
+     */
+    private static function positionKey(?array $position): string
+    {
+        if (!is_array($position)) {
+            return '';
+        }
+
+        return (string) ($position['section_index'] ?? 0) . ':' . (string) ($position['element_index'] ?? 0);
+    }
+
+    /**
+     * Construit la map "section:element → niveau de titre" depuis les
+     * catégories détectées (titres niveau 1, sous_titres niveaux 2-3).
+     *
+     * @param array<string, mixed> $analysis
+     *
+     * @return array<string, int>
+     */
+    private function titreLevelMap(array $analysis): array
+    {
+        $map = [];
+
+        foreach (($analysis['titres'] ?? []) as $item) {
+            $map[self::positionKey($item['position'] ?? null)] = (int) ($item['niveau'] ?? 1);
+        }
+
+        foreach (($analysis['sous_titres'] ?? []) as $item) {
+            $map[self::positionKey($item['position'] ?? null)] = (int) ($item['niveau'] ?? 2);
+        }
+
+        return $map;
     }
 
     /**

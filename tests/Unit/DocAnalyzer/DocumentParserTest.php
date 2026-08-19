@@ -360,4 +360,139 @@ class DocumentParserTest extends TestCase
         // L'artefact numérique '480695' ne doit plus apparaître seul
         $this->assertStringNotContainsString('480695', $allText);
     }
+
+    // ── Phase 3 : images zip://, champs SEQ et codes de champs ────────────────
+
+    /**
+     * Génère un DOCX contenant une image + des légendes avec champs SEQ.
+     */
+    private function createDocxWithImageAndSeq(string $filename = 'image_seq.docx'): string
+    {
+        $phpWord = new PhpWord();
+        $section = $phpWord->addSection();
+
+        // Petite image PNG 1×1 valide
+        $png = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+        );
+        $imgPath = $this->tempDir . '/pixel.png';
+        file_put_contents($imgPath, $png);
+
+        $section->addImage($imgPath);
+        $section->addText('Figure { SEQ Figure \* ARABIC } : Architecture générale');
+
+        $path = $this->tempDir . '/' . $filename;
+        IOFactory::createWriter($phpWord, 'Word2007')->save($path);
+
+        return $path;
+    }
+
+    public function test_read_image_data_avec_source_zip(): void
+    {
+        $path = $this->createDocxWithImageAndSeq();
+        $parser = new DocumentParser($path);
+
+        // Source au format du Reader PhpWord : zip:///chemin/doc.docx#word/media/section_image1.png
+        // (le writer PhpWord nomme les images "section_imageN.ext")
+        $source = 'zip://' . str_replace('\\', '/', $path) . '#word/media/section_image1.png';
+
+        $data = $parser->readImageData($source);
+
+        $this->assertNotNull($data, 'Le binaire de l\'image doit être extrait depuis le ZIP');
+        $this->assertNotEmpty($data);
+
+        // C'est bien un PNG (signature)
+        $this->assertStringStartsWith("\x89PNG", $data);
+    }
+
+    public function test_read_image_data_avec_chemin_fichier(): void
+    {
+        $png = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+        );
+        $imgPath = $this->tempDir . '/pixel.png';
+        file_put_contents($imgPath, $png);
+
+        $parser = new DocumentParser($this->createDocxWithImageAndSeq());
+
+        $data = $parser->readImageData($imgPath);
+
+        $this->assertNotNull($data);
+        $this->assertStringStartsWith("\x89PNG", $data);
+    }
+
+    public function test_read_image_data_source_invalide_retourne_null(): void
+    {
+        $parser = new DocumentParser($this->createDocxWithImageAndSeq());
+
+        $this->assertNull($parser->readImageData(''));
+        $this->assertNull($parser->readImageData('zip:///inexistant.docx#word/media/x.png'));
+        $this->assertNull($parser->readImageData($this->tempDir . '/inexistant.png'));
+    }
+
+    public function test_resolve_seq_fields_remplace_par_les_numeros(): void
+    {
+        $parser = new DocumentParser($this->createDocxWithImageAndSeq());
+
+        $text = "Figure { SEQ Figure \\* ARABIC } : Architecture\n"
+            . "Tableau { SEQ Tableau \\* ARABIC } : Résultats\n"
+            . "Figure { SEQ Figure \\* ARABIC } : Diagramme";
+
+        $resolved = $parser->resolveSeqFields($text);
+
+        $this->assertStringContainsString('Figure 1 : Architecture', $resolved);
+        $this->assertStringContainsString('Tableau 1 : Résultats', $resolved);
+        $this->assertStringContainsString('Figure 2 : Diagramme', $resolved);
+        $this->assertStringNotContainsString('SEQ', $resolved);
+    }
+
+    public function test_strip_field_codes_retire_toc_page_ref(): void
+    {
+        $parser = new DocumentParser($this->createDocxWithImageAndSeq());
+
+        $text = "{ TOC \\o \"1-3\" \\h \\z \\u } Contenu { PAGE } et { REF _Toc123 \\h }";
+
+        $stripped = $parser->stripFieldCodes($text);
+
+        $this->assertStringContainsString('Contenu', $stripped);
+        $this->assertStringNotContainsString('TOC', $stripped);
+        $this->assertStringNotContainsString('PAGE', $stripped);
+        $this->assertStringNotContainsString('REF', $stripped);
+    }
+
+    public function test_les_champs_seq_sont_resolus_dans_le_parse(): void
+    {
+        $path = $this->createDocxWithImageAndSeq();
+        $result = (new DocumentParser($path))->parse();
+
+        // Le texte extrait ne contient plus le code de champ SEQ littéral
+        $this->assertStringNotContainsString('SEQ', $result['raw_text']);
+        $this->assertStringContainsString('Figure 1 : Architecture générale', $result['raw_text']);
+    }
+
+    public function test_les_images_docx_encapsulees_dans_textrun_sont_detectees(): void
+    {
+        // Le Reader PhpWord 1.4 encapsule les images d'un DOCX dans un
+        // TextRun dont le texte est "[image:section_image1.png]" — jamais
+        // en élément Image de premier niveau. Le parse doit re-typifier cet
+        // élément en 'image' et extraire son binaire depuis le ZIP source.
+        $path = $this->createDocxWithImageAndSeq();
+        $result = (new DocumentParser($path))->parse();
+
+        $body = $result['sections'][0]['body'];
+        $images = array_values(array_filter(
+            $body,
+            static fn (array $el): bool => ($el['type'] ?? '') === 'image'
+        ));
+
+        $this->assertNotEmpty($images, 'L\'image du DOCX doit être détectée (type image)');
+
+        $image = $images[0];
+        $this->assertSame('section_image1.png', $image['image_name'] ?? null);
+        $this->assertSame('png', $image['image_extension'] ?? null);
+        $this->assertNotEmpty($image['image_data'] ?? null, 'Le binaire de l\'image doit être extrait');
+
+        // Le binaire est bien un PNG
+        $this->assertStringStartsWith("\x89PNG", base64_decode((string) $image['image_data']));
+    }
 }

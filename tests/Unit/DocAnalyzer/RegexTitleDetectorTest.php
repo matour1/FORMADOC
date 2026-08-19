@@ -141,4 +141,82 @@ class RegexTitleDetectorTest extends TestCase
         $this->assertSame([], $result['titres']);
         $this->assertSame([], $result['sous_titres']);
     }
+
+    // ── Titres en MAJUSCULES (Phase 3 — défaut 1) ────────────────────────────
+
+    public function test_titre_entierement_en_majuscules_niveau_1(): void
+    {
+        $result = $this->detect($this->body(0, 4, 'INTRODUCTION'));
+
+        $this->assertCount(1, $result['titres']);
+        $this->assertSame('INTRODUCTION', $result['titres'][0]['texte']);
+        $this->assertSame(1, $result['titres'][0]['niveau']);
+        $this->assertSame('regex', $result['titres'][0]['source']);
+    }
+
+    public function test_titre_majuscules_avec_chiffres_et_ponctuation(): void
+    {
+        $result = $this->detect(
+            $this->body(0, 0, '1. CONTEXTE GENERAL'),
+            $this->body(0, 1, 'ÉTAT DE L\'ART : ÉTUDE COMPARATIVE'),
+            $this->body(0, 2, 'MÉTHODOLOGIE (PARTIE 2) — SYNTHÈSE'),
+        );
+
+        $this->assertCount(3, $result['titres']);
+        foreach ($result['titres'] as $titre) {
+            $this->assertSame(1, $titre['niveau']);
+        }
+    }
+
+    public function test_phrase_en_majuscules_ignoree(): void
+    {
+        // Une phrase complète en capitales (ponctuation forte, longue) n'est
+        // pas un titre : point final, conjonctions… — trop longue (> 60) ou
+        // terminée par un point.
+        $result = $this->detect(
+            $this->body(0, 0, 'IL FAUT NOTER QUE CE PROJET A ÉTÉ MENÉ DANS UN CONTEXTE PARTICULIER.'),
+            $this->body(0, 1, 'ONU.'),
+            $this->body(0, 2, 'UN TITRE EN MAJUSCULES QUI EST TRÈS TRÈS TRÈS TRÈS TRÈS TRÈS TRÈS TRÈS TRÈS TRÈS TRÈS TRÈS TRÈS TRÈS TRÈS TRÈS LONG.'),
+        );
+
+        $this->assertSame([], $result['titres']);
+        $this->assertSame([], $result['sous_titres']);
+    }
+
+    public function test_legende_en_majuscules_exclue(): void
+    {
+        $result = $this->detect(
+            $this->body(0, 0, 'FIGURE 1: ARCHITECTURE DE LA PLATEFORME'),
+            $this->body(0, 1, 'TABLEAU 2 : RÉSULTATS COMPARATIFS'),
+        );
+
+        $this->assertSame([], $result['titres']);
+        $this->assertSame([], $result['sous_titres']);
+    }
+
+    public function test_priorite_mots_cles_et_numeration_sur_majuscules(): void
+    {
+        // La numérotation décimale garde la priorité : "1.1 Contexte" (avec
+        // minuscules) reste un sous-titre niveau 2, pas un titre MAJUSCULES.
+        $result = $this->detect(
+            $this->body(0, 0, '1. Introduction'),
+            $this->body(0, 1, '1.1 Contexte'),
+            $this->body(0, 2, 'CONTEXTE GENERAL'),
+        );
+
+        // "1. Introduction" → numérotation (niveau 1) ; "CONTEXTE GENERAL" →
+        // MAJUSCULES (niveau 1) : deux titres au total.
+        $this->assertCount(2, $result['titres']);
+        $textes = array_column($result['titres'], 'texte');
+        $this->assertContains('1. Introduction', $textes);
+        $this->assertContains('CONTEXTE GENERAL', $textes);
+        foreach ($result['titres'] as $titre) {
+            $this->assertSame(1, $titre['niveau']);
+        }
+
+        // "1.1 Contexte" → numérotation 2 segments → sous-titre niveau 2
+        $sousTitres = array_column($result['sous_titres'], 'texte');
+        $this->assertContains('1.1 Contexte', $sousTitres);
+        $this->assertSame(2, $result['sous_titres'][0]['niveau']);
+    }
 }
