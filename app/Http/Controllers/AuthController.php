@@ -1,0 +1,96 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\User;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\View\View;
+
+/**
+ * Authentification par session (login, register, logout).
+ *
+ * Le projet utilisait des tables users/sessions sans routes d'auth :
+ * ce contrôleur comble le manque avec un flux classique Laravel
+ * (guard web, sessions, CSRF) sans toucher à routes/web.php.
+ */
+class AuthController extends Controller
+{
+    /**
+     * Affiche le formulaire de connexion.
+     */
+    public function showLogin(): View
+    {
+        return view('auth.login');
+    }
+
+    /**
+     * Affiche le formulaire d'inscription.
+     */
+    public function showRegister(): View
+    {
+        return view('auth.register');
+    }
+
+    /**
+     * Traite la connexion.
+     */
+    public function login(Request $request): RedirectResponse
+    {
+        $credentials = $request->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required', 'string'],
+        ]);
+
+        if (Auth::attempt($credentials, $request->boolean('remember'))) {
+            $request->session()->regenerate();
+
+            return redirect()->intended(route('account.index'))
+                ->with('success', 'Bienvenue !');
+        }
+
+        return back()
+            ->withErrors(['email' => 'Ces identifiants ne correspondent pas à nos enregistrements.'])
+            ->onlyInput('email');
+    }
+
+    /**
+     * Traite l'inscription (compte avec 0 crédit, prêt à acheter).
+     */
+    public function register(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $user = User::create([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => Hash::make($data['password']),
+            'credits_balance' => 0,
+        ]);
+
+        Auth::login($user);
+        $request->session()->regenerate();
+
+        return redirect()->route('account.index')
+            ->with('success', 'Compte créé. Bienvenue sur FORMADOC !');
+    }
+
+    /**
+     * Déconnexion.
+     */
+    public function logout(Request $request): RedirectResponse
+    {
+        Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()->route('login')
+            ->with('success', 'Vous êtes déconnecté.');
+    }
+}

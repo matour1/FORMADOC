@@ -140,10 +140,30 @@
             </nav>
         </div>
         <div class="flex items-center gap-2">
-            <a href="{{ route('feedback.form') }}" class="text-primary hover:bg-surface-container-high p-2 rounded-full transition-colors"
-               aria-label="Mon compte">
-                <span class="material-symbols-outlined">account_circle</span>
-            </a>
+            @auth
+                <a href="{{ route('chat.index') }}" class="text-primary hover:bg-surface-container-high p-2 rounded-full transition-colors"
+                   aria-label="Chat IA">
+                    <span class="material-symbols-outlined">chat</span>
+                </a>
+                <a href="{{ route('account.index') }}" class="text-primary hover:bg-surface-container-high p-2 rounded-full transition-colors"
+                   aria-label="Mon compte">
+                    <span class="material-symbols-outlined">account_circle</span>
+                </a>
+                <form method="POST" action="{{ route('logout') }}" class="inline">
+                    @csrf
+                    <button type="submit" class="text-secondary hover:text-error hover:bg-surface-container-high p-2 rounded-full transition-colors"
+                            aria-label="Se déconnecter">
+                        <span class="material-symbols-outlined">logout</span>
+                    </button>
+                </form>
+            @else
+                <a href="{{ route('login') }}" class="font-label-mono text-label-mono uppercase tracking-wider text-secondary hover:text-primary px-3 py-2 rounded transition-colors">
+                    Connexion
+                </a>
+                <a href="{{ route('register') }}" class="font-label-mono text-label-mono uppercase tracking-wider text-on-primary bg-primary hover:bg-primary-container px-4 py-2 rounded-lg transition-colors">
+                    Inscription
+                </a>
+            @endauth
         </div>
     </header>
 

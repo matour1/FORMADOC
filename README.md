@@ -31,6 +31,63 @@ Upload (.docx/.doc/.txt) → Validation de la structure détectée → Traitemen
 
 À l'export, le bouton **« Régénérer sans IA pour comparer »** (`regenerate_without_ai=1`) relance une analyse 100 % déterministe du document afin de comparer visuellement les deux résultats.
 
+## 💳 Plateforme SaaS & monétisation par crédits
+
+FORMADOC est désormais une plateforme SaaS : l'IA avancée (chat, analyse de documents, mise en forme complète, génération d'images, recherche web, function calling, PowerPoint) est facturée en **crédits**, avec paiement via **KPay** (carte/PayPal en priorité, mobile money possible).
+
+### 🔐 Comptes & authentification
+
+- Inscription / connexion par session (`/register`, `/login`) — flux classique Laravel (guard `web`, CSRF, sessions).
+- Chaque compte démarre avec **0 crédit** et peut acheter à la carte dès **500 FCFA**.
+- Les pages `/account`, `/chat` et les achats sont protégés par le middleware `auth` (redirection vers `/login`).
+- Routes d'authentification dans `routes/auth.php` (chargé via `bootstrap/app.php`) — `routes/web.php` reste intacte.
+
+### Barème des plans (1 crédit = 1 FCFA)
+
+| Plan | Prix | Crédits/mois | Idéal pour |
+|------|------|--------------|------------|
+| **Défaut (gratuit)** | 0 FCFA | Au fur et à mesure | Découverte, usage ponctuel (achat à la carte dès 500 FCFA) |
+| **Standard** | 3 000 FCFA/mois | 3 000 | Étudiants, usage régulier |
+| **Premium** | 5 000 FCFA/mois | 5 000 | Professionnels |
+| **Pro** | 8 000 FCFA/mois | 8 000 | Utilisation intensive |
+| **Entreprises** | Sur devis | Sur mesure | Organisations |
+
+Les crédits s'achètent à la carte (**minimum 500 FCFA**) depuis la page **Mon compte** (`/account`).
+
+### Routage des modèles IA (OpenRouter)
+
+`ModelRouter` sélectionne le modèle selon le **type de tâche** et le **plan** de l'utilisateur :
+
+| Tâche | Modèle par défaut | Modèles Premium/Pro |
+|-------|-------------------|---------------------|
+| `chat_text` | `deepseek/deepseek-chat` | `claude-3.5-sonnet`, `gpt-4o` |
+| `document_analysis` | `deepseek/deepseek-chat` | `gpt-4o`, `claude-3.5-sonnet` |
+| `document_full_format` | `gpt-4o-mini` | `claude-3-opus`, `claude-3.5-sonnet` |
+| `image_generation` | `openai/gpt-image-1-mini` | `openai/gpt-image-1` |
+| `image_analysis` | `gpt-4o-mini` | `gpt-4o` |
+| `web_search` | `deepseek/deepseek-chat` | `gpt-4o-mini` |
+| `function_calling` | `gpt-4o-mini` | `gpt-4o` |
+| `powerpoint_generation` | `deepseek/deepseek-chat` | `gpt-4o` |
+
+Chaque tâche dispose de **fallbacks** (repli automatique en cas d'échec avec retry/backoff) et le **coût réel est consigné** (USD) puis converti en crédits consommés (marge 20 %, taux `RATE_FCFA_PER_USD` = 620).
+
+### Paiement KPay
+
+- Passerelle hébergée : `POST /credits/purchase` → redirection vers `gatewayUrl` KPay.
+- **Webhook signé HMAC-SHA256** (`X-KPAY-Signature` + `X-KPAY-Event`) : seule source d'autorité — les crédits sont crédités **uniquement** sur événement `completed` signé et valide.
+- Idempotence par référence (`paymentId`), fenêtre de signature de 10 min sur le retour, backoff 1s/2s/4s sur les 429.
+- Le retour utilisateur (`/credits/return`) vérifie la signature mais **n'accrédite jamais** : décision uniquement côté webhook.
+
+### Chat IA assisté
+
+- Page `/chat` : historique des sessions, nouvelle conversation.
+- Chaque message affiche le **modèle utilisé** et le **coût en crédits** réellement consommé.
+- Le coût est **estimé avant** envoi (crédits requis affichés), débité avant appel, et le **différentiel est remboursé** si le coût réel est inférieur.
+
+### Mode déterministe intact
+
+Le pipeline de mise en forme **sans IA reste 100 % fonctionnel et gratuit** : les fonctionnalités SaaS sont additionnelles (chat, analyse avancée, mise en forme assistée par IA).
+
 ## 🎨 Gabarits de mise en forme
 
 Trois gabarits sont fournis via `TemplateSeeder` et sélectionnables à l'export (`template_id`) :
@@ -92,9 +149,10 @@ L'application est alors accessible sur `http://localhost:8000`.
 
 ```
 app/
-├── Http/Controllers/          # Contrôleurs (Feedback, Document, Cover, Validation)
-├── Models/                     # Modèles Eloquent (Document, Template, etc.)
+├── Http/Controllers/          # Contrôleurs (Feedback, Document, Cover, Validation, Account, Chat, KPay)
+├── Models/                     # Modèles Eloquent (Document, Template, Plan, Subscription, CreditTransaction, ChatSession, ChatMessage)
 ├── Providers/                  # Providers Laravel
+├── Jobs/                       # LongFormattingJob (mise en forme IA en file d'attente)
 └── Services/
     ├── Detection/              # Détection de structure
     │   ├── TitleDetectionService.php   # Détection titres (regex/IA, hybride)
@@ -103,13 +161,20 @@ app/
     │   ├── AmbiguityDetectionService.php # Ambiguïtés (numérotation vs niveau, déterministe)
     │   ├── AiCorrectionService.php     # Post-processeur IA optionnel (listes, ambiguïtés)
     │   └── StructureCorrectionService.php # Application des corrections validées
-    └── DocumentGeneration/     # Génération DOCX
-        ├── TemplateExtractionService.php
-        ├── TemplateStyleResolver.php   # Résolution des gabarits (Rapport/Mémoire/Pro)
-        ├── StyleMapper.php
-        ├── PdfPreviewService.php       # Aperçu PDF via LibreOffice (soffice)
-        ├── CoverDetectionService.php
-        └── CoverGenerationService.php
+    ├── DocumentGeneration/     # Génération DOCX
+    │   ├── TemplateExtractionService.php
+    │   ├── TemplateStyleResolver.php   # Résolution des gabarits (Rapport/Mémoire/Pro)
+    │   ├── StyleMapper.php
+    │   ├── PdfPreviewService.php       # Aperçu PDF via LibreOffice (soffice)
+    │   ├── CoverDetectionService.php
+    │   └── CoverGenerationService.php
+    ├── OpenRouter/             # SaaS — routage IA
+    │   ├── ModelRouter.php             # Sélection du modèle (tâche × plan) + fallbacks
+    │   └── OpenRouterService.php       # Appels chat/complétions + estimation coût
+    └── Billing/                # SaaS — monétisation
+        ├── CreditService.php           # Débit/crédit atomique + journalisation
+        ├── UsageCostCalculator.php     # USD → crédits (marge, taux)
+        └── KPayService.php             # Passerelle KPay + vérification HMAC
 ```
 
 ## 📋 Fonctionnalités (par phase)
@@ -123,6 +188,8 @@ app/
 | **4** | ✅ Terminée | Interface validation ambiguïtés |
 | **5** | ✅ Terminée | Parcours complet (upload → validation → traitement → export) |
 | **6** | ✅ Terminée | IA optionnelle (assistance listes/ambiguïtés), gabarits Rapport/Mémoire/Pro, aperçu PDF |
+| **7** | ✅ Terminée | **SaaS & monétisation** : crédits (1 crédit = 1 FCFA), plans Standard/Premium/Pro/Entreprises, paiement KPay (webhook signé HMAC), routage OpenRouter par tâche × plan, chat IA payant, file d'attente |
+| **7b** | ✅ Terminée | **Authentification** : inscription/connexion/déconnexion par session, protection des routes `/account` et `/chat` |
 
 ## 🔑 Variables d'environnement
 
@@ -134,6 +201,20 @@ app/
 | `DEEPSEEK_MODEL` | Modèle utilisé (défaut `deepseek-v4-flash`) |
 | `DEEPSEEK_TIMEOUT` | Timeout des appels IA en secondes (défaut `30`) |
 | `DEEPSEEK_MAX_RETRIES` | Nombre de tentatives (défaut `3`) |
+| `OPENROUTER_API_KEY` | Clé API OpenRouter (routage IA SaaS). **Vide = chat/IA payante indisponible, mode déterministe intact.** |
+| `OPENROUTER_API_URL` | URL de l'API OpenRouter (défaut `https://openrouter.ai/api/v1`) |
+| `OPENROUTER_TIMEOUT_BASE` | Timeout de base des appels (défaut `180` s) |
+| `OPENROUTER_TIMEOUT_PER_CHAR` | Secondes par caractère ajoutées au timeout (défaut `0.008`) |
+| `OPENROUTER_TIMEOUT_MIN` / `MAX` | Bornes du timeout (défaut `120` / `600` s) |
+| `OPENROUTER_MAX_RETRIES` | Tentatives par appel (défaut `2`) |
+| `RATE_FCFA_PER_USD` | Taux de conversion USD → FCFA (défaut `620`) |
+| `KPAY_API_KEY` | Clé API KPay (préfixe `test_` ou `prod_`) |
+| `KPAY_SECRET_KEY` | Clé secrète KPay |
+| `KPAY_WEBHOOK_SECRET` | Secret HMAC de signature des webhooks KPay |
+| `KPAY_BASE_URL` | URL de l'API KPay (défaut `https://admin.kpay.site/api/v1`) |
+| `KPAY_MIN_AMOUNT` | Montant minimal d'achat en FCFA (défaut `500`) |
+| `KPAY_CURRENCY` | Devise (défaut `XAF`) |
+| `KPAY_PAYMENT_METHOD` | Méthode de paiement (défaut `gateway`) |
 | `LIBREOFFICE_PATH` | Chemin vers `soffice` (optionnel, auto-détecté sinon) |
 | `PROJECT_OWNER_EMAIL` | Email du porteur du projet (reçoit les feedbacks) |
 
@@ -150,6 +231,9 @@ app/
 2. **Sécurité par défaut** : validation MIME, taille max 50 MB, requêtes préparées
 3. **Styles DOCX natifs uniquement** (Heading 1/2/3), images en ligne
 4. **4 étapes distinctes** : détection → structuration → gabarit → génération
+5. **Sécurité paiement** : clé API jamais côté client, webhook KPay signé HMAC = seule source d'autorité, crédits crédités uniquement sur statut terminal `completed`, idempotence par référence, minimum d'achat 500 FCFA
+6. **`routes/web.php` ne doit pas être modifiée** : les routes SaaS vivent dans `routes/saas.php` et les routes d'auth dans `routes/auth.php` (chargés via `bootstrap/app.php`)
+7. **Authentification** : mot de passe haché (`bcrypt`), sessions régénérées à la connexion, `remember_token` pour « Se souvenir de moi »
 
 ## 📄 Licence
 

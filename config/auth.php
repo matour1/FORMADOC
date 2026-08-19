@@ -22,6 +22,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Redirect paths
+    |--------------------------------------------------------------------------
+    |
+    | Routes utilisées par le middleware 'auth' et le guard 'web' lorsque
+    | l'utilisateur n'est pas connecté (redirection vers la connexion)
+    | et après une connexion réussie (accueil par défaut).
+    |
+    */
+
+    'redirects' => [
+        'login' => 'login',
+        'home' => 'account.index',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Authentication Guards
     |--------------------------------------------------------------------------
     |
