@@ -149,10 +149,10 @@ L'application est alors accessible sur `http://localhost:8000`.
 
 ```
 app/
-├── Http/Controllers/          # Contrôleurs (Feedback, Document, Cover, Validation, Account, Chat, KPay)
+├── Http/Controllers/          # Contrôleurs (Feedback, Document, Cover, Validation, Account, Chat, KPay, Auth)
 ├── Models/                     # Modèles Eloquent (Document, Template, Plan, Subscription, CreditTransaction, ChatSession, ChatMessage)
 ├── Providers/                  # Providers Laravel
-├── Jobs/                       # LongFormattingJob (mise en forme IA en file d'attente)
+├── Jobs/                       # LongFormattingJob (mise en forme IA en file d'attente — créé, à brancher)
 └── Services/
     ├── Detection/              # Détection de structure
     │   ├── TitleDetectionService.php   # Détection titres (regex/IA, hybride)
@@ -188,8 +188,9 @@ app/
 | **4** | ✅ Terminée | Interface validation ambiguïtés |
 | **5** | ✅ Terminée | Parcours complet (upload → validation → traitement → export) |
 | **6** | ✅ Terminée | IA optionnelle (assistance listes/ambiguïtés), gabarits Rapport/Mémoire/Pro, aperçu PDF |
-| **7** | ✅ Terminée | **SaaS & monétisation** : crédits (1 crédit = 1 FCFA), plans Standard/Premium/Pro/Entreprises, paiement KPay (webhook signé HMAC), routage OpenRouter par tâche × plan, chat IA payant, file d'attente |
+| **7** | ✅ Terminée | **SaaS & monétisation** : crédits (1 crédit = 1 FCFA), plans Standard/Premium/Pro/Entreprises, paiement KPay (webhook signé HMAC), routage OpenRouter par tâche × plan, chat IA payant, file d'attente (`LongFormattingJob` créé — déclenchement à brancher dans le parcours document) |
 | **7b** | ✅ Terminée | **Authentification** : inscription/connexion/déconnexion par session, protection des routes `/account` et `/chat` |
+| **8** | ⏳ À faire | Brancher `LongFormattingJob` au parcours document (dispatch + worker `queue:work`), abonnements récurrents, UI des tâches IA (PowerPoint, analyse d'image) |
 
 ## 🔑 Variables d'environnement
 
@@ -234,6 +235,8 @@ app/
 5. **Sécurité paiement** : clé API jamais côté client, webhook KPay signé HMAC = seule source d'autorité, crédits crédités uniquement sur statut terminal `completed`, idempotence par référence, minimum d'achat 500 FCFA
 6. **`routes/web.php` ne doit pas être modifiée** : les routes SaaS vivent dans `routes/saas.php` et les routes d'auth dans `routes/auth.php` (chargés via `bootstrap/app.php`)
 7. **Authentification** : mot de passe haché (`bcrypt`), sessions régénérées à la connexion, `remember_token` pour « Se souvenir de moi »
+8. **Workflow Git** : une fonctionnalité = une branche `feature/<nom>` créée depuis `main`, puis fusionnée dans `main` — jamais de commit direct sur `main` pour une nouvelle fonctionnalité (seuls correctifs et hygiène) ; clés API jamais commitées (`.env` ignoré)
+9. **Tests** : suite complète = **199 tests, 803 assertions** (`php artisan test`) ; tout ajout de fonctionnalité doit être couvert par des tests
 
 ## 📄 Licence
 
