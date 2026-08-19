@@ -235,9 +235,11 @@ class AiCorrectionService
         $apiKey = (string) config('deepseek.api_key', '');
 
         // Payload réduit : uniquement les éléments ambigus.
+        // NB : les éléments body_complet portent leur index dans
+        // `position.element_index` (pas à la racine) — on lit les deux.
         $payload = array_map(static fn (array $item) => [
-            'element_index' => (int) ($item['element_index'] ?? 0),
-            'section_index' => (int) ($item['section_index'] ?? 0),
+            'element_index' => (int) ($item['element_index'] ?? $item['position']['element_index'] ?? 0),
+            'section_index' => (int) ($item['section_index'] ?? $item['position']['section_index'] ?? 0),
             'parent' => (string) ($item['parent'] ?? 'body'),
             'texte' => mb_substr((string) ($item['text'] ?? $item['texte'] ?? ''), 0, 200),
             'type' => (string) ($item['type'] ?? 'texte'),

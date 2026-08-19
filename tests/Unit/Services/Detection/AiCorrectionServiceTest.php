@@ -230,4 +230,46 @@ class AiCorrectionServiceTest extends TestCase
         $this->assertSame(5, $method->invoke($service, ['element_index' => 5, 'id' => 's0e99pbody']));
         $this->assertNull($method->invoke($service, ['id' => 'inconnu']));
     }
+
+    public function test_payload_envoie_element_index_depuis_position(): void
+    {
+        // RÉGRESSION : les éléments body_complet portent leur index dans
+        // `position.element_index` (pas à la racine). Le payload envoyé à
+        // l'API doit contenir les bons index, sinon les corrections de l'IA
+        // sont filtrées par normalizeCorrections (index <= 0 → count 0).
+        $this->fakeCorrections([
+            ['element_index' => 1, 'kind' => 'liste', 'level' => 0],
+        ]);
+
+        $structure = $this->structureAvecCandidatListe();
+        $service = new AiCorrectionService();
+
+        $result = $service->correct($structure, []);
+
+        // La correction a bien été appliquée (l'index 1 était dans le payload)
+        $this->assertSame('liste', $result['body_complet'][1]['type']);
+
+        // Vérifie le payload réellement envoyé : chaque élément ambigu doit
+        // avoir son element_index/section_index issus de `position`.
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+            $elements = $body['messages'][1]['content'] ?? '';
+            $decoded = json_decode($elements, true);
+            if (!is_array($decoded) || !isset($decoded['elements'])) {
+                return false;
+            }
+
+            $indexes = array_column($decoded['elements'], 'element_index');
+            $sections = array_column($decoded['elements'], 'section_index');
+
+            // Tous les index doivent être > 0 (et non 0 par défaut)
+            $this->assertContains(1, $indexes, 'element_index 1 attendu dans le payload');
+            $this->assertContains(2, $indexes, 'element_index 2 attendu dans le payload');
+            $this->assertContains(3, $indexes, 'element_index 3 attendu dans le payload');
+            $this->assertNotContains(0, $indexes, 'aucun element_index ne doit être 0');
+            $this->assertSame([0, 0, 0], $sections, 'section_index doit venir de position');
+
+            return true;
+        });
+    }
 }
