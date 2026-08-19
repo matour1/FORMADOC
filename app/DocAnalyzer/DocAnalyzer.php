@@ -34,15 +34,7 @@ class DocAnalyzer
     private ?string $configPath;
 
     /**
-     * Catégories considérées critiques : si l'une d'elles est vide après les
-     * règles, on appelle l'IA pour tenter de la compléter.
-     *
-     * @var string[]
-     */
-    private const CRITICAL_CATEGORIES = ['titres', 'sous_titres'];
-
-    /**
-     * @param string|null $configPath Chemin du fichier de règles (défaut : config/analyzer.yaml)
+     * @param string|null $configPath Chemin du fichier de règles (défaut : config/analyzer.php)
      */
     public function __construct(?string $configPath = null)
     {
@@ -53,7 +45,8 @@ class DocAnalyzer
      * Méthodes de détection des titres.
      *
      *  - 'regex' : déterministe et rapide (styles Word + motifs regex).
-     *    Si aucun titre n'est trouvé, un fallback automatique lance l'IA.
+     *    Aucun appel IA automatique : l'IA n'intervient que si l'utilisateur
+     *    l'a explicitement activée (exigence Phase 4 — IA non intrusive).
      *  - 'ia'    : appel systématique à l'IA (DeepSeek), plus lent.
      */
     public const METHOD_REGEX = 'regex';
@@ -65,7 +58,7 @@ class DocAnalyzer
      * @param string $filePath Chemin absolu du fichier DOCX
      * @param bool   $forceIA  Force l'appel à l'IA même si les règles suffisent
      * @param string $titleMethod Méthode de détection des titres :
-     *                           'regex' (défaut, avec fallback IA) ou 'ia'
+     *                           'regex' (défaut) ou 'ia'
      *
      * @return array<string, array<int, array<string, mixed>>> Résultat conforme au contrat
      *
@@ -94,17 +87,13 @@ class DocAnalyzer
 
         $rulesResult = (new ResultMerger())->merge($rulesResult, $regexResult);
 
-        // 3. IA complémentaire si nécessaire
+        // 3. IA complémentaire UNIQUEMENT si demandée explicitement.
+        //    Exigence Phase 4 : aucun fallback automatique vers l'IA — si
+        //    l'utilisateur n'a pas coché « Utiliser l'assistance IA », aucun
+        //    appel externe n'est émis, même si aucune catégorie critique
+        //    (titres, sous_titres) n'a été détectée.
         $iaResult = AnalyzerResult::empty();
         $callIa = $forceIA || $titleMethod === self::METHOD_IA;
-
-        // Fallback automatique : la méthode regex n'a trouvé AUCUN titre
-        // (titres ET sous_titres vides) → l'IA prend le relais pour tenter
-        // de compléter. Une seule catégorie vide ne suffit plus (Phase 3) :
-        // les règles + la passe regex sont fiables, l'IA n'est qu'un secours.
-        if (!$callIa && $titleMethod === self::METHOD_REGEX && $this->criticalCategoriesEmpty($rulesResult)) {
-            $callIa = true;
-        }
 
         if ($callIa) {
             $iaResult = $this->analyzeWithIa($parsed['context_text_with_positions']);
@@ -212,28 +201,5 @@ class DocAnalyzer
             // Ne jamais bloquer l'analyse : on retombe sur les règles seules.
             return AnalyzerResult::empty();
         }
-    }
-
-    /**
-     * Vérifie si les catégories critiques (titres ET sous_titres) sont TOUTES
-     * vides — seul cas où l'IA est appelée en fallback.
-     *
-     * Phase 3 : auparavant une SEULE catégorie vide déclenchait l'IA, ce qui
-     * produisait des résultats incohérents (l'IA réinventait des titres déjà
-     * correctement détectés par les règles ou la passe regex). Désormais
-     * l'IA n'intervient que si AUCUN titre n'a été trouvé, et la méthode
-     * demandée est 'regex' (fallback automatique).
-     *
-     * @param array<string, array<int, array<string, mixed>>> $result
-     */
-    private function criticalCategoriesEmpty(array $result): bool
-    {
-        foreach (self::CRITICAL_CATEGORIES as $category) {
-            if (!empty($result[$category] ?? [])) {
-                return false;
-            }
-        }
-
-        return true;
     }
 }

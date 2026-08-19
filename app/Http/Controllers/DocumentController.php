@@ -11,6 +11,7 @@ use App\Models\CoverTemplate;
 use App\Models\Document;
 use App\Models\DocumentStructure;
 use App\Models\GeneratedDocument;
+use App\Services\Detection\AiCorrectionService;
 use App\Services\Detection\AmbiguityDetectionService;
 use App\Services\Detection\LegendDetectionService;
 use App\Services\Detection\StructureCorrectionService;
@@ -57,12 +58,15 @@ class DocumentController extends Controller
     public function upload(StoreDocumentRequest $request): RedirectResponse
     {
         try {
-            // Le LLM peut être lent (modèle avec raisonnement) et le timeout est
-            // dynamique selon la taille du document (jusqu'à DEEPSEEK_TIMEOUT_MAX,
-            // 600 s par défaut). On prolonge l'exécution PHP au-delà de la valeur
-            // par défaut (120 s WAMP). En CLI (artisan serve) le serveur intégré
-            // respecte cette valeur.
-            if (function_exists('set_time_limit')) {
+            // Option « Utiliser l'assistance IA » (case à cocher explicite).
+            // Le mode par défaut est SANS IA : aucun appel externe n'est émis
+            // si l'utilisateur ne l'a pas activé (exigence Phase 4).
+            $useAi = $request->boolean('use_ai', false);
+
+            // Le LLM peut être lent et le timeout est dynamique selon la taille
+            // du document. On ne prolonge l'exécution PHP QUE si l'IA est
+            // activée : en mode déterministe, la limite par défaut suffit.
+            if ($useAi && function_exists('set_time_limit')) {
                 set_time_limit((int) config('deepseek.timeout.max', 600) + 60);
             }
 
@@ -74,12 +78,13 @@ class DocumentController extends Controller
                 'filename' => $file->getClientOriginalName(),
                 'mime' => $mimeType,
                 'size' => $file->getSize(),
+                'use_ai' => $useAi,
             ]);
 
             // Stockage hors web root
             $path = $file->store('documents', 'storage');
 
-            // Méthode de détection des titres (regex par défaut, fallback IA)
+            // Méthode de détection des titres (regex par défaut, sans IA)
             $titleMethod = $request->input('title_method', DocAnalyzer::METHOD_REGEX);
 
             $document = Document::create([
@@ -90,10 +95,11 @@ class DocumentController extends Controller
                     'mime_type' => $mimeType,
                     'size' => $file->getSize(),
                     'title_method' => $titleMethod,
+                    'use_ai' => $useAi,
                 ],
             ]);
 
-            $this->runDetection($document, $titleMethod);
+            $this->runDetection($document, $titleMethod, $useAi);
 
             return redirect()
                 ->route('documents.show', $document)
@@ -242,7 +248,16 @@ class DocumentController extends Controller
         try {
             $template = $this->resolveTemplate($request);
 
+            // Comparaison « sans IA » : si l'utilisateur le demande, on
+            // ré-analyse le document SOURCE en mode 100 % déterministe
+            // (aucun appel externe) puis on régénère l'aperçu. La structure
+            // IA d'origine est conservée dans metadata pour référence.
+            if ($request->boolean('regenerate_without_ai', false)) {
+                $this->regenerateWithoutAi($document);
+            }
+
             if (function_exists('set_time_limit')) {
+                // Reconstruction DOCX + conversion PDF : purement local, sans IA.
                 set_time_limit(240);
             }
 
@@ -369,7 +384,8 @@ class DocumentController extends Controller
             }
 
             if (function_exists('set_time_limit')) {
-                set_time_limit((int) config('deepseek.timeout.max', 600) + 60);
+                // Reconstruction DOCX : local (PhpWord), sans appel IA.
+                set_time_limit(240);
             }
 
             $generatedPath = $this->generateOutputPath($document);
@@ -476,17 +492,21 @@ class DocumentController extends Controller
     }
 
     /**
-     * Pipeline de détection complet (DocAnalyzer → légendes → sauvegarde).
+     * Pipeline de détection complet (DocAnalyzer → légendes → ambiguïtés →
+     * post-processeur IA facultatif → sauvegarde).
      *
-     * @param string $titleMethod 'regex' (défaut, fallback IA) ou 'ia'
+     * @param string $titleMethod 'regex' (défaut) ou 'ia'
+     * @param bool   $useAi       Assistance IA activée explicitement par
+     *                            l'utilisateur (case à cocher). Faux par défaut :
+     *                            aucun appel externe n'est émis.
      */
-    private function runDetection(Document $document, string $titleMethod = DocAnalyzer::METHOD_REGEX): void
+    private function runDetection(Document $document, string $titleMethod = DocAnalyzer::METHOD_REGEX, bool $useAi = false): void
     {
         // 1. Chemin absolu du fichier stocké
         $absolutePath = storage_path('uploads/' . $document->path);
 
         // 2. Analyse structurelle : parse → règles déterministes → regex
-        //    (si demandé) → IA (si demandée ou en fallback) → fusion
+        //    (si demandé) → IA (UNIQUEMENT si title_method='ia') → fusion
         $analyzer = new DocAnalyzer(config_path('analyzer.php'));
         $analysis = $analyzer->analyze($absolutePath, titleMethod: $titleMethod);
 
@@ -526,6 +546,17 @@ class DocumentController extends Controller
         // 5. Détection des ambiguïtés (déterministe — numérotation vs niveau)
         $ambiguities = (new AmbiguityDetectionService())->detect($structure);
 
+        // 5bis. Assistance IA FACULTATIVE (post-processeur correctif).
+        //       Intervient APRÈS la détection déterministe, UNIQUEMENT si
+        //       l'utilisateur a coché « Utiliser l'assistance IA ».
+        //       L'IA reçoit uniquement les éléments ambigus/incertains et
+        //       renvoie des corrections ciblées (kind, level) fusionnées
+        //       dans la structure. En cas d'échec/timeout, elle est ignorée
+        //       et la structure déterministe est conservée telle quelle.
+        if ($useAi) {
+            $structure = (new AiCorrectionService())->correct($structure, $ambiguities);
+        }
+
         // 6. Sauvegarde (colonne 'structure' et 'ambiguities', casts array)
         DocumentStructure::updateOrCreate(
             ['document_id' => $document->id],
@@ -536,6 +567,76 @@ class DocumentController extends Controller
         );
 
         $document->update(['status' => 'detected']);
+    }
+
+    /**
+     * Régénère la structure du document en mode 100 % déterministe (SANS IA).
+     *
+     * Permet à l'utilisateur de comparer le rendu avec et sans assistance IA
+     * (exigence Phase 4). La structure IA d'origine est mémorisée dans
+     * metadata['previous_ai_structure'] (référence), la structure courante
+     * est remplacée par la version déterministe pure.
+     */
+    private function regenerateWithoutAi(Document $document): void
+    {
+        $current = $document->structure;
+
+        // Mémorise la version IA si elle a été produite (trace)
+        $structureData = $current?->structure ?? [];
+        if (!empty($structureData['ai_corrections'])) {
+            $document->update([
+                'metadata' => array_merge($document->metadata ?? [], [
+                    'previous_ai_structure' => $structureData,
+                ]),
+            ]);
+        }
+
+        // Nouvelle analyse 100 % déterministe (regex, sans forceIA, sans use_ai)
+        $absolutePath = storage_path('uploads/' . $document->path);
+        $analyzer = new DocAnalyzer(config_path('analyzer.php'));
+        $analysis = $analyzer->analyze($absolutePath, titleMethod: DocAnalyzer::METHOD_REGEX);
+
+        $text = $this->textExtraction->execute($absolutePath);
+        $legends = $this->legendDetection->execute($text);
+
+        $parser = new \App\DocAnalyzer\DocumentParser($absolutePath);
+        $parsed = $parser->parse();
+        $bodyComplet = [];
+        foreach (($parsed['sections'] ?? []) as $section) {
+            foreach (($section['body'] ?? []) as $element) {
+                $bodyComplet[] = $element;
+            }
+        }
+
+        $structure = [
+            'titres' => $analysis['titres'],
+            'sous_titres' => $analysis['sous_titres'],
+            'en_tetes' => $analysis['en_tetes'],
+            'pieds_de_page' => $analysis['pieds_de_page'],
+            'tableaux' => $analysis['tableaux'],
+            'images' => $analysis['images'],
+            'elements_flottants' => $analysis['elements_flottants'],
+            'legends' => $legends,
+            'body_complet' => $bodyComplet,
+        ];
+
+        // Marque la régénération (sans IA) pour traçabilité
+        $structure['ai_corrections'] = [];
+
+        DocumentStructure::updateOrCreate(
+            ['document_id' => $document->id],
+            [
+                'structure' => $structure,
+                'ambiguities' => (new AmbiguityDetectionService())->detect($structure),
+            ]
+        );
+
+        $document->update([
+            'status' => 'detected',
+            'metadata' => array_merge($document->metadata ?? [], [
+                'regenerated_without_ai' => true,
+            ]),
+        ]);
     }
 
     /**

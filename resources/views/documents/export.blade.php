@@ -18,6 +18,11 @@
         $selectedTemplateId = $document->metadata['preview_template_id'] ?? null;
         $pdfAvailable = is_string($document->metadata['pdf_preview_path'] ?? null)
             && trim($document->metadata['pdf_preview_path'] ?? '') !== '';
+        // Assistance IA : activée à l'analyse ? La structure a-t-elle été
+        // corrigée par l'IA (ai_corrections non vide) ? Déjà régénérée sans IA ?
+        $usedAi = (bool) ($document->metadata['use_ai'] ?? false)
+            || !empty($data['ai_corrections']);
+        $regeneratedWithoutAi = (bool) ($document->metadata['regenerated_without_ai'] ?? false);
     @endphp
 
     <div class="md:ml-64">
@@ -168,6 +173,59 @@
                                 <p class="font-body-md text-body-md text-on-surface-variant mt-2">
                                     Aucun aperçu généré pour l'instant. Cliquez sur
                                     « Générer l'aperçu PDF » pour voir le rendu exact avant de télécharger.
+                                </p>
+                            </div>
+                        @endif
+                    </div>
+
+                    {{-- Comparaison avec/sans IA (exigence Phase 4) --}}
+                    <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 md:p-6">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="material-symbols-outlined text-primary">compare</span>
+                            <h2 class="font-h2 text-h2 text-on-surface">Assistance IA</h2>
+                        </div>
+
+                        @if ($usedAi)
+                            <p class="font-caption text-caption text-on-surface-variant mb-4">
+                                Ce document a été analysé avec l'assistance IA
+                                @if (!empty($data['ai_corrections']))
+                                    ({{ count($data['ai_corrections']) }} correction(s) appliquée(s) : listes, niveaux, ambiguïtés).
+                                @else
+                                    (aucune correction n'a été nécessaire).
+                                @endif
+                                Vous pouvez régénérer la structure en mode 100 % déterministe
+                                (aucun appel externe) pour comparer les deux rendus.
+                            </p>
+
+                            @if ($regeneratedWithoutAi)
+                                <div class="flex items-start gap-3 bg-surface-container-low border border-outline-variant rounded-xl p-4 mb-4">
+                                    <span class="material-symbols-outlined text-primary mt-0.5">task_alt</span>
+                                    <p class="font-caption text-caption text-on-surface-variant">
+                                        La structure actuelle a été <strong>régénérée sans IA</strong>.
+                                        L'aperçu PDF ci-dessus reflète le rendu déterministe.
+                                    </p>
+                                </div>
+                            @endif
+
+                            <form method="POST" action="{{ route('documents.preview-pdf', $document) }}">
+                                @csrf
+                                <input type="hidden" name="regenerate_without_ai" value="1">
+                                <button type="submit"
+                                        class="inline-flex items-center gap-2 bg-on-primary-container text-primary hover:bg-surface-container-high px-5 py-2.5 rounded-xl font-body-md font-semibold transition-colors">
+                                    <span class="material-symbols-outlined">restart_alt</span>
+                                    {{ $regeneratedWithoutAi ? 'Regénérer l\'aperçu sans IA' : 'Régénérer sans IA pour comparer' }}
+                                </button>
+                            </form>
+                        @else
+                            <p class="font-caption text-caption text-on-surface-variant mb-4">
+                                Ce document a été analysé en mode 100 % déterministe :
+                                aucun appel à un service d'IA externe n'a été émis.
+                            </p>
+                            <div class="flex items-start gap-3 bg-surface-container-low border border-outline-variant rounded-xl p-4">
+                                <span class="material-symbols-outlined text-primary mt-0.5">verified_user</span>
+                                <p class="font-caption text-caption text-on-surface-variant">
+                                    La détection (titres, listes, tableaux, images) repose uniquement
+                                    sur les styles Word, les motifs regex et les règles déterministes.
                                 </p>
                             </div>
                         @endif

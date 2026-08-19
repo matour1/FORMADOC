@@ -190,6 +190,84 @@ class DocumentAnalysisPipelineTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_upload_sans_use_ai_n_appelle_pas_l_ia(): void
+    {
+        // Phase 4 : l'IA est OPTIONNELLE. Sans la case « use_ai », aucun appel
+        // externe n'est émis, même si des ambiguïtés existent.
+        Http::fake();
+
+        $docxPath = $this->createTestDocx();
+
+        $response = $this->post('/documents/upload', [
+            'document' => new \Illuminate\Http\UploadedFile(
+                $docxPath,
+                'rapport_sans_ai.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true
+            ),
+            'title_method' => 'regex',
+            // 'use_ai' volontairement absent (comportement par défaut)
+        ]);
+
+        $response->assertRedirect();
+
+        $document = Document::first();
+        $this->assertNotNull($document);
+        $this->assertFalse($document->metadata['use_ai']);
+
+        $structure = DocumentStructure::where('document_id', $document->id)->first();
+        $this->assertNotNull($structure);
+        // Aucune trace IA dans la structure
+        $this->assertArrayNotHasKey('ai_corrections', $structure->structure);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_upload_avec_use_ai_appelle_l_ia_correcteur(): void
+    {
+        // Phase 4 : la case « Utiliser l'assistance IA » active le
+        // post-processeur AiCorrectionService (corrections ciblées).
+        // title_method=regex → DocAnalyzer n'appelle PAS l'IA ; seul le
+        // correcteur envoie une requête (payload réduit aux éléments ambigus).
+        $iaJson = json_encode(['corrections' => []], JSON_UNESCAPED_UNICODE);
+
+        Http::fake([
+            'api.deepseek.com/*' => Http::response([
+                'choices' => [['message' => ['content' => $iaJson]]],
+            ], 200),
+        ]);
+
+        $docxPath = $this->createTestDocx();
+
+        $response = $this->post('/documents/upload', [
+            'document' => new \Illuminate\Http\UploadedFile(
+                $docxPath,
+                'rapport_avec_ai.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true
+            ),
+            'title_method' => 'regex',
+            'use_ai' => '1',
+        ]);
+
+        $response->assertRedirect();
+
+        $document = Document::first();
+        $this->assertNotNull($document);
+        $this->assertTrue($document->metadata['use_ai']);
+
+        // Le correcteur IA a été sollicité (1 appel unique)
+        Http::assertSentCount(1);
+
+        $structure = DocumentStructure::where('document_id', $document->id)->first();
+        $this->assertNotNull($structure);
+        // L'IA n'a proposé aucune correction → la structure déterministe est
+        // conservée strictement à l'identique (aucune clé de traçabilité).
+        $this->assertArrayNotHasKey('ai_corrections', $structure->structure);
+    }
+
     public function test_upload_title_method_invalide_est_refuse(): void
     {
         $docxPath = $this->createTestDocx();

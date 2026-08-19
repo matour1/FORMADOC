@@ -30,9 +30,15 @@ class StoreDocumentRequest extends FormRequest
                 'mimetypes:application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,text/plain',
             ],
             // Méthode de détection des titres choisie par l'utilisateur :
-            //   - 'regex' : rapide (styles Word + motifs regex), fallback IA
+            //   - 'regex' : rapide (styles Word + motifs regex), sans IA
             //   - 'ia'    : analyse par intelligence artificielle
             'title_method' => ['sometimes', 'in:regex,ia'],
+
+            // Assistance IA facultative (case à cocher explicite) :
+            //   - absente/false  : mode 100 % déterministe, aucun appel externe
+            //   - true           : l'IA corrige les listes et lève les ambiguïtés
+            //                      APRÈS la détection déterministe (post-processeur)
+            'use_ai' => ['sometimes', 'boolean'],
         ];
     }
 

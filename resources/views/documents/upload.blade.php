@@ -114,9 +114,6 @@
                                             complétée par des motifs regex (numérotation « 1. », « 1.1 »,
                                             mots-clés CHAPITRE, INTRODUCTION…). <strong>Rapide et hors-ligne.</strong>
                                         </p>
-                                        <p class="font-caption text-caption text-primary mt-2">
-                                            Si aucun titre n'est trouvé, l'IA prend automatiquement le relais.
-                                        </p>
                                     </div>
                                 </div>
                             </label>
@@ -140,6 +137,25 @@
                                 </div>
                             </label>
                         </div>
+                    </div>
+
+                    {{-- Assistance IA facultative (post-processeur correctif) --}}
+                    <div class="mt-6">
+                        <label for="use_ai"
+                               class="flex items-start gap-3 border-2 border-outline-variant rounded-xl p-5 cursor-pointer transition-colors hover:border-primary has-[:checked]:border-primary bg-surface-container-low/40">
+                            <input type="checkbox" name="use_ai" id="use_ai" value="1"
+                                   class="mt-0.5 w-5 h-5 rounded border-outline-variant text-primary focus:ring-primary">
+                            <span>
+                                <span class="block font-body-md font-semibold text-on-surface">Utiliser l'assistance IA</span>
+                                <span class="block font-caption text-caption text-on-surface-variant mt-1">
+                                    L'IA peut améliorer la détection des listes et lever les ambiguïtés, mais peut ralentir le traitement.
+                                </span>
+                                <span class="block font-caption text-caption text-secondary mt-2">
+                                    Non cochée par défaut : aucune donnée n'est envoyée à un service externe.
+                                    L'analyse déterministe reste entièrement fonctionnelle sans IA.
+                                </span>
+                            </span>
+                        </label>
                     </div>
 
                     <div class="flex justify-end mt-6">
@@ -271,22 +287,38 @@
                 logEl.scrollTop = logEl.scrollHeight;
             }
 
-            // Étapes affichées pendant la requête (adaptées à la méthode)
-            function startAnimation(method) {
-                const steps = method === 'ia' ? [
-                    ['Analyse des styles et du texte du document…', 'description'],
-                    ['Envoi du contenu à l\'IA (DeepSeek)…', 'smart_toy'],
-                    ['Classification des titres et sous-titres par l\'IA…', 'psychology'],
-                    ['Détection des en-têtes, pieds de page, tableaux et images…', 'grid_on'],
-                    ['Détection des légendes (figures, tableaux)…', 'image'],
-                    ['Fusion des résultats et normalisation de la structure…', 'merge']
-                ] : [
-                    ['Analyse des styles Word (Heading, tailles, gras)…', 'format_bold'],
-                    ['Détection des titres par motifs regex…', 'rule'],
-                    ['Détection des en-têtes, pieds de page, tableaux et images…', 'grid_on'],
-                    ['Détection des légendes (figures, tableaux)…', 'image'],
-                    ['Fusion des résultats et normalisation de la structure…', 'merge']
-                ];
+            // Étapes affichées pendant la requête (adaptées à la méthode + IA)
+            function startAnimation(method, useAi) {
+                const steps = [];
+
+                if (method === 'ia') {
+                    steps.push(
+                        ['Analyse des styles et du texte du document…', 'description'],
+                        ['Envoi du contenu à l\'IA (DeepSeek)…', 'smart_toy'],
+                        ['Classification des titres et sous-titres par l\'IA…', 'psychology'],
+                        ['Détection des en-têtes, pieds de page, tableaux et images…', 'grid_on'],
+                        ['Détection des légendes (figures, tableaux)…', 'image'],
+                        ['Fusion des résultats et normalisation de la structure…', 'merge']
+                    );
+                } else if (useAi) {
+                    steps.push(
+                        ['Analyse des styles Word (Heading, tailles, gras)…', 'format_bold'],
+                        ['Détection des titres par motifs regex…', 'rule'],
+                        ['Détection des en-têtes, pieds de page, tableaux et images…', 'grid_on'],
+                        ['Détection des légendes (figures, tableaux)…', 'image'],
+                        ['Envoi des éléments ambigus à l\'IA pour correction ciblée…', 'smart_toy'],
+                        ['Correction des listes et levée des ambiguïtés…', 'psychology'],
+                        ['Fusion des résultats et normalisation de la structure…', 'merge']
+                    );
+                } else {
+                    steps.push(
+                        ['Analyse des styles Word (Heading, tailles, gras)…', 'format_bold'],
+                        ['Détection des titres par motifs regex…', 'rule'],
+                        ['Détection des en-têtes, pieds de page, tableaux et images…', 'grid_on'],
+                        ['Détection des légendes (figures, tableaux)…', 'image'],
+                        ['Fusion des résultats et normalisation de la structure…', 'merge']
+                    );
+                }
 
                 logEl.innerHTML = '<p><span class="text-primary-fixed-dim">$</span> Préparation de l\'analyse…</p>';
 
@@ -329,7 +361,8 @@
                 subtitleEl.textContent = 'Veuillez patienter pendant que FORMADOC examine votre rapport.';
 
                 const method = document.querySelector('input[name="title_method"]:checked').value;
-                const anim = startAnimation(method);
+                const useAi = document.getElementById('use_ai')?.checked || false;
+                const anim = startAnimation(method, useAi);
 
                 const fd = new FormData(form);
 

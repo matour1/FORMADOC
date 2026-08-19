@@ -258,7 +258,8 @@ class DocumentParser
      *
      * Chaque ligne non vide devient un paragraphe Text (styles vides) : le
      * RuleBasedDetector ne trouvera pas de titres par styles (aucun Heading),
-     * ce qui déclenchera la passe regex, ou le fallback IA en cas d'échec.
+     * ce qui déclenchera la passe regex. L'IA n'intervient que si
+     * l'utilisateur l'active explicitement (Phase 4 — mode déterministe).
      */
     private function phpWordFromPlainText(): PhpWord
     {

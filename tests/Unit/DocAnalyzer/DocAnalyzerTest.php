@@ -15,9 +15,9 @@ use Tests\TestCase;
  * Tests d'intégration du DocAnalyzer (orchestrateur).
  *
  * Pipeline complet : DocumentParser → RuleBasedDetector → DeepSeekAnalyzer
- * (si nécessaire) → ResultMerger. On vérifie :
+ * (si explicitement demandé) → ResultMerger. On vérifie :
  *  - les règles suffisent → pas d'appel IA (forceIA=false par défaut)
- *  - catégorie critique vide → IA appelée en complément
+ *  - Phase 4 : catégorie critique vide SANS forceIA → AUCUN appel IA
  *  - forceIA=true → IA appelée, fusion règles+IA sans doublons
  *  - l'échec IA n'est jamais fatal (résultat = règles seules)
  */
@@ -68,7 +68,8 @@ class DocAnalyzerTest extends TestCase
     }
 
     /**
-     * DOCX SANS titres (catégorie critique vide → déclenche l'IA).
+     * DOCX SANS titres (catégorie critique vide — l'IA ne doit PAS être
+     * appelée automatiquement en Phase 4).
      */
     private function createDocxWithoutTitles(string $filename = 'sans_titres.docx'): string
     {
@@ -128,8 +129,10 @@ class DocAnalyzerTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_categorie_critique_vide_declenche_l_ia(): void
+    public function test_categorie_critique_vide_sans_force_ia_n_appelle_pas_l_ia(): void
     {
+        // Phase 4 : AUCUN fallback automatique vers l'IA. Sans forceIA,
+        // même si les catégories critiques sont vides, aucun appel externe.
         $iaJson = json_encode([
             'titres' => [
                 ['texte' => 'Titre IA', 'position' => ['section_index' => 0, 'element_index' => 0, 'parent' => 'body']],
@@ -150,6 +153,38 @@ class DocAnalyzerTest extends TestCase
 
         $analyzer = new DocAnalyzer(config_path('analyzer.php'));
         $result = $analyzer->analyze($this->createDocxWithoutTitles());
+
+        // La structure est valide, mais AUCUN titre (pas de fallback IA)
+        $this->assertTrue(AnalyzerResult::isValid($result));
+        $this->assertSame([], $result['titres']);
+
+        // L'IA n'a PAS été appelée
+        Http::assertNothingSent();
+    }
+
+    public function test_force_ia_avec_categorie_vide_appelle_l_ia(): void
+    {
+        $iaJson = json_encode([
+            'titres' => [
+                ['texte' => 'Titre IA', 'position' => ['section_index' => 0, 'element_index' => 0, 'parent' => 'body']],
+            ],
+            'sous_titres' => [],
+            'en_tetes' => [],
+            'pieds_de_page' => [],
+            'tableaux' => [],
+            'images' => [],
+            'elements_flottants' => [],
+        ], JSON_UNESCAPED_UNICODE);
+
+        Http::fake([
+            'api.deepseek.com/*' => Http::response([
+                'choices' => [['message' => ['content' => $iaJson]]],
+            ], 200),
+        ]);
+
+        $analyzer = new DocAnalyzer(config_path('analyzer.php'));
+        // forceIA=true : l'IA est appelée, même si la méthode est 'regex'
+        $result = $analyzer->analyze($this->createDocxWithoutTitles(), forceIA: true);
 
         // L'IA a complété la catégorie critique vide
         $this->assertCount(1, $result['titres']);
@@ -185,7 +220,7 @@ class DocAnalyzerTest extends TestCase
         ]);
 
         $analyzer = new DocAnalyzer(config_path('analyzer.php'));
-        $result = $analyzer->analyze($this->createDocxWithoutTitles());
+        $result = $analyzer->analyze($this->createDocxWithoutTitles(), forceIA: true);
 
         // L'IA a échoué → résultat vide valide (règles seules, ici rien)
         $this->assertTrue(AnalyzerResult::isValid($result));
@@ -259,35 +294,21 @@ class DocAnalyzerTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_title_method_regex_sans_titres_fallback_ia(): void
+    public function test_title_method_regex_sans_titres_n_appelle_pas_l_ia(): void
     {
-        // L'IA est appelée en fallback : elle complète les titres
-        $iaJson = json_encode([
-            'titres' => [
-                ['texte' => 'Titre IA fallback', 'position' => ['section_index' => 0, 'element_index' => 0, 'parent' => 'body']],
-            ],
-            'sous_titres' => [],
-            'en_tetes' => [],
-            'pieds_de_page' => [],
-            'tableaux' => [],
-            'images' => [],
-            'elements_flottants' => [],
-        ], JSON_UNESCAPED_UNICODE);
-
-        Http::fake([
-            'api.deepseek.com/*' => Http::response([
-                'choices' => [['message' => ['content' => $iaJson]]],
-            ], 200),
-        ]);
+        // Phase 4 : le fallback IA automatique a été SUPPRIMÉ. Même si la
+        // passe regex ne trouve aucun titre, l'IA n'est pas appelée sans
+        // activation explicite (forceIA ou title_method='ia').
+        Http::fake();
 
         $analyzer = new DocAnalyzer(config_path('analyzer.php'));
-        // Aucun titre détectable (ni styles ni numérotation) → fallback IA
+        // Aucun titre détectable (ni styles ni numérotation) → pas de fallback IA
         $result = $analyzer->analyze($this->createDocxWithoutTitles(), titleMethod: DocAnalyzer::METHOD_REGEX);
 
-        // L'IA a pris le relais automatiquement
-        $this->assertCount(1, $result['titres']);
-        $this->assertSame('Titre IA fallback', $result['titres'][0]['texte']);
-        Http::assertSentCount(1);
+        // Aucun titre détecté, mais AUCUN appel IA
+        $this->assertTrue(AnalyzerResult::isValid($result));
+        $this->assertSame([], $result['titres']);
+        Http::assertNothingSent();
     }
 
     public function test_title_method_ia_force_l_appel(): void
