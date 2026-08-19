@@ -446,6 +446,23 @@ class DocumentParserTest extends TestCase
         $this->assertStringNotContainsString('SEQ', $resolved);
     }
 
+    public function test_les_compteurs_seq_sont_globaux_au_document(): void
+    {
+        $parser = new DocumentParser($this->createDocxWithImageAndSeq());
+
+        // Plusieurs éléments successifs : la numérotation doit continuer
+        // (1, 2, 3…) comme Word, et non repartir de 1 à chaque élément.
+        $a = $parser->resolveSeqFields('Figure { SEQ Figure \* ARABIC } : A');
+        $b = $parser->resolveSeqFields('Figure { SEQ Figure \* ARABIC } : B');
+        $c = $parser->resolveSeqFields('Tableau { SEQ Tableau \* ARABIC } : C');
+        $d = $parser->resolveSeqFields('Figure { SEQ Figure \* ARABIC } : D');
+
+        $this->assertStringContainsString('Figure 1 : A', $a);
+        $this->assertStringContainsString('Figure 2 : B', $b);
+        $this->assertStringContainsString('Tableau 1 : C', $c);
+        $this->assertStringContainsString('Figure 3 : D', $d);
+    }
+
     public function test_strip_field_codes_retire_toc_page_ref(): void
     {
         $parser = new DocumentParser($this->createDocxWithImageAndSeq());

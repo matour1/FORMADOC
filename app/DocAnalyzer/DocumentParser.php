@@ -68,6 +68,20 @@ class DocumentParser
     private int $globalElementIndex = 0;
 
     /**
+     * Compteurs de numérotation SEQ (par type) — GLOBAUX au document.
+     *
+     * Word numérote les champs SEQ automatiquement par type dans l'ordre
+     * d'apparition : Figure 1, 2, 3… ; Tableau 1, 2, 3… Un compteur LOCAL
+     * à chaque appel (ancien code) remettait chaque légende à "1" —
+     * faux : "Figure 1" répété partout au lieu de 1, 2, 3…
+     *
+     * Réinitialisé au début de parse().
+     *
+     * @var array<string, int>
+     */
+    private array $seqCounters = [];
+
+    /**
      * Types d'éléments PhpWord considérés comme du texte.
      *
      * @var string[]
@@ -117,6 +131,7 @@ class DocumentParser
     {
         $this->phpWord = $this->load();
         $this->globalElementIndex = 0;
+        $this->seqCounters = [];
 
         // Extraction XML brute des en-têtes/pieds de page (les textboxes
         // graphiques y sont ignorées par PhpWord : on complète par le XML).
@@ -744,15 +759,15 @@ class DocumentParser
      */
     public function resolveSeqFields(string $text): string
     {
-        $counters = [];
-
         return (string) preg_replace_callback(
             '/\{\s*SEQ\s+([A-Za-zÀ-ÿ]+)[^}]*\}/iu',
-            static function (array $m) use (&$counters): string {
+            function (array $m): string {
                 $type = ucfirst(mb_strtolower(trim((string) $m[1])));
-                $counters[$type] = ($counters[$type] ?? 0) + 1;
+                // Compteur GLOBAL par type : Word numérote 1, 2, 3…
+                // dans l'ordre d'apparition dans le document entier.
+                $this->seqCounters[$type] = ($this->seqCounters[$type] ?? 0) + 1;
 
-                return (string) $counters[$type];
+                return (string) $this->seqCounters[$type];
             },
             $text
         );

@@ -560,10 +560,24 @@ class DocumentController extends Controller
             return $structure;
         }
 
+        // Un élément est "image à compléter" s'il est :
+        //  - type 'image' sans binaire (parse récent, enrichissement partiel),
+        //  - type 'texte' avec placeholder "[image:xxx.ext]" (structure
+        //    sauvegardée AVANT la Phase 3 : le Reader PhpWord encapsulait
+        //    les images dans des TextRun et le parser les classait 'texte').
+        $needsEnrichment = static function (array $element): bool {
+            if (($element['type'] ?? '') === 'image') {
+                return empty($element['image_data'] ?? '');
+            }
+
+            return ($element['type'] ?? '') === 'texte'
+                && preg_match('/^\[image:[^\]]+\]$/u', trim((string) ($element['text'] ?? ''))) === 1;
+        };
+
         // Document déjà enrichi (mémorisé) : aucun travail à refaire
         $hasAll = true;
         foreach ($bodyComplet as $element) {
-            if (($element['type'] ?? '') === 'image' && empty($element['image_data'] ?? '')) {
+            if ($needsEnrichment($element)) {
                 $hasAll = false;
 
                 break;
@@ -602,20 +616,29 @@ class DocumentController extends Controller
                 }
             }
 
-            // Complète les éléments image du body_complet mémorisé
+            // Complète / convertit les éléments image du body_complet mémorisé
             foreach ($bodyComplet as &$element) {
-                if (($element['type'] ?? '') !== 'image') {
+                if (!$needsEnrichment($element)) {
                     continue;
                 }
 
                 $pos = $element['position'] ?? [];
                 $key = ($pos['section_index'] ?? 0) . ':' . ($pos['element_index'] ?? 0);
 
-                if (isset($imagesByPosition[$key])) {
-                    foreach ($imagesByPosition[$key] as $k => $v) {
-                        if (($element[$k] ?? null) === null || $element[$k] === '') {
-                            $element[$k] = $v;
-                        }
+                if (!isset($imagesByPosition[$key])) {
+                    continue;
+                }
+
+                // Placeholder "[image:...]" en type 'texte' (anciennes
+                // structures) : on le re-typifie en 'image' pour que le
+                // reconstructeur l'embarque réellement dans le DOCX.
+                if (($element['type'] ?? '') === 'texte') {
+                    $element['type'] = 'image';
+                }
+
+                foreach ($imagesByPosition[$key] as $k => $v) {
+                    if (($element[$k] ?? null) === null || $element[$k] === '') {
+                        $element[$k] = $v;
                     }
                 }
             }

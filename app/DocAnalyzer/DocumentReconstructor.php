@@ -94,6 +94,22 @@ class DocumentReconstructor
     private array $tempImages = [];
 
     /**
+     * Compteurs de numérotation SEQ (par type) — GLOBAUX à la reconstruction.
+     *
+     * Les structures SAUVEGARDÉES avant la Phase 3 (détection des champs
+     * SEQ par DocumentParser) contiennent encore les codes de champ Word
+     * littéraux "{ SEQ Figure \* ARABIC }" dans les textes de body_complet
+     * et les légendes. Sans résolution, le DOCX généré affiche le code
+     * brut au lieu de "Figure 1", "Tableau 2"…
+     *
+     * On résout donc ici, avec un compteur global par type (1, 2, 3…),
+     * pour TOUTES les sources (body_complet + légendes du frontispice).
+     *
+     * @var array<string, int>
+     */
+    private array $seqCounters = [];
+
+    /**
      * Génère un DOCX complet à partir de la structure analysée.
      *
      * @param array<string, mixed> $analysis   Résultat du DocAnalyzer (+ legends)
@@ -282,10 +298,14 @@ class DocumentReconstructor
                 $resolver::titleParagraphStyle($this->gabarit)
             );
             foreach ($figures as $legend) {
+                // Champs SEQ littéraux (structures pré-Phase 3) : résolus
+                // avec un compteur LOCAL — le frontispice est écrit AVANT le
+                // corps et ne doit pas consommer la numérotation du corps.
+                $label = $this->resolveSeqFields((string) ($legend['label'] ?? ''), false);
                 $section->addText(sprintf(
                     'Figure %s : %s',
                     $legend['number'] ?? '?',
-                    $legend['label'] ?? ''
+                    $label
                 ));
             }
         }
@@ -299,10 +319,11 @@ class DocumentReconstructor
                 $resolver::titleParagraphStyle($this->gabarit)
             );
             foreach ($tableaux as $legend) {
+                $label = $this->resolveSeqFields((string) ($legend['label'] ?? ''), false);
                 $section->addText(sprintf(
                     'Tableau %s : %s',
                     $legend['number'] ?? '?',
-                    $legend['label'] ?? ''
+                    $label
                 ));
             }
         }
@@ -340,6 +361,12 @@ class DocumentReconstructor
             foreach ($bodyComplet as $element) {
                 $texte = trim((string) ($element['text'] ?? ''));
                 $type = (string) ($element['type'] ?? 'autre');
+
+                // Champs SEQ littéraux (structures pré-Phase 3) : résolus en
+                // numéros concrets avec un compteur global par type, comme
+                // Word (Figure 1, 2, 3… ; Tableau 1, 2, 3…).
+                $texte = $this->resolveSeqFields($texte);
+
                 if ($texte === '' && !in_array($type, ['image', 'saut', 'tableau'], true)) {
                     continue;
                 }
@@ -360,7 +387,7 @@ class DocumentReconstructor
                     continue;
                 }
 
-                $this->writeElement($section, $element, $resolver);
+                $this->writeElement($section, $element, $resolver, $texte);
             }
 
             return;
@@ -398,6 +425,9 @@ class DocumentReconstructor
                 continue;
             }
 
+            // Champs SEQ littéraux (structures pré-Phase 3)
+            $texte = $this->resolveSeqFields($texte);
+
             $niveau = min(3, max(1, (int) ($item['niveau'] ?? 1)));
             $section->addTitle($texte, $niveau);
         }
@@ -408,11 +438,14 @@ class DocumentReconstructor
      *
      * @param array<string, mixed> $element
      * @param class-string         $resolver
+     * @param null|string          $texteResolu Texte déjà résolu (champs
+     *                                          SEQ remplacés) par writeBody ;
+     *                                          null → texte de l'élément.
      */
-    private function writeElement(Section $section, array $element, string $resolver): void
+    private function writeElement(Section $section, array $element, string $resolver, ?string $texteResolu = null): void
     {
         $type = $element['type'] ?? 'autre';
-        $texte = trim((string) ($element['text'] ?? ''));
+        $texte = $texteResolu ?? trim((string) ($element['text'] ?? ''));
 
         switch ($type) {
             case 'titre':
@@ -553,6 +586,43 @@ class DocumentReconstructor
         }
 
         return $legends;
+    }
+
+    /**
+     * Résout les champs SEQ Word "{ SEQ Figure \* ARABIC }" en numéros
+     * concrets (1, 2, 3…) avec un compteur GLOBAL par type.
+     *
+     * Nécessaire pour les structures sauvegardées avant la Phase 3, dont
+     * les textes contiennent encore les codes de champ littéraux. Les
+     * structures récentes (parse Phase 3) arrivent déjà résolues : le
+     * motif ne matche plus, la méthode est sans effet.
+     *
+     * @param string $text Texte d'un élément ou d'une légende
+     * @param bool   $global true → compteur persistant (corps du document,
+     *                       ordre d'apparition Word) ; false → compteur local
+     *                       jetable (listes du frontispice, qui ne doivent
+     *                       PAS consommer la numérotation du corps).
+     */
+    private function resolveSeqFields(string $text, bool $global = true): string
+    {
+        $localCounters = [];
+
+        return (string) preg_replace_callback(
+            '/\{\s*SEQ\s+([A-Za-zÀ-ÿ]+)[^}]*\}/iu',
+            function (array $m) use ($global, &$localCounters): string {
+                $type = ucfirst(mb_strtolower(trim((string) $m[1])));
+                if ($global) {
+                    $this->seqCounters[$type] = ($this->seqCounters[$type] ?? 0) + 1;
+
+                    return (string) $this->seqCounters[$type];
+                }
+
+                $localCounters[$type] = ($localCounters[$type] ?? 0) + 1;
+
+                return (string) $localCounters[$type];
+            },
+            $text
+        );
     }
 
     /**

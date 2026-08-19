@@ -311,6 +311,62 @@ class DocumentReconstructorTest extends TestCase
         $this->assertStringNotContainsString('Liste des tableaux', $xml);
     }
 
+    // ── Champs SEQ littéraux (structures pré-Phase 3) ────────────────────────
+
+    public function test_les_champs_seq_litteraux_sont_resolus_avec_un_compteur_global(): void
+    {
+        $analysis = $this->sampleAnalysis();
+
+        // Structures SAUVEGARDÉES avant la Phase 3 : le texte contient
+        // encore les codes de champ Word "{ SEQ Figure \* ARABIC }".
+        $analysis['body_complet'] = [
+            [
+                'type' => 'texte',
+                'text' => 'Figure { SEQ Figure \* ARABIC } : Architecture',
+                'styles' => [],
+                'position' => ['section_index' => 1, 'element_index' => 20, 'parent' => 'body'],
+            ],
+            [
+                'type' => 'texte',
+                'text' => 'Figure { SEQ Figure \* ARABIC } : Diagramme de classes',
+                'styles' => [],
+                'position' => ['section_index' => 1, 'element_index' => 30, 'parent' => 'body'],
+            ],
+            [
+                'type' => 'texte',
+                'text' => 'Tableau { SEQ Tableau \* ARABIC } : Récapitulatif des besoins',
+                'styles' => [],
+                'position' => ['section_index' => 1, 'element_index' => 40, 'parent' => 'body'],
+            ],
+        ];
+        // Les légendes de ces structures portent le même code de champ
+        $analysis['legends'] = [
+            ['type' => 'Figure', 'number' => '?', 'label' => '{ SEQ Figure \* ARABIC } : Architecture', 'line' => 1],
+            ['type' => 'Tableau', 'number' => '?', 'label' => '{ SEQ Tableau \* ARABIC } : Récapitulatif des besoins', 'line' => 2],
+        ];
+
+        $outputPath = $this->tempDir . '/seq.docx';
+        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+
+        $xml = $this->readPart($outputPath, 'word/document.xml');
+
+        // Plus AUCUN code de champ littéral
+        $this->assertStringNotContainsString('{ SEQ', $xml);
+        $this->assertStringNotContainsString('SEQ Figure', $xml);
+        $this->assertStringNotContainsString('SEQ Tableau', $xml);
+
+        // La numérotation est globale par type : Figure 1, 2… Tableau 1…
+        $this->assertStringContainsString('Figure 1 : Architecture', $xml);
+        $this->assertStringContainsString('Figure 2 : Diagramme de classes', $xml);
+        $this->assertStringContainsString('Tableau 1 : Récapitulatif des besoins', $xml);
+
+        // Les listes du frontispice reprennent la même numérotation
+        // (même compteur global que le corps).
+        $this->assertStringContainsString('Liste des figures', $xml);
+        $this->assertStringContainsString('Figure 1 : Architecture', $xml);
+        $this->assertStringContainsString('Liste des tableaux', $xml);
+    }
+
     // ── Robustesse ────────────────────────────────────────────────────────────
 
     public function test_genere_un_document_rechargeable_par_phpword(): void
