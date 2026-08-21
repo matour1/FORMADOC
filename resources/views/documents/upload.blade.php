@@ -5,214 +5,149 @@
 @section('content')
     @include('partials.flow-sidebar', ['activeStep' => 1])
 
-    <div class="md:ml-64">
-        <div class="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-gutter md:py-margin-desktop">
+    <div class="max-w-3xl">
 
-            {{-- En-tête de page --}}
-            <div class="mb-8 md:mb-12">
-                <p class="font-label-mono text-label-mono text-primary uppercase mb-2">Étape 1 / 4 — Upload</p>
-                <h1 class="font-h1-mobile text-h1-mobile md:font-h1 md:text-h1 text-on-surface mb-4">
-                    Analyser un rapport
-                </h1>
-                <p class="font-body-md text-body-md text-on-surface-variant max-w-2xl">
+        {{-- En-tête de page --}}
+        <div class="page-header">
+            <div>
+                <span class="eyebrow">Étape 1 / 4 — Upload</span>
+                <h1>Analyser un rapport</h1>
+                <p>
                     Déposez votre rapport (stage, projet ou mémoire) au format
                     <strong>.docx</strong>, <strong>.doc</strong> ou <strong>.txt</strong>.
                     FORMADOC détecte automatiquement sa structure : titres, hiérarchie,
                     en-têtes, pieds de page, tableaux, images et légendes.
                 </p>
             </div>
+        </div>
 
-            {{-- Alertes --}}
-            @if (session('success'))
-                <div class="flex items-start gap-3 bg-surface-container-lowest border border-outline-variant rounded-xl p-4 mb-6">
-                    <span class="material-symbols-outlined text-primary">check_circle</span>
-                    <p class="text-body-md">{{ session('success') }}</p>
+        {{-- Carte d'upload --}}
+        <div class="card">
+            {{-- Aperçu du fichier sélectionné (masqué par défaut) --}}
+            <div id="file-preview" class="file-preview hidden">
+                <div class="fp-icon" id="file-preview-icon">
+                    <i data-lucide="file-text"></i>
                 </div>
-            @endif
-
-            @if ($errors->any())
-                <div class="flex items-start gap-3 bg-error-container border border-error rounded-xl p-4 mb-6">
-                    <span class="material-symbols-outlined text-error">error</span>
-                    <ul class="text-body-md text-on-error-container">
-                        @foreach ($errors->all() as $error)
-                            <li>{{ $error }}</li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
-
-            {{-- Carte d'upload (bento) --}}
-            <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 md:p-10 max-w-3xl">
-                {{-- Aperçu du fichier sélectionné (masqué par défaut) --}}
-                <div id="file-preview"
-                     class="hidden border border-outline-variant rounded-xl p-5 mb-6 bg-surface-container-low">
-                    <div class="flex items-center gap-4">
-                        <span class="material-symbols-outlined text-[48px] text-primary" id="file-preview-icon">description</span>
-                        <div class="min-w-0 flex-1">
-                            <p id="file-preview-name" class="font-body-md font-semibold break-words"></p>
-                            <p id="file-preview-meta" class="font-caption text-caption text-on-surface-variant"></p>
-                        </div>
-                        <button type="button" onclick="resetFileSelection()"
-                                class="shrink-0 inline-flex items-center gap-1 text-secondary hover:bg-surface-container-high px-3 py-2 rounded-lg font-body-md transition-colors"
-                                aria-label="Retirer le fichier">
-                            <span class="material-symbols-outlined text-[20px]">close</span>
-                            Retirer
-                        </button>
-                    </div>
-                    <div id="file-preview-content" class="mt-4 hidden">
-                        <p class="font-label-mono text-label-mono text-secondary uppercase mb-2">Aperçu du contenu</p>
-                        <div id="file-preview-text"
-                             class="bg-surface-container-lowest border border-outline-variant rounded-lg p-4 font-doc-preview text-doc-preview max-h-64 overflow-y-auto whitespace-pre-wrap text-on-surface"></div>
+                <div class="min-w-0 flex-1">
+                    <p id="file-preview-name" class="fp-name"></p>
+                    <p id="file-preview-meta" class="fp-meta"></p>
+                    <div id="file-preview-content" class="fp-content hidden">
+                        <span class="eyebrow" style="margin-bottom:.5rem">Aperçu du contenu</span>
+                        <pre id="file-preview-text"></pre>
                     </div>
                 </div>
+                <button type="button" onclick="resetFileSelection()"
+                        class="btn btn-ghost btn-sm" aria-label="Retirer le fichier">
+                    <i data-lucide="x" style="width:15px;height:15px"></i> Retirer
+                </button>
+            </div>
 
-                <form id="upload-form" action="{{ route('documents.upload') }}" method="POST" enctype="multipart/form-data">
-                    @csrf
+            <form id="upload-form" action="{{ route('documents.upload') }}" method="POST" enctype="multipart/form-data">
+                @csrf
 
-                    <label for="document"
-                           class="block border-2 border-dashed border-outline-variant hover:border-primary rounded-xl p-10 md:p-16 text-center cursor-pointer transition-colors bg-surface-container-low/50">
-                        <span class="material-symbols-outlined text-[64px] text-primary">cloud_upload</span>
-                        <p class="font-body-md text-body-md text-on-surface mt-4 mb-1">
-                            Glissez-déposez votre rapport ici
-                        </p>
-                        <p class="font-caption text-caption text-on-surface-variant">
-                            ou cliquez pour parcourir vos fichiers
-                        </p>
-                        <p class="font-label-mono text-label-mono text-outline mt-4">
-                            .DOCX · .DOC · .TXT — 50 Mo max
-                        </p>
-                        <input type="file"
-                               class="hidden @error('document') is-invalid @enderror"
-                               id="document"
-                               name="document"
-                               accept=".docx,.doc,.txt"
-                               required>
-                    </label>
-                    @error('document')
-                        <p class="font-caption text-caption text-error mt-2">{{ $message }}</p>
-                    @enderror
+                <label for="document" class="dropzone">
+                    <span class="dz-icon"><i data-lucide="cloud-upload" style="width:26px;height:26px"></i></span>
+                    <span class="dz-title">Glissez-déposez votre rapport ici</span>
+                    <span class="dz-sub">ou cliquez pour parcourir vos fichiers</span>
+                    <span class="dz-formats">.DOCX · .DOC · .TXT — 50 Mo max</span>
+                    <input type="file"
+                           class="sr-only @error('document') is-invalid @enderror"
+                           id="document"
+                           name="document"
+                           accept=".docx,.doc,.txt"
+                           required>
+                </label>
+                @error('document')
+                    <span class="field-error">{{ $message }}</span>
+                @enderror
 
-                    {{-- Choix de la méthode d'analyse des titres --}}
-                    <div class="mt-8">
-                        <p class="font-body-md font-semibold text-on-surface mb-1">Méthode de détection des titres</p>
-                        <p class="font-caption text-caption text-on-surface-variant mb-4">
-                            Choisissez comment FORMADOC identifie les titres de votre rapport.
-                        </p>
+                {{-- Choix de la méthode d'analyse des titres --}}
+                <div style="margin-top:1.6rem">
+                    <p style="font-weight:600;font-size:.92rem;margin-bottom:.25rem">Méthode de détection des titres</p>
+                    <p style="color:var(--color-text-muted);font-size:.8rem;margin-bottom:.9rem">
+                        Choisissez comment FORMADOC identifie les titres de votre rapport.
+                    </p>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" role="radiogroup" aria-label="Méthode de détection des titres">
-                            {{-- Méthode Regex (recommandée) --}}
-                            <label class="relative block border-2 border-primary rounded-xl p-5 cursor-pointer transition-colors bg-primary-fixed/30 has-[:checked]:border-primary"
-                                   for="method-regex">
-                                <input type="radio" name="title_method" id="method-regex" value="regex" checked
-                                       class="sr-only peer">
-                                <div class="flex items-start gap-3">
-                                    <span class="material-symbols-outlined text-primary">rule</span>
-                                    <div>
-                                        <p class="font-body-md font-semibold">Analyse rapide (Regex)</p>
-                                        <p class="font-caption text-caption text-on-surface-variant mt-1">
-                                            Détection par les styles Word (Heading 1-3, tailles, gras)
-                                            complétée par des motifs regex (numérotation « 1. », « 1.1 »,
-                                            mots-clés CHAPITRE, INTRODUCTION…). <strong>Rapide et hors-ligne.</strong>
-                                        </p>
-                                    </div>
-                                </div>
-                            </label>
-
-                            {{-- Méthode IA --}}
-                            <label class="relative block border-2 border-outline-variant rounded-xl p-5 cursor-pointer transition-colors hover:border-primary has-[:checked]:border-primary"
-                                   for="method-ia">
-                                <input type="radio" name="title_method" id="method-ia" value="ia"
-                                       class="sr-only peer">
-                                <div class="flex items-start gap-3">
-                                    <span class="material-symbols-outlined text-primary">smart_toy</span>
-                                    <div>
-                                        <p class="font-body-md font-semibold">Analyse par IA</p>
-                                        <p class="font-caption text-caption text-on-surface-variant mt-1">
-                                            Un modèle de langue (DeepSeek) lit l'intégralité du texte pour
-                                            classer chaque élément : titres, sous-titres, en-têtes, pieds de
-                                            page, tableaux, images. <strong>Plus précise mais plus lente</strong>
-                                            (quelques minutes selon la taille du rapport).
-                                        </p>
-                                    </div>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-
-                    {{-- Assistance IA facultative (post-processeur correctif) --}}
-                    <div class="mt-6">
-                        <label for="use_ai"
-                               class="flex items-start gap-3 border-2 border-outline-variant rounded-xl p-5 cursor-pointer transition-colors hover:border-primary has-[:checked]:border-primary bg-surface-container-low/40">
-                            <input type="checkbox" name="use_ai" id="use_ai" value="1"
-                                   class="mt-0.5 w-5 h-5 rounded border-outline-variant text-primary focus:ring-primary">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem" role="radiogroup" aria-label="Méthode de détection des titres">
+                        {{-- Méthode Regex (recommandée) --}}
+                        <label class="radio-card" for="method-regex">
+                            <input type="radio" name="title_method" id="method-regex" value="regex" checked>
+                            <span class="rc-icon"><i data-lucide="file-check" style="width:17px;height:17px"></i></span>
                             <span>
-                                <span class="block font-body-md font-semibold text-on-surface">Utiliser l'assistance IA</span>
-                                <span class="block font-caption text-caption text-on-surface-variant mt-1">
-                                    L'IA peut améliorer la détection des listes et lever les ambiguïtés, mais peut ralentir le traitement.
-                                </span>
-                                <span class="block font-caption text-caption text-secondary mt-2">
-                                    Non cochée par défaut : aucune donnée n'est envoyée à un service externe.
-                                    L'analyse déterministe reste entièrement fonctionnelle sans IA.
-                                </span>
+                                <strong>Analyse rapide (Regex)</strong>
+                                <small>Détection par les styles Word (Heading 1-3, tailles, gras) complétée par des motifs regex (numérotation « 1. », « 1.1 », mots-clés CHAPITRE, INTRODUCTION…). <strong>Rapide et hors-ligne.</strong></small>
+                            </span>
+                        </label>
+
+                        {{-- Méthode IA --}}
+                        <label class="radio-card" for="method-ia">
+                            <input type="radio" name="title_method" id="method-ia" value="ia">
+                            <span class="rc-icon"><i data-lucide="bot" style="width:17px;height:17px"></i></span>
+                            <span>
+                                <strong>Analyse par IA</strong>
+                                <small>Un modèle de langue (DeepSeek) lit l'intégralité du texte pour classer chaque élément : titres, sous-titres, en-têtes, pieds de page, tableaux, images. <strong>Plus précise mais plus lente</strong> (quelques minutes selon la taille du rapport).</small>
                             </span>
                         </label>
                     </div>
-
-                    <div class="flex justify-end mt-6">
-                        <button type="submit" id="upload-submit"
-                                class="inline-flex items-center gap-2 bg-primary hover:bg-primary-fixed-variant text-on-primary px-6 py-3 rounded-xl font-body-md text-body-md font-semibold transition-colors">
-                            <span class="material-symbols-outlined" id="submit-icon">manage_search</span>
-                            <span id="submit-label">Analyser le document</span>
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            {{-- Animation d'analyse (masquée, affichée pendant le traitement) --}}
-            <div id="analysis-panel"
-                 class="hidden bg-surface-container-lowest border border-outline-variant rounded-xl p-8 md:p-10 max-w-3xl mt-8">
-                <div class="flex items-center gap-4 mb-6">
-                    <div class="relative w-14 h-14 shrink-0">
-                        <div class="absolute inset-0 rounded-full bg-primary-fixed opacity-40 pulse-icon"></div>
-                        <div class="absolute inset-0 flex items-center justify-center">
-                            <span class="material-symbols-outlined text-primary text-[32px]">auto_awesome</span>
-                        </div>
-                    </div>
-                    <div>
-                        <h2 class="font-h2 text-h2 text-on-surface" id="analysis-title">Analyse en cours…</h2>
-                        <p class="font-caption text-caption text-on-surface-variant" id="analysis-subtitle">
-                            Veuillez patienter pendant que FORMADOC examine votre rapport.
-                        </p>
-                    </div>
                 </div>
 
-                <div class="w-full loading-track mb-6">
-                    <div class="loading-fill"></div>
+                {{-- Assistance IA facultative (post-processeur correctif) --}}
+                <div style="margin-top:1.2rem">
+                    <label for="use_ai" class="check-card">
+                        <input type="checkbox" name="use_ai" id="use_ai" value="1">
+                        <span class="cc-icon"><i data-lucide="sparkles" style="width:17px;height:17px"></i></span>
+                        <span>
+                            <strong>Utiliser l'assistance IA</strong>
+                            <small>L'IA peut améliorer la détection des listes et lever les ambiguïtés, mais peut ralentir le traitement.</small>
+                            <span class="cc-note">Non cochée par défaut : aucune donnée n'est envoyée à un service externe. L'analyse déterministe reste entièrement fonctionnelle sans IA.</span>
+                        </span>
+                    </label>
                 </div>
 
-                {{-- Journal d'analyse : étapes distinctes --}}
-                <div id="analysis-log"
-                     class="w-full bg-inverse-surface text-surface-container-lowest rounded-xl p-5 font-label-mono text-label-mono text-left space-y-2 min-h-[180px] max-h-72 overflow-y-auto">
-                    <p><span class="text-primary-fixed-dim">$</span> Préparation de l'analyse…</p>
+                <div style="display:flex;justify-content:flex-end;margin-top:1.5rem">
+                    <button type="submit" id="upload-submit" class="btn btn-primary">
+                        <i data-lucide="search-check" id="submit-icon" style="width:17px;height:17px"></i>
+                        <span id="submit-label">Analyser le document</span>
+                    </button>
                 </div>
-            </div>
-
-            {{-- Aperçu du parcours --}}
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8 max-w-3xl">
-                @foreach ([
-                    ['fact_check', 'Validation', 'Vérifiez et corrigez la structure détectée'],
-                    ['auto_awesome', 'Traitement', 'Mise en forme selon le gabarit institutionnel'],
-                    ['download', 'Export', 'Téléchargez votre DOCX reconstruit'],
-                ] as $step)
-                    <div class="bg-surface-container-low border border-outline-variant rounded-xl p-4">
-                        <span class="material-symbols-outlined text-primary">{{ $step[0] }}</span>
-                        <p class="font-body-md text-body-md font-semibold mt-2">{{ $step[1] }}</p>
-                        <p class="font-caption text-caption text-on-surface-variant">{{ $step[2] }}</p>
-                    </div>
-                @endforeach
-            </div>
-
+            </form>
         </div>
+
+        {{-- Animation d'analyse (masquée, affichée pendant le traitement) --}}
+        <div id="analysis-panel" class="card analysis-panel hidden">
+            <div class="analysis-head">
+                <div class="pulse-icon"><i data-lucide="wand-2" style="width:24px;height:24px"></i></div>
+                <div>
+                    <h2 style="font-size:1.1rem;font-weight:700" id="analysis-title">Analyse en cours…</h2>
+                    <p style="color:var(--color-text-muted);font-size:.8rem" id="analysis-subtitle">
+                        Veuillez patienter pendant que FORMADOC examine votre rapport.
+                    </p>
+                </div>
+            </div>
+
+            <div class="loading-track"><div class="loading-fill"></div></div>
+
+            {{-- Journal d'analyse : étapes distinctes --}}
+            <div id="analysis-log" class="analysis-log">
+                <p><span class="log-prompt">$</span><span class="log-line">Préparation de l'analyse…</span></p>
+            </div>
+        </div>
+
+        {{-- Aperçu du parcours --}}
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:1.5rem">
+            @foreach ([
+                ['check-square', 'Validation', 'Vérifiez et corrigez la structure détectée'],
+                ['wand-2', 'Traitement', 'Mise en forme selon le gabarit institutionnel'],
+                ['download', 'Export', 'Téléchargez votre DOCX reconstruit'],
+            ] as $step)
+                <div class="card" style="padding:1.1rem">
+                    <i data-lucide="{{ $step[0] }}" style="width:20px;height:20px;color:var(--color-primary)"></i>
+                    <p style="font-weight:600;font-size:.9rem;margin-top:.55rem">{{ $step[1] }}</p>
+                    <p style="color:var(--color-text-muted);font-size:.78rem">{{ $step[2] }}</p>
+                </div>
+            @endforeach
+        </div>
+
     </div>
 
     @push('scripts')
@@ -242,10 +177,11 @@
                 previewMeta.textContent = formatSize(file.size) + ' · ' + (file.type || 'inconnu');
 
                 if (file.name.toLowerCase().endsWith('.txt')) {
-                    previewIcon.textContent = 'article';
+                    previewIcon.innerHTML = '<i data-lucide="file-text"></i>';
                 } else {
-                    previewIcon.textContent = 'description';
+                    previewIcon.innerHTML = '<i data-lucide="file-text"></i>';
                 }
+                if (window.lucide) lucide.createIcons();
 
                 // Aperçu du contenu pour les .txt (petits fichiers uniquement)
                 if (file.name.toLowerCase().endsWith('.txt') && file.size < 100000) {
@@ -280,9 +216,8 @@
 
             function appendLog(line, icon) {
                 const p = document.createElement('p');
-                p.innerHTML = '<span class="text-primary-fixed-dim">$</span> '
-                    + (icon ? '<span class="material-symbols-outlined align-middle text-[16px] mr-1">' + icon + '</span>' : '')
-                    + line;
+                p.innerHTML = '<span class="log-prompt">$</span>'
+                    + '<span class="log-line">' + line + '</span>';
                 logEl.appendChild(p);
                 logEl.scrollTop = logEl.scrollHeight;
             }
@@ -320,7 +255,7 @@
                     );
                 }
 
-                logEl.innerHTML = '<p><span class="text-primary-fixed-dim">$</span> Préparation de l\'analyse…</p>';
+                logEl.innerHTML = '<p><span class="log-prompt">$</span><span class="log-line">Préparation de l\'analyse…</span></p>';
 
                 let index = 0;
                 let timer = null;

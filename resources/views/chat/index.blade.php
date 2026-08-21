@@ -3,88 +3,92 @@
 @section('title', 'Assistant IA')
 
 @section('content')
-    <div class="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-gutter md:py-margin-desktop">
-
-        {{-- En-tête de page --}}
-        <div class="mb-8 md:mb-12">
-            <p class="font-label-mono text-label-mono text-primary uppercase mb-2">Assistant IA</p>
-            <h1 class="font-h1-mobile text-h1-mobile md:font-h1 md:text-h1 text-on-surface mb-4">
-                Discuter avec l'assistant
-            </h1>
-            <p class="font-body-md text-body-md text-on-surface-variant max-w-2xl">
-                Posez vos questions sur la mise en forme de rapports, la rédaction,
-                la structure de vos documents. Chaque message affiche son coût en
-                crédits <strong>avant</strong> l'envoi.
+    <div class="page-header">
+        <div>
+            <span class="eyebrow">Assistant IA</span>
+            <h1>Discuter avec l'assistant</h1>
+            <p>
+                Posez vos questions sur la mise en forme de rapports, la rédaction, la structure de vos documents.
+                L'assistant peut <strong>exécuter des actions</strong> : pages de garde, reconstruction, recherche web, images.
             </p>
         </div>
-
-        {{-- Alertes --}}
-        @if (session('error'))
-            <div class="flex items-start gap-3 bg-error-container border border-error rounded-xl p-4 mb-6">
-                <span class="material-symbols-outlined text-error">error</span>
-                <p class="text-body-md text-on-error-container">{{ session('error') }}</p>
-            </div>
-        @endif
-
-        {{-- Solde rapide --}}
-        <div class="flex flex-wrap items-center gap-4 mb-6 bg-surface-container-lowest border border-outline-variant rounded-xl p-4">
-            <div class="flex items-center gap-2">
-                <span class="material-symbols-outlined text-primary">savings</span>
-                <span class="font-body-md font-semibold text-on-surface">Solde : {{ number_format(auth()->user()->credits_balance, 0, ',', ' ') }} crédits</span>
-            </div>
-            <a href="{{ route('account.index') }}" class="font-caption text-caption text-primary hover:underline">
-                Acheter des crédits →
-            </a>
-        </div>
-
-        {{-- Nouvelle conversation --}}
-        <form action="{{ route('chat.send') }}" method="POST" class="mb-8">
-            @csrf
-            <div class="flex gap-3">
-                <input type="text" name="message" required placeholder="Ex. : Comment structurer un rapport de stage de 30 pages ?"
-                       class="flex-1 rounded-lg border-outline-variant bg-surface-container-lowest px-4 py-3 font-body-md text-body-md focus:border-primary focus:ring-primary">
-                <button type="submit"
-                        class="shrink-0 inline-flex items-center gap-2 bg-primary text-on-primary hover:bg-primary-container hover:text-on-primary-fixed px-6 py-3 rounded-lg font-body-md font-semibold transition-colors">
-                    <span class="material-symbols-outlined text-[20px]">send</span>
-                    Envoyer
-                </button>
-            </div>
-            <p class="font-caption text-caption text-on-surface-variant mt-2">
-                Une nouvelle conversation sera créée. Coût estimé affiché après envoi.
-            </p>
-        </form>
-
-        {{-- Historique des sessions --}}
-        <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
-            <p class="font-label-mono text-label-mono text-secondary uppercase mb-4">Mes conversations</p>
-
-            @if ($sessions->isEmpty())
-                <p class="font-body-md text-body-md text-on-surface-variant py-8 text-center">
-                    Aucune conversation pour le moment. Commencez à discuter ci-dessus !
-                </p>
-            @else
-                <ul class="divide-y divide-outline-variant/60">
-                    @foreach ($sessions as $session)
-                        <li>
-                            <a href="{{ route('chat.show', $session) }}"
-                               class="flex items-center justify-between py-4 hover:bg-surface-container-low rounded-lg px-3 -mx-3 transition-colors">
-                                <div class="min-w-0 flex items-center gap-3">
-                                    <span class="material-symbols-outlined text-primary shrink-0">chat</span>
-                                    <div class="min-w-0">
-                                        <p class="font-body-md font-semibold text-on-surface truncate">{{ $session->title ?: 'Sans titre' }}</p>
-                                        <p class="font-caption text-caption text-on-surface-variant">
-                                            {{ $session->messages_count }} message{{ $session->messages_count > 1 ? 's' : '' }}
-                                            — {{ $session->total_cost_credits }} crédits
-                                            — {{ $session->updated_at->diffForHumans() }}
-                                        </p>
-                                    </div>
-                                </div>
-                                <span class="material-symbols-outlined text-outline shrink-0">chevron_right</span>
-                            </a>
-                        </li>
-                    @endforeach
-                </ul>
-            @endif
+        <div class="credits-badge {{ auth()->user()->credits_balance < 100 ? 'low' : '' }}" title="Solde de crédits — 1 crédit = 1 FCFA">
+            <i data-lucide="coins" style="width:14px;height:14px"></i>
+            {{ number_format(auth()->user()->credits_balance, 0, ',', ' ') }} crédits
         </div>
     </div>
+
+    {{-- Nouvelle conversation --}}
+    <div class="card" style="margin-bottom:1.5rem">
+        <form action="{{ route('chat.send') }}" method="POST">
+            @csrf
+            <div class="form-group" style="margin-bottom:0">
+                <label for="first-message">Premier message</label>
+                <textarea name="message" id="first-message" rows="2" required maxlength="12000"
+                          placeholder="Ex. : Comment structurer un rapport de stage de 30 pages ?"
+                          class="form-control"></textarea>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin-top:.6rem">
+                <p class="chat-cost-preview" style="margin:0">
+                    <i data-lucide="coins"></i>
+                    Coût estimé : <strong>{{ $estimatedCredits ?? 0 }} crédit(s)</strong> — confirmé avant envoi
+                </p>
+                <button type="submit" class="btn btn-primary">
+                    <i data-lucide="send" style="width:15px;height:15px"></i> Envoyer
+                </button>
+            </div>
+            <p class="chat-disclaimer" style="margin-top:.5rem">
+                Une nouvelle conversation sera créée. Chaque message est facturé à son coût réel (ajustement automatique).
+                @if ($claudeEligible ?? false)
+                    Skills documentaires Claude activés (expérimental, Pro).
+                @endif
+            </p>
+        </form>
+    </div>
+
+    {{-- Historique des sessions --}}
+    <div class="card">
+        <h2 class="card-title" style="margin-bottom:.5rem">Mes conversations</h2>
+
+        @if ($sessions->isEmpty())
+            <p style="text-align:center;padding:2rem 0;color:var(--color-text-muted)">
+                <i data-lucide="message-circle" style="width:36px;height:36px;margin:0 auto .6rem;display:block;opacity:.6"></i>
+                Aucune conversation pour le moment. Commencez à discuter ci-dessus !
+            </p>
+        @else
+            <div class="table-wrap" style="padding:0">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Conversation</th>
+                            <th style="width:120px">Messages</th>
+                            <th style="width:130px">Coût</th>
+                            <th style="width:170px">Dernière activité</th>
+                            <th style="width:60px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($sessions as $session)
+                            <tr>
+                                <td>
+                                    <a href="{{ route('chat.show', $session) }}" style="font-weight:600;color:var(--color-ink)">
+                                        {{ $session->title ?: 'Sans titre' }}
+                                    </a>
+                                </td>
+                                <td class="mono">{{ $session->messages_count }} message{{ $session->messages_count > 1 ? 's' : '' }}</td>
+                                <td class="mono">{{ $session->total_cost_credits }} cr</td>
+                                <td>{{ $session->updated_at->diffForHumans() }}</td>
+                                <td>
+                                    <a href="{{ route('chat.show', $session) }}" class="btn btn-ghost btn-sm">
+                                        Ouvrir
+                                    </a>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </div>
 @endsection
+

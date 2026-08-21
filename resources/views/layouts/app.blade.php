@@ -1,188 +1,197 @@
 <!DOCTYPE html>
-<html lang="fr" class="light">
+<html lang="fr" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="theme-color" content="#2b3f66">
     <title>@yield('title', 'FORMADOC') — Mise en forme automatique de rapports</title>
 
-    {{-- Polices : Inter (corps/titres), JetBrains Mono (libellés), Source Serif 4 (aperçu doc) --}}
+    {{-- Polices : Newsreader (display), Inter (corps), IBM Plex Mono (libellés) --}}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&family=Source+Serif+4:wght@400&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-    {{-- Tailwind CDN + design system (gabarit ScholarForm) --}}
-    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    {{-- Design system (extrait de formadoc-template.html) + Tailwind pour les pages legacy --}}
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
     {{-- Alpine.js (builder visuel de page de garde) --}}
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script>
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    colors: {
-                        "primary": "#004ac6",
-                        "primary-container": "#2563eb",
-                        "primary-fixed": "#dbe1ff",
-                        "primary-fixed-dim": "#b4c5ff",
-                        "on-primary": "#ffffff",
-                        "on-primary-fixed": "#00174b",
-                        "on-primary-fixed-variant": "#003ea8",
-                        "background": "#f7f9fb",
-                        "surface": "#f7f9fb",
-                        "surface-dim": "#d8dadc",
-                        "surface-container-lowest": "#ffffff",
-                        "surface-container-low": "#f2f4f6",
-                        "surface-container": "#eceef0",
-                        "surface-container-high": "#e6e8ea",
-                        "surface-container-highest": "#e0e3e5",
-                        "surface-variant": "#e0e3e5",
-                        "on-surface": "#191c1e",
-                        "on-surface-variant": "#434655",
-                        "secondary": "#505f76",
-                        "secondary-container": "#d0e1fb",
-                        "on-secondary": "#ffffff",
-                        "on-secondary-container": "#54647a",
-                        "outline": "#737686",
-                        "outline-variant": "#c3c6d7",
-                        "inverse-surface": "#2d3133",
-                        "inverse-primary": "#b4c5ff",
-                        "error": "#ba1a1a",
-                        "error-container": "#ffdad6",
-                        "on-error": "#ffffff",
-                        "on-error-container": "#93000a"
-                    },
-                    borderRadius: {
-                        "DEFAULT": "0.125rem",
-                        "lg": "0.25rem",
-                        "xl": "0.5rem",
-                        "full": "0.75rem"
-                    },
-                    spacing: {
-                        "gutter": "24px",
-                        "margin-desktop": "40px",
-                        "container-max": "1280px",
-                        "base": "8px",
-                        "margin-mobile": "16px"
-                    },
-                    fontFamily: {
-                        "body-md": ["Inter"],
-                        "h1": ["Inter"],
-                        "h1-mobile": ["Inter"],
-                        "h2": ["Inter"],
-                        "caption": ["Inter"],
-                        "label-mono": ["JetBrains Mono"],
-                        "doc-preview": ["\"Source Serif 4\"", "serif"]
-                    },
-                    fontSize: {
-                        "caption": ["13px", { lineHeight: "1.4", fontWeight: "500" }],
-                        "body-md": ["16px", { lineHeight: "1.6", fontWeight: "400" }],
-                        "h2": ["24px", { lineHeight: "1.3", fontWeight: "600" }],
-                        "h1-mobile": ["28px", { lineHeight: "1.2", fontWeight: "700" }],
-                        "label-mono": ["12px", { lineHeight: "1.0", letterSpacing: "0.05em", fontWeight: "500" }],
-                        "h1": ["36px", { lineHeight: "1.2", letterSpacing: "-0.02em", fontWeight: "700" }],
-                        "doc-preview": ["18px", { lineHeight: "1.8", fontWeight: "400" }]
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        .material-symbols-outlined {
-            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-        }
-        .material-symbols-outlined.fill {
-            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-        }
-        .loading-track {
-            background-color: #e0e3e5;
-            height: 4px;
-            border-radius: 9999px;
-            overflow: hidden;
-            position: relative;
-        }
-        .loading-fill {
-            position: absolute;
-            top: 0;
-            left: -100%;
-            height: 100%;
-            width: 50%;
-            background: linear-gradient(90deg, transparent, #004ac6, #b4c5ff, transparent);
-            animation: indeterminate 1.5s infinite linear;
-            border-radius: 9999px;
-        }
-        @keyframes indeterminate {
-            0% { left: -100%; width: 50%; }
-            50% { width: 30%; }
-            100% { left: 100%; width: 50%; }
-        }
-        .pulse-icon {
-            animation: gentle-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-        @keyframes gentle-pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: .7; transform: scale(0.95); }
-        }
-    </style>
+    {{-- Icônes lucide (comme le template) --}}
+    <script src="https://unpkg.com/lucide@latest" defer></script>
 </head>
-<body class="bg-background text-on-surface font-body-md text-body-md min-h-screen flex flex-col antialiased">
+<body class="app">
 
-    {{-- TopNavBar --}}
-    <header class="fixed top-0 w-full z-50 flex justify-between items-center px-margin-mobile md:px-margin-desktop h-16 bg-surface/80 backdrop-blur-md shadow-sm">
-        <div class="flex items-center gap-4">
-            <a href="/" class="font-h2 text-h2 font-bold text-primary">FORMADOC</a>
-            <nav class="hidden md:flex gap-6 items-center">
-                <a class="font-body-md text-body-md text-secondary hover:text-primary hover:bg-surface-container-high px-3 py-2 rounded transition-colors"
-                   href="{{ route('documents.create') }}">Analyser un rapport</a>
-                <a class="font-body-md text-body-md text-secondary hover:text-primary hover:bg-surface-container-high px-3 py-2 rounded transition-colors"
-                   href="{{ route('feedback.form') }}">Votre avis</a>
-            </nav>
-        </div>
-        <div class="flex items-center gap-2">
+    {{-- Sidebar (desktop : sticky ; mobile : hors écran + overlay) --}}
+    <aside class="sidebar" id="app-sidebar">
+        <a href="/" class="sidebar-brand">
+            <span class="mark">FD</span>
+            FORMADOC
+        </a>
+
+        <span class="sidebar-section-label">Documents</span>
+        <nav class="sidebar-nav">
+            <a href="{{ route('documents.create') }}" class="{{ request()->routeIs('documents.*') ? 'active' : '' }}">
+                <i data-lucide="file-up"></i> Analyser un rapport
+            </a>
             @auth
-                <a href="{{ route('chat.index') }}" class="text-primary hover:bg-surface-container-high p-2 rounded-full transition-colors"
-                   aria-label="Chat IA">
-                    <span class="material-symbols-outlined">chat</span>
+                <a href="{{ route('chat.index') }}" class="{{ request()->routeIs('chat.*') ? 'active' : '' }}">
+                    <i data-lucide="message-circle"></i> Assistant IA
                 </a>
-                <a href="{{ route('account.index') }}" class="text-primary hover:bg-surface-container-high p-2 rounded-full transition-colors"
-                   aria-label="Mon compte">
-                    <span class="material-symbols-outlined">account_circle</span>
-                </a>
-                <form method="POST" action="{{ route('logout') }}" class="inline">
-                    @csrf
-                    <button type="submit" class="text-secondary hover:text-error hover:bg-surface-container-high p-2 rounded-full transition-colors"
-                            aria-label="Se déconnecter">
-                        <span class="material-symbols-outlined">logout</span>
-                    </button>
-                </form>
-            @else
-                <a href="{{ route('login') }}" class="font-label-mono text-label-mono uppercase tracking-wider text-secondary hover:text-primary px-3 py-2 rounded transition-colors">
-                    Connexion
-                </a>
-                <a href="{{ route('register') }}" class="font-label-mono text-label-mono uppercase tracking-wider text-on-primary bg-primary hover:bg-primary-container px-4 py-2 rounded-lg transition-colors">
-                    Inscription
+                <a href="{{ route('account.index') }}" class="{{ request()->routeIs('account.*') ? 'active' : '' }}">
+                    <i data-lucide="user"></i> Mon compte
                 </a>
             @endauth
-        </div>
-    </header>
+        </nav>
 
-    {{-- Contenu principal (pt-16 compense la barre de navigation fixe) --}}
-    <main class="flex-1 pt-16">
-        @yield('content')
-    </main>
+        <span class="sidebar-section-label">Aide</span>
+        <nav class="sidebar-nav">
+            <a href="{{ route('feedback.form') }}" class="{{ request()->routeIs('feedback.*') ? 'active' : '' }}">
+                <i data-lucide="heart"></i> Votre avis
+            </a>
+        </nav>
 
-    {{-- Pied de page --}}
-    <footer class="w-full py-gutter px-margin-mobile md:px-margin-desktop flex flex-col md:flex-row justify-between items-center bg-surface-container-lowest border-t border-outline-variant mt-auto">
-        <p class="font-caption text-caption text-secondary mb-4 md:mb-0">
-            © {{ date('Y') }} FORMADOC — Mise en forme automatique de rapports académiques
-        </p>
-        <div class="flex gap-6">
-            <a class="font-caption text-caption text-outline hover:text-primary underline transition-colors"
-               href="{{ route('feedback.form') }}">Envoyer un avis</a>
+        <div class="sidebar-footer">
+            @auth
+                <div class="avatar">{{ strtoupper(substr(auth()->user()->name, 0, 1)) }}</div>
+                <div class="user-info">
+                    <div class="name">{{ auth()->user()->name }}</div>
+                    <div class="email">{{ auth()->user()->email }}</div>
+                </div>
+            @else
+                <div class="user-info" style="flex:1">
+                    <a href="{{ route('login') }}" class="btn btn-secondary btn-sm btn-block">Connexion</a>
+                    <a href="{{ route('register') }}" class="btn btn-primary btn-sm btn-block" style="margin-top:.4rem">Inscription</a>
+                </div>
+            @endauth
         </div>
-    </footer>
+    </aside>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    {{-- Zone principale --}}
+    <div class="main">
+        {{-- Navbar --}}
+        <header class="navbar">
+            <div class="navbar-left">
+                <button class="navbar-menu-toggle" type="button" aria-label="Menu" id="navbar-menu-toggle">
+                    <i data-lucide="menu"></i>
+                </button>
+                <div class="navbar-search">
+                    <i data-lucide="search" style="width:14px;height:14px"></i>
+                    <input type="search" placeholder="Rechercher…" aria-label="Recherche">
+                    <span class="search-label mono" style="font-size:.68rem">Ctrl K</span>
+                </div>
+            </div>
+            <div class="navbar-actions">
+                @auth
+                    <a href="{{ route('account.index') }}" class="credits-badge {{ auth()->user()->credits_balance < 100 ? 'low' : '' }}"
+                       title="Crédits disponibles — 1 crédit = 1 FCFA">
+                        <i data-lucide="coins" style="width:14px;height:14px"></i>
+                        <span class="credits-label">{{ number_format(auth()->user()->credits_balance, 0, ',', ' ') }}</span>
+                    </a>
+                @endauth
+                <button class="theme-toggle" type="button" aria-label="Basculer le thème" id="theme-toggle">
+                    <i data-lucide="moon"></i>
+                </button>
+                @auth
+                    <a href="{{ route('account.index') }}" class="avatar-nav" title="Mon compte">
+                        {{ strtoupper(substr(auth()->user()->name, 0, 1)) }}
+                    </a>
+                    <form method="POST" action="{{ route('logout') }}" class="inline" style="display:inline">
+                        @csrf
+                        <button type="submit" class="icon-btn" aria-label="Se déconnecter" title="Déconnexion">
+                            <i data-lucide="log-out" style="width:17px;height:17px"></i>
+                        </button>
+                    </form>
+                @else
+                    <a href="{{ route('login') }}" class="btn btn-secondary btn-sm">Connexion</a>
+                    <a href="{{ route('register') }}" class="btn btn-primary btn-sm">Inscription</a>
+                @endauth
+            </div>
+        </header>
+
+        {{-- Toasts (flash messages) --}}
+        <div class="toast-container" id="toast-container">
+            @if (session('success'))
+                <div class="toast success">{{ session('success') }}</div>
+            @endif
+            @if (session('error'))
+                <div class="toast error">{{ session('error') }}</div>
+            @endif
+            @if (session('warning'))
+                <div class="toast warning">{{ session('warning') }}</div>
+            @endif
+            @if (session('info'))
+                <div class="toast">{{ session('info') }}</div>
+            @endif
+        </div>
+
+        {{-- Contenu principal --}}
+        <main class="page-container">
+            {{-- Erreurs de validation --}}
+            @if ($errors->any())
+                <div class="banner banner-danger">
+                    <i data-lucide="alert-circle"></i>
+                    <div>
+                        @foreach ($errors->all() as $error)
+                            <div>{{ $error }}</div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
+            @yield('content')
+        </main>
+
+        {{-- Pied de page --}}
+        <footer class="page-container" style="padding-top:0">
+            <div style="border-top:1px solid var(--color-border);padding-top:1.25rem;display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+                <p class="mono" style="font-size:.72rem;color:var(--color-text-muted)">
+                    © {{ date('Y') }} FORMADOC — Mise en forme automatique de rapports académiques
+                </p>
+                <a href="{{ route('feedback.form') }}" class="mono" style="font-size:.72rem;color:var(--color-text-muted);text-decoration:underline">Envoyer un avis</a>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // Initialisation des icônes lucide (si chargées)
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+            // Thème au chargement
+            const saved = localStorage.getItem('formadoc-theme');
+            if (saved === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                document.querySelector('#theme-toggle i')?.setAttribute('data-lucide', 'sun');
+            }
+        });
+        // Toggle thème
+        document.getElementById('theme-toggle')?.addEventListener('click', () => {
+            const root = document.documentElement;
+            const isDark = root.getAttribute('data-theme') === 'dark';
+            root.setAttribute('data-theme', isDark ? 'light' : 'dark');
+            localStorage.setItem('formadoc-theme', isDark ? 'light' : 'dark');
+            const icon = document.querySelector('#theme-toggle i');
+            if (icon) { icon.setAttribute('data-lucide', isDark ? 'moon' : 'sun'); lucide.createIcons(); }
+        });
+        // Sidebar mobile
+        document.getElementById('navbar-menu-toggle')?.addEventListener('click', () => {
+            document.querySelector('.sidebar')?.classList.toggle('open');
+            document.querySelector('.sidebar-overlay')?.classList.toggle('open');
+        });
+        document.querySelector('.sidebar-overlay')?.addEventListener('click', () => {
+            document.querySelector('.sidebar')?.classList.remove('open');
+            document.querySelector('.sidebar-overlay')?.classList.remove('open');
+        });
+        // Fermeture auto des toasts
+        setTimeout(() => {
+            document.querySelectorAll('.toast').forEach(t => t.remove());
+        }, 6000);
+    </script>
 
     @stack('scripts')
 </body>
 </html>
+

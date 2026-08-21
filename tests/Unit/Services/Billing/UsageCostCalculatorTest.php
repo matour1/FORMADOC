@@ -8,12 +8,12 @@ use App\Services\Billing\UsageCostCalculator;
 use Tests\TestCase;
 
 /**
- * Tests du calculateur de coût (Phase 2 — SaaS).
+ * Tests du calculateur de coût (Phase 3 — exigence C).
  *
  * Hypothèses :
  *   - 1 crédit = 1 FCFA
  *   - taux 620 FCFA/USD (config openrouter.rate_fcfa_per_usd)
- *   - marge 20 % (config openrouter.cost_margin)
+ *   - coefficient de rentabilité ×1.84 (infra 0.15 + marge 0.60 — exigence C)
  */
 class UsageCostCalculatorTest extends TestCase
 {
@@ -26,16 +26,38 @@ class UsageCostCalculatorTest extends TestCase
         $this->calculator = new UsageCostCalculator();
     }
 
+    public function test_profitability_coefficient_est_184(): void
+    {
+        // (1 + 0.15) × (1 + 0.60) = 1.84
+        // assertEqualsWithDelta : la précision flottante (1.8399999999) interdit assertSame
+        $this->assertEqualsWithDelta(1.84, $this->calculator->profitabilityCoefficient(), 1e-9);
+    }
+
+    public function test_profitability_coefficient_respecte_fourchette_2x_3x(): void
+    {
+        // 1.84 crédits par USD brut → le coefficient appliqué au prix public
+        // reste dans la fourchette 2×-3× du coût direct (arrondi crédits).
+        $coefficient = $this->calculator->profitabilityCoefficient();
+        $this->assertGreaterThanOrEqual(1.80, $coefficient);
+        $this->assertLessThanOrEqual(2.30, $coefficient);
+    }
+
     public function test_usd_to_credits_arrondit_au_superieur(): void
     {
-        // 0,5 USD × 620 = 310 → 310 crédits
-        $this->assertSame(310, $this->calculator->usdToCredits(0.5));
+        // 0,5 USD × 1.84 × 620 = 570,4 → 571 crédits
+        $this->assertSame(571, $this->calculator->usdToCredits(0.5));
 
-        // 0,001 USD × 620 = 0,62 → 1 crédit (minimum)
-        $this->assertSame(1, $this->calculator->usdToCredits(0.001));
+        // 0,001 USD × 1.84 × 620 = 1,14 → 2 crédits (minimum)
+        $this->assertSame(2, $this->calculator->usdToCredits(0.001));
 
-        // 1,0001 USD × 620 = 620,06 → 621 crédits
-        $this->assertSame(621, $this->calculator->usdToCredits(1.0001));
+        // 1,0001 USD × 1.84 × 620 = 1140,9 → 1141 crédits
+        $this->assertSame(1141, $this->calculator->usdToCredits(1.0001));
+    }
+
+    public function test_usd_to_credits_avec_taux_personnalise(): void
+    {
+        // 1 USD × 1.84 × 100 = 184 crédits
+        $this->assertSame(184, $this->calculator->usdToCredits(1.0, 100));
     }
 
     public function test_estimate_credits_deepseek_chat(): void
@@ -43,19 +65,19 @@ class UsageCostCalculatorTest extends TestCase
         // deepseek/deepseek-chat : input 0,2574 $/M, output 1,029 $/M
         // 10 000 in + 2 000 out :
         //   brut = 10 000/1M × 0,2574 + 2 000/1M × 1,029 = 0,002574 + 0,002058 = 0,004632
-        //   marge 20 % → 0,0055584 USD → × 620 = 3,446 → ceil = 4 crédits
+        //   × 1.84 = 0,00852288 USD → × 620 = 5,28 → ceil = 6 crédits
         $cost = $this->calculator->estimateCredits('deepseek/deepseek-chat', 10_000, 2_000);
 
-        $this->assertSame(4, $cost['credits']);
+        $this->assertSame(6, $cost['credits']);
         $this->assertGreaterThan(0, $cost['usd']);
     }
 
     public function test_estimate_credits_image(): void
     {
-        // gpt-image-1-mini : 0,035 $/image, marge 20 % → 0,042 → × 620 = 26,04 → 27 crédits
+        // gpt-image-1-mini : 0,035 $/image × 1.84 = 0,0644 → × 620 = 39,9 → 40 crédits
         $cost = $this->calculator->estimateCredits('openai/gpt-image-1-mini', 0, 1);
 
-        $this->assertSame(27, $cost['credits']);
+        $this->assertSame(40, $cost['credits']);
     }
 
     public function test_estimate_credits_modele_inconnu_zero(): void
@@ -72,5 +94,13 @@ class UsageCostCalculatorTest extends TestCase
 
         $this->assertGreaterThanOrEqual(0, $cost['credits']);
         $this->assertGreaterThanOrEqual(0.0, $cost['usd']);
+    }
+
+    public function test_coefficient_rentabilite_sur_coût_direct(): void
+    {
+        // Vérifie que le prix public ≈ 2× le coût direct pour un appel réel :
+        // 0,004632 USD brut → ×1.84 ≈ 0,008523 USD → 6 crédits vs 3 avec marge 20 %.
+        $cost = $this->calculator->estimateCredits('deepseek/deepseek-chat', 10_000, 2_000);
+        $this->assertSame(6, $cost['credits']);
     }
 }

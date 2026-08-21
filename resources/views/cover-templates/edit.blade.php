@@ -13,44 +13,34 @@
     ];
 @endphp
 
-<div x-data="coverBuilder({{ Illuminate\Support\Js::from($payload) }})" x-cloak class="mx-auto max-w-7xl px-6 py-8">
+<div x-data="coverBuilder({{ Illuminate\Support\Js::from($payload) }})" x-cloak class="max-w-7xl">
     {{-- Header --}}
-    <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-            <h1 class="text-2xl font-semibold text-slate-900">
-                {{ $mode === 'create' ? 'Nouveau modèle de page de garde' : 'Modifier le modèle' }}
-            </h1>
-            <p class="mt-1 text-sm text-slate-500">
-                Glissez/déposez les blocs, prévisualisez, puis enregistrez.
-            </p>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.8rem;margin-bottom:1.6rem">
+        <div class="page-header" style="margin-bottom:0">
+            <div>
+                <span class="eyebrow">Pages de garde</span>
+                <h1>
+                    {{ $mode === 'create' ? 'Nouveau modèle de page de garde' : 'Modifier le modèle' }}
+                </h1>
+                <p>
+                    Glissez/déposez les blocs, prévisualisez, puis enregistrez.
+                </p>
+            </div>
         </div>
-        <div class="flex items-center gap-2">
-            <a href="{{ route('cover-templates.index') }}"
-               class="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+        <div style="display:flex;align-items:center;gap:.5rem">
+            <a href="{{ route('cover-templates.index') }}" class="btn btn-ghost">
                 Annuler
             </a>
-            <button type="button" @click="openPreview()"
-                    class="inline-flex items-center gap-2 rounded-full border border-[#004AC6] px-4 py-2 text-sm font-medium text-[#004AC6] hover:bg-blue-50">
-                <span class="material-symbols-outlined text-[18px]">visibility</span>
+            <button type="button" @click="openPreview()" class="btn btn-secondary">
+                <i data-lucide="eye" style="width:16px;height:16px"></i>
                 Aperçu
             </button>
-            <button type="button" @click="save()"
-                    class="inline-flex items-center gap-2 rounded-full bg-[#004AC6] px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#2563eb]">
-                <span class="material-symbols-outlined text-[18px]">save</span>
+            <button type="button" @click="save()" class="btn btn-primary">
+                <i data-lucide="save" style="width:16px;height:16px"></i>
                 Enregistrer
             </button>
         </div>
     </div>
-
-    @if ($errors->any())
-        <div class="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-            <ul class="list-disc pl-5">
-                @foreach ($errors->all() as $err)
-                    <li>{{ $err }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
 
     <form method="POST"
           :action="actionUrl"
@@ -62,104 +52,97 @@
         <input type="hidden" name="page_style" :value="JSON.stringify(pageStyle)">
         <input type="hidden" name="is_public" :value="isPublic ? 1 : 0">
 
-        <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:1.4rem;align-items:start">
             {{-- Colonne éditeur --}}
-            <div class="space-y-5 lg:col-span-2">
+            <div style="display:flex;flex-direction:column;gap:1.3rem;min-width:0">
                 {{-- Métadonnées --}}
-                <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <label class="block">
-                            <span class="text-sm font-medium text-slate-700">Nom du modèle</span>
-                            <input type="text" name="name" x-model="name" required
-                                   class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#004AC6] focus:outline-none focus:ring-2 focus:ring-blue-100">
+                <section class="card">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+                        <label class="form-group" style="margin-bottom:0">
+                            <span>Nom du modèle</span>
+                            <input type="text" name="name" x-model="name" required class="form-control">
                         </label>
-                        <label class="block">
-                            <span class="text-sm font-medium text-slate-700">Description</span>
-                            <input type="text" name="description" x-model="description"
-                                   class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-[#004AC6] focus:outline-none focus:ring-2 focus:ring-blue-100">
+                        <label class="form-group" style="margin-bottom:0">
+                            <span>Description</span>
+                            <input type="text" name="description" x-model="description" class="form-control">
                         </label>
                     </div>
-                    <label class="mt-4 inline-flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" x-model="isPublic" class="rounded border-slate-300 text-[#004AC6]">
+                    <label style="display:inline-flex;align-items:center;gap:.5rem;margin-top:1rem;font-size:.88rem;cursor:pointer">
+                        <input type="checkbox" x-model="isPublic" style="accent-color:var(--color-primary);width:16px;height:16px">
                         Modèle public (visible par tous)
                     </label>
                 </section>
 
                 {{-- Style de page --}}
-                <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <h2 class="mb-3 text-sm font-semibold text-slate-800">Style de page</h2>
-                    <div class="grid grid-cols-2 gap-4 md:grid-cols-5">
-                        <label class="block">
-                            <span class="text-xs text-slate-500">Format</span>
-                            <select x-model="pageStyle.size"
-                                    class="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm">
+                <section class="card">
+                    <h2 class="card-title" style="margin-bottom:1rem">Style de page</h2>
+                    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:.8rem">
+                        <label class="form-group" style="margin-bottom:0">
+                            <span style="font-size:.72rem">Format</span>
+                            <select x-model="pageStyle.size" class="form-control" style="font-size:.82rem">
                                 <option>A4</option><option>A3</option><option>Letter</option>
                             </select>
                         </label>
-                        <label class="block">
-                            <span class="text-xs text-slate-500">Orientation</span>
-                            <select x-model="pageStyle.orientation"
-                                    class="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm">
+                        <label class="form-group" style="margin-bottom:0">
+                            <span style="font-size:.72rem">Orientation</span>
+                            <select x-model="pageStyle.orientation" class="form-control" style="font-size:.82rem">
                                 <option value="portrait">Portrait</option>
                                 <option value="landscape">Paysage</option>
                             </select>
                         </label>
                         @foreach (['Top' => 'marginTopMm', 'Bottom' => 'marginBottomMm', 'Left' => 'marginLeftMm', 'Right' => 'marginRightMm'] as $label => $key)
-                            <label class="block">
-                                <span class="text-xs text-slate-500">Marge {{ $label }} (mm)</span>
-                                <input type="number" min="0" max="200" x-model.number="pageStyle.{{ $key }}"
-                                       class="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm">
+                            <label class="form-group" style="margin-bottom:0">
+                                <span style="font-size:.72rem">Marge {{ $label }} (mm)</span>
+                                <input type="number" min="0" max="200" x-model.number="pageStyle.{{ $key }}" class="form-control" style="font-size:.82rem">
                             </label>
                         @endforeach
                     </div>
                 </section>
 
                 {{-- Lignes / cellules / blocs --}}
-                <section class="space-y-3">
+                <section style="display:flex;flex-direction:column;gap:.8rem">
                     <template x-for="(row, ri) in elements" :key="ri">
-                        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                            <div class="mb-3 flex items-center justify-between">
-                                <h3 class="text-sm font-semibold text-slate-700">
+                        <div class="card">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.8rem">
+                                <h3 style="font-size:.9rem;font-weight:600">
                                     Rangée <span x-text="ri + 1"></span>
                                 </h3>
-                                <div class="flex items-center gap-1">
-                                    <button type="button" @click="moveRow(ri, -1)" class="rounded p-1 text-slate-400 hover:bg-slate-100">▲</button>
-                                    <button type="button" @click="moveRow(ri, 1)" class="rounded p-1 text-slate-400 hover:bg-slate-100">▼</button>
-                                    <button type="button" @click="removeRow(ri)"
-                                            class="rounded p-1 text-rose-400 hover:bg-rose-50">
-                                        <span class="material-symbols-outlined text-[18px]">delete</span>
+                                <div style="display:flex;align-items:center;gap:.2rem">
+                                    <button type="button" @click="moveRow(ri, -1)" class="icon-btn" title="Monter" style="font-size:.8rem">▲</button>
+                                    <button type="button" @click="moveRow(ri, 1)" class="icon-btn" title="Descendre" style="font-size:.8rem">▼</button>
+                                    <button type="button" @click="removeRow(ri)" class="icon-btn" title="Supprimer la rangée">
+                                        <i data-lucide="trash-2" style="width:15px;height:15px;color:var(--color-correction)"></i>
                                     </button>
                                 </div>
                             </div>
 
-                            <div class="grid gap-3" :style="`grid-template-columns: repeat(12, minmax(0,1fr));`">
+                            <div style="display:grid;gap:.8rem" :style="`grid-template-columns: repeat(12, minmax(0,1fr));`">
                                 <template x-for="(cell, ci) in row.cells" :key="ci">
-                                    <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-3"
+                                    <div style="border:1px dashed var(--color-border-strong);border-radius:var(--radius-sm);background:var(--color-surface-2);padding:.8rem"
                                          :style="`grid-column: span ${cell.gridSpan || 1} / span ${cell.gridSpan || 1};`">
-                                        <div class="mb-2 flex items-center justify-between text-xs text-slate-500">
+                                        <div style="display:flex;align-items:center;justify-content:space-between;font-size:.75rem;color:var(--color-text-muted);margin-bottom:.5rem">
                                             <span>Cellule (gridSpan <span x-text="cell.gridSpan || 1"></span>)</span>
-                                            <div class="flex items-center gap-1">
-                                                <button type="button" @click="cell.gridSpan = Math.max(1, (cell.gridSpan||1) - 1)" class="rounded p-0.5 hover:bg-slate-200">−</button>
-                                                <button type="button" @click="cell.gridSpan = Math.min(12, (cell.gridSpan||1) + 1)" class="rounded p-0.5 hover:bg-slate-200">+</button>
-                                                <button type="button" @click="row.cells.splice(ci,1)" class="rounded p-0.5 text-rose-500 hover:bg-rose-50">
-                                                    <span class="material-symbols-outlined text-[16px]">close</span>
+                                            <div style="display:flex;align-items:center;gap:.2rem">
+                                                <button type="button" @click="cell.gridSpan = Math.max(1, (cell.gridSpan||1) - 1)" class="icon-btn" title="Réduire">−</button>
+                                                <button type="button" @click="cell.gridSpan = Math.min(12, (cell.gridSpan||1) + 1)" class="icon-btn" title="Étendre">+</button>
+                                                <button type="button" @click="row.cells.splice(ci,1)" class="icon-btn" title="Retirer la cellule">
+                                                    <i data-lucide="x" style="width:14px;height:14px;color:var(--color-correction)"></i>
                                                 </button>
                                             </div>
                                         </div>
 
                                         <template x-for="(block, bi) in cell.blocks" :key="bi">
-                                            <div class="mb-2 rounded-lg border border-slate-200 bg-white p-2">
-                                                <div class="mb-2 flex items-center justify-between text-xs">
-                                                    <select x-model="block.kind"
-                                                            class="rounded border border-slate-200 px-1.5 py-0.5 text-xs">
+                                            <div style="margin-bottom:.5rem;border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-surface);padding:.55rem">
+                                                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+                                                    <select x-model="block.kind" class="form-control" style="width:auto;font-size:.75rem;padding:.25rem .5rem">
                                                         <option value="text">Texte</option>
                                                         <option value="spacer">Espace</option>
                                                         <option value="divider">Trait</option>
                                                         <option value="image">Image</option>
                                                         <option value="logo">Logo</option>
                                                     </select>
-                                                    <button type="button" @click="cell.blocks.splice(bi,1)" class="text-rose-400 hover:text-rose-600">
-                                                        <span class="material-symbols-outlined text-[16px]">close</span>
+                                                    <button type="button" @click="cell.blocks.splice(bi,1)" class="icon-btn" title="Retirer le bloc">
+                                                        <i data-lucide="x" style="width:14px;height:14px;color:var(--color-correction)"></i>
                                                     </button>
                                                 </div>
 
@@ -167,46 +150,39 @@
                                                     <div>
                                                         <textarea x-model="block.text" rows="2"
                                                                   placeholder="Texte ou @{{placeholder}}"
-                                                                  class="w-full rounded border border-slate-200 px-2 py-1 text-sm"></textarea>
-                                                        <div class="mt-2 grid grid-cols-2 gap-2 text-xs">
-                                                            <select x-model="block.font.align" class="rounded border border-slate-200 px-1.5 py-1">
+                                                                  class="form-control" style="font-size:.82rem"></textarea>
+                                                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:.5rem;font-size:.78rem">
+                                                            <select x-model="block.font.align" class="form-control" style="font-size:.75rem;padding:.25rem .5rem">
                                                                 <option value="left">Gauche</option>
                                                                 <option value="center">Centre</option>
                                                                 <option value="right">Droite</option>
                                                             </select>
-                                                            <input type="number" min="6" max="96" x-model.number="block.font.size"
-                                                                   class="rounded border border-slate-200 px-1.5 py-1" placeholder="Taille">
-                                                            <label class="inline-flex items-center gap-1"><input type="checkbox" x-model="block.font.bold"> Gras</label>
-                                                            <label class="inline-flex items-center gap-1"><input type="checkbox" x-model="block.font.italic"> Italique</label>
-                                                            <input type="color" x-model="block.font.color" class="h-7 w-full rounded border border-slate-200 p-0">
+                                                            <input type="number" min="6" max="96" x-model.number="block.font.size" class="form-control" style="font-size:.75rem;padding:.25rem .5rem" placeholder="Taille">
+                                                            <label style="display:inline-flex;align-items:center;gap:.3rem;cursor:pointer"><input type="checkbox" x-model="block.font.bold" style="accent-color:var(--color-primary)"> Gras</label>
+                                                            <label style="display:inline-flex;align-items:center;gap:.3rem;cursor:pointer"><input type="checkbox" x-model="block.font.italic" style="accent-color:var(--color-primary)"> Italique</label>
+                                                            <input type="color" x-model="block.font.color" style="width:100%;height:2rem;border:1px solid var(--color-border);border-radius:6px;padding:0">
                                                         </div>
                                                     </div>
                                                 </template>
 
                                                 <template x-if="block.kind === 'image' || block.kind === 'logo'">
-                                                    <div class="text-xs">
-                                                        <input type="text" x-model="block.src"
-                                                               placeholder="Chemin ou URL"
-                                                               class="w-full rounded border border-slate-200 px-2 py-1">
-                                                        <input type="number" min="20" max="2000" x-model.number="block.heightPx"
-                                                               placeholder="Hauteur (px)"
-                                                               class="mt-1 w-full rounded border border-slate-200 px-2 py-1">
+                                                    <div style="font-size:.78rem;display:flex;flex-direction:column;gap:.4rem">
+                                                        <input type="text" x-model="block.src" placeholder="Chemin ou URL" class="form-control" style="font-size:.78rem">
+                                                        <input type="number" min="20" max="2000" x-model.number="block.heightPx" placeholder="Hauteur (px)" class="form-control" style="font-size:.78rem">
                                                     </div>
                                                 </template>
 
                                                 <template x-if="block.kind === 'spacer'">
-                                                    <div class="text-xs">
-                                                        <input type="number" min="10" max="2000" x-model.number="block.heightPx"
-                                                               placeholder="Hauteur (px)"
-                                                               class="w-full rounded border border-slate-200 px-2 py-1">
+                                                    <div style="font-size:.78rem">
+                                                        <input type="number" min="10" max="2000" x-model.number="block.heightPx" placeholder="Hauteur (px)" class="form-control" style="font-size:.78rem">
                                                     </div>
                                                 </template>
                                             </div>
                                         </template>
 
                                         <button type="button" @click="cell.blocks.push(newBlock('text'))"
-                                                class="mt-1 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600 hover:bg-slate-200">
-                                            <span class="material-symbols-outlined text-[14px]">add</span>
+                                                class="btn btn-ghost btn-sm" style="margin-top:.4rem">
+                                            <i data-lucide="plus" style="width:14px;height:14px"></i>
                                             Ajouter un bloc
                                         </button>
                                     </div>
@@ -214,31 +190,33 @@
                             </div>
 
                             <button type="button" @click="row.cells.push(newCell())"
-                                    class="mt-3 inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
-                                + Cellule
+                                    class="btn btn-ghost btn-sm" style="margin-top:.8rem;border-style:dashed">
+                                <i data-lucide="plus" style="width:14px;height:14px"></i>
+                                Cellule
                             </button>
                         </div>
                     </template>
 
                     <button type="button" @click="elements.push(newRow())"
-                            class="w-full rounded-2xl border border-dashed border-slate-300 bg-white py-4 text-sm font-medium text-slate-600 hover:bg-slate-50">
-                        + Ajouter une rangée
+                            class="btn btn-ghost btn-lg" style="border-style:dashed;justify-content:center">
+                        <i data-lucide="plus" style="width:16px;height:16px"></i>
+                        Ajouter une rangée
                     </button>
                 </section>
             </div>
 
             {{-- Colonne aperçu live --}}
-            <aside class="space-y-4">
-                <div class="sticky top-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <h2 class="mb-3 text-sm font-semibold text-slate-800">Aperçu live</h2>
-                    <div class="mx-auto bg-slate-100 p-4">
-                        <div class="mx-auto bg-white shadow ring-1 ring-slate-200"
+            <aside style="min-width:0">
+                <div class="card" style="position:sticky;top:1.4rem">
+                    <h2 class="card-title" style="margin-bottom:1rem">Aperçu live</h2>
+                    <div style="background:var(--color-surface-2);padding:1rem;border-radius:var(--radius-sm)">
+                        <div style="margin:0 auto;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.15)"
                              :style="previewStyle()">
                             <template x-for="(row, ri) in elements" :key="`p-${ri}`">
-                                <div class="flex w-full"
+                                <div style="display:flex;width:100%"
                                      :style="`min-height: 36px;`">
                                     <template x-for="(cell, ci) in row.cells" :key="`p-${ri}-${ci}`">
-                                        <div class="flex-1 border border-dashed border-slate-200 px-2 py-1 text-center"
+                                        <div style="flex:1;border:1px dashed #cbd5e1;padding:.25rem .5rem;text-align:center"
                                              :style="`flex-basis: ${((cell.gridSpan||1)/12)*100}%;`">
                                             <template x-for="(block, bi) in cell.blocks" :key="`p-${ri}-${ci}-${bi}`">
                                                 <div>
@@ -251,10 +229,10 @@
                                                         <div :style="`height: ${(block.heightPx||60)/3}px;`"></div>
                                                     </template>
                                                     <template x-if="block.kind === 'divider'">
-                                                        <hr class="my-2 border-t border-slate-300">
+                                                        <hr style="margin:.5rem 0;border-top:1px solid #cbd5e1">
                                                     </template>
                                                     <template x-if="block.kind === 'image' || block.kind === 'logo'">
-                                                        <div class="text-[10px] text-slate-400">[image]</div>
+                                                        <div style="font-size:10px;color:#94a3b8">[image]</div>
                                                     </template>
                                                 </div>
                                             </template>
@@ -264,47 +242,46 @@
                             </template>
                         </div>
                     </div>
-                    <p class="mt-3 text-xs text-slate-400">Aperçu proportionnel (1px ≈ 3px écran).</p>
+                    <p style="margin-top:.8rem;font-size:.72rem;color:var(--color-text-muted)">Aperçu proportionnel (1px ≈ 3px écran).</p>
                 </div>
             </aside>
         </div>
     </form>
 
     {{-- Modal aperçu serveur --}}
-    <div x-show="previewOpen" x-transition class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-6"
+    <div x-show="previewOpen" x-transition style="position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.5);padding:1.5rem"
          @keydown.escape.window="previewOpen = false">
-        <div class="w-full max-w-3xl rounded-2xl bg-white shadow-xl">
-            <div class="flex items-center justify-between border-b border-slate-200 px-5 py-3">
-                <h3 class="text-sm font-semibold text-slate-800">Aperçu DOCX (côté serveur)</h3>
-                <button @click="previewOpen = false" class="text-slate-400 hover:text-slate-600">
-                    <span class="material-symbols-outlined">close</span>
+        <div class="card" style="width:100%;max-width:48rem;max-height:90vh;overflow-y:auto">
+            <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--color-border);padding-bottom:.9rem;margin-bottom:1rem">
+                <h3 style="font-weight:600;font-size:.98rem">Aperçu DOCX (côté serveur)</h3>
+                <button @click="previewOpen = false" class="icon-btn" aria-label="Fermer">
+                    <i data-lucide="x" style="width:17px;height:17px"></i>
                 </button>
             </div>
-            <div class="p-5">
-                <p class="mb-3 text-xs text-slate-500">
+            <div>
+                <p style="margin-bottom:.8rem;font-size:.78rem;color:var(--color-text-muted)">
                     Saisissez des valeurs pour les placeholders, puis générez un DOCX d'aperçu.
                 </p>
-                <div class="grid grid-cols-2 gap-2">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
                     <template x-for="key in placeholderKeys()" :key="key">
-                        <label class="block text-xs">
-                            <span class="text-slate-500" x-text="key"></span>
-                            <input type="text" x-model="previewValues[key]"
-                                   class="mt-0.5 w-full rounded border border-slate-200 px-2 py-1 text-sm">
+                        <label style="display:block;font-size:.75rem">
+                            <span style="color:var(--color-text-muted)" x-text="key"></span>
+                            <input type="text" x-model="previewValues[key]" class="form-control" style="font-size:.82rem;margin-top:.2rem">
                         </label>
                     </template>
                 </div>
-                <div class="mt-4 flex justify-end gap-2">
-                    <button @click="previewOpen = false" class="rounded-full border border-slate-200 px-3 py-1.5 text-xs">Fermer</button>
-                    <button @click="runPreview()" :disabled="previewLoading"
-                            class="inline-flex items-center gap-1 rounded-full bg-[#004AC6] px-3 py-1.5 text-xs font-medium text-white">
-                        <span x-show="previewLoading" class="material-symbols-outlined animate-spin text-[14px]">progress_activity</span>
+                <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem">
+                    <button @click="previewOpen = false" class="btn btn-ghost btn-sm">Fermer</button>
+                    <button @click="runPreview()" :disabled="previewLoading" class="btn btn-primary btn-sm">
+                        <i data-lucide="loader-2" x-show="previewLoading" class="animate-spin" style="width:14px;height:14px"></i>
                         Générer DOCX
                     </button>
                 </div>
                 <template x-if="previewUrl">
                     <a :href="previewUrl" download="apercu.docx"
-                       class="mt-3 inline-flex items-center gap-1 text-xs text-[#004AC6] underline">
-                        ⬇ Télécharger l'aperçu
+                       style="display:inline-flex;align-items:center;gap:.3rem;margin-top:.8rem;font-size:.8rem;color:var(--color-primary);text-decoration:underline">
+                        <i data-lucide="download" style="width:14px;height:14px"></i>
+                        Télécharger l'aperçu
                     </a>
                 </template>
             </div>

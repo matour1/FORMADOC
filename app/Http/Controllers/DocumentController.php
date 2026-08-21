@@ -7,16 +7,21 @@ use App\DocAnalyzer\DocumentReconstructor;
 use App\Http\Requests\GenerateCoverRequest;
 use App\Http\Requests\StoreDocumentRequest;
 use App\Http\Requests\ValidateStructureRequest;
+use App\Jobs\LongFormattingJob;
 use App\Models\CoverTemplate;
 use App\Models\Document;
 use App\Models\DocumentStructure;
 use App\Models\GeneratedDocument;
+use App\Models\User;
+use App\Services\Billing\CreditService;
+use App\Services\Billing\QuotaService;
 use App\Services\Detection\AiCorrectionService;
 use App\Services\Detection\AmbiguityDetectionService;
 use App\Services\Detection\LegendDetectionService;
 use App\Services\Detection\StructureCorrectionService;
 use App\Services\Detection\TextExtractionService;
 use App\Services\DocumentGeneration\CoverDetectionService;
+use App\Services\OpenRouter\OpenRouterService;
 use Exception;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -41,6 +46,8 @@ class DocumentController extends Controller
     public function __construct(
         private readonly TextExtractionService $textExtraction,
         private readonly LegendDetectionService $legendDetection,
+        private readonly QuotaService $quotas,
+        private readonly OpenRouterService $openRouter,
     ) {
     }
 
@@ -54,6 +61,17 @@ class DocumentController extends Controller
 
     /**
      * Enregistre le document, lance la détection et affiche le résultat.
+     *
+     * Quotas mensuels (exigence D) :
+     *   - chaque upload consomme 1 unité du quota DÉTERMINISTE du plan
+     *     (Gratuit 5, Standard 10, Premium 30, Pro illimité) — uniquement
+     *     si l'utilisateur est connecté (mode invité conservé pour l'accès
+     *     public historique)
+     *   - l'assistance IA consomme 1 unité du quota IA ; si épuisé, l'IA
+     *     est OPTIONNELLE : bascule en mode déterministe avec un message
+     *   - si l'IA est active, un LongFormattingJob (mise en forme complète
+     *     asynchrone) est dispatché APRÈS la détection : il débitera les
+     *     crédits estimés et passera le document en 'ready'
      */
     public function upload(StoreDocumentRequest $request): RedirectResponse
     {
@@ -62,6 +80,43 @@ class DocumentController extends Controller
             // Le mode par défaut est SANS IA : aucun appel externe n'est émis
             // si l'utilisateur ne l'a pas activé (exigence Phase 4).
             $useAi = $request->boolean('use_ai', false);
+
+            // Utilisateur connecté (nullable : les routes documents restent
+            // publiques, le mode invité ne consomme pas de quotas)
+            $user = $request->user();
+
+            // --- Quota déterministe (1 unité par upload) ---
+            if ($user) {
+                $quota = $this->quotas->consume($user, 'deterministic');
+                if (! $quota['ok']) {
+                    return back()
+                        ->withInput()
+                        ->withErrors([
+                            'document' => 'Quota mensuel de documents atteint ('
+                                .$quota['used'].'/'.$quota['quota'].'). '
+                                .'Passez à un plan supérieur ou attendez la prochaine période.',
+                        ]);
+                }
+            }
+
+            // --- Quota IA (uniquement si l'IA est demandée) ---
+            if ($useAi && $user) {
+                $aiQuota = $this->quotas->consume($user, 'ai');
+                if (! $aiQuota['ok']) {
+                    // L'IA est OPTIONNELLE : on bascule en mode déterministe
+                    // avec un message clair (jamais bloquant)
+                    $useAi = false;
+                    Log::info('Upload : quota IA épuisé, bascule en mode déterministe', [
+                        'user_id' => $user->id,
+                        'used' => $aiQuota['used'],
+                        'quota' => $aiQuota['quota'],
+                    ]);
+                    session()->flash('warning', 'Quota IA mensuel atteint ('
+                        .$aiQuota['used'].'/'.$aiQuota['quota'].'). '
+                        .'Le document a été traité en mode déterministe. '
+                        .'Passez à un plan supérieur ou achetez des crédits pour réactiver l\'IA.');
+                }
+            }
 
             // Le LLM peut être lent et le timeout est dynamique selon la taille
             // du document. On ne prolonge l'exécution PHP QUE si l'IA est
@@ -79,6 +134,7 @@ class DocumentController extends Controller
                 'mime' => $mimeType,
                 'size' => $file->getSize(),
                 'use_ai' => $useAi,
+                'user_id' => $user?->id,
             ]);
 
             // Stockage hors web root
@@ -96,10 +152,42 @@ class DocumentController extends Controller
                     'size' => $file->getSize(),
                     'title_method' => $titleMethod,
                     'use_ai' => $useAi,
+                    'user_id' => $user?->id,
                 ],
             ]);
 
             $this->runDetection($document, $titleMethod, $useAi);
+
+            // --- Mise en forme complète asynchrone (LongFormattingJob) ---
+            // Le job exige un utilisateur (débit de crédits). Il est dispatché
+            // APRÈS la détection : la structure est déjà disponible.
+            if ($useAi && $user) {
+                $estimate = $this->openRouter->estimateCost(
+                    'document_full_format',
+                    max(500, (int) ceil($file->getSize() / 4)),
+                    1500,
+                    $user->currentPlanSlug(),
+                );
+                $estimatedCredits = max(1, $estimate['credits']);
+
+                if (! $user->hasCredits($estimatedCredits)) {
+                    Log::warning('Upload : crédits insuffisants pour le job de formatage IA', [
+                        'user_id' => $user->id,
+                        'required' => $estimatedCredits,
+                    ]);
+                    session()->flash('warning', 'Crédits insuffisants ('.$estimatedCredits
+                        .' requis) pour la mise en forme IA complète. '
+                        .'Le document a été analysé ; ajoutez des crédits depuis votre compte puis '
+                        .'relancez la génération.');
+                } else {
+                    LongFormattingJob::dispatch($document, $estimatedCredits, $user->id);
+
+                    return redirect()
+                        ->route('documents.show', $document)
+                        ->with('success', 'Document analysé avec succès. La mise en forme IA complète '
+                            .'est en cours de traitement (~'.$estimatedCredits.' crédits estimés).');
+                }
+            }
 
             return redirect()
                 ->route('documents.show', $document)

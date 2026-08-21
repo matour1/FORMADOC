@@ -4,7 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\ChatMessage;
 use App\Models\ChatSession;
+use App\Services\Anthropic\ClaudeSkillsService;
 use App\Services\Billing\CreditService;
+use App\Services\Billing\QuotaService;
+use App\Services\Chat\ChatToolsService;
 use App\Services\OpenRouter\OpenRouterService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,18 +19,24 @@ use Illuminate\View\View;
  * Chat IA avec affichage du coût en crédits.
  *
  * Flux send() :
- *   1. estimation du coût AVANT appel (modèle du plan, 200 in / 500 out)
- *   2. vérification du solde → erreur si insuffisant
- *   3. débit immédiat des crédits estimés
- *   4. appel OpenRouter (modèle réel, usage réel)
- *   5. ajustement : si coût réel < estimé → remboursement de la différence
- *   6. en cas d'échec → remboursement intégral
+ *   1. vérification du QUOTA IA mensuel du plan (1 message = 1 unité)
+ *   2. estimation du coût AVANT appel (modèle du plan, 200 in / 500 out)
+ *      → affichée à l'utilisateur (étape de confirmation)
+ *   3. vérification du solde → erreur si insuffisant
+ *   4. débit immédiat des crédits estimés
+ *   5. appel OpenRouter avec OUTILS (function calling : page de garde,
+ *      reconstruction, recherche web, image…) et Skills Claude (Pro)
+ *   6. ajustement : si coût réel < estimé → remboursement de la différence
+ *   7. en cas d'échec → remboursement intégral + restitution du quota IA
  */
 class ChatController extends Controller
 {
     public function __construct(
         private readonly OpenRouterService $openRouter,
         private readonly CreditService $credits,
+        private readonly QuotaService $quotas,
+        private readonly ChatToolsService $tools,
+        private readonly ClaudeSkillsService $claudeSkills,
     ) {
     }
 
@@ -42,7 +51,15 @@ class ChatController extends Controller
             ->orderByDesc('updated_at')
             ->get();
 
-        return view('chat.index', ['sessions' => $sessions]);
+        // Estimation du coût d'un message pour le plan de l'utilisateur (affichée avant envoi)
+        $plan = $request->user()->currentPlanSlug();
+        $estimate = $this->openRouter->estimateCost('chat_text', 200, 500, $plan);
+
+        return view('chat.index', [
+            'sessions' => $sessions,
+            'estimatedCredits' => max(1, $estimate['credits']),
+            'claudeEligible' => $this->claudeSkills->isEligible($request->user()),
+        ]);
     }
 
     /**
@@ -60,10 +77,16 @@ class ChatController extends Controller
 
         $messages = $chatSession->messages()->get();
 
+        // Estimation du coût d'un message pour le plan de l'utilisateur (affichée avant envoi)
+        $plan = $request->user()->currentPlanSlug();
+        $estimate = $this->openRouter->estimateCost('chat_text', 200, 500, $plan);
+
         return view('chat.show', [
             'chatSession' => $chatSession,
             'sessions' => $sessions,
             'messages' => $messages,
+            'chatCostEstimate' => max(1, $estimate['credits']),
+            'claudeEligible' => $this->claudeSkills->isEligible($request->user()),
         ]);
     }
 
@@ -89,7 +112,28 @@ class ChatController extends Controller
             return back()->with('error', 'Crédits insuffisants ('.$estimatedCredits.' requis pour ce message). Ajoutez des crédits depuis votre compte.');
         }
 
-        // --- 3. Session (création si nouvelle) ---
+        // --- 3. Confirmation du coût AVANT exécution (exigence A) ---
+        // La première soumission affiche le coût estimé ; l'utilisateur
+        // confirme explicitement (confirm_cost=1) pour déclencher l'envoi.
+        if (! $request->boolean('confirm_cost')) {
+            session()->flash('pending_cost', [
+                'message' => $messageContent,
+                'credits' => $estimatedCredits,
+                'plan' => $plan,
+            ]);
+
+            return back()->with('info', 'Coût estimé pour ce message : '.$estimatedCredits
+                .' crédit(s) (plan '.$plan.'). Confirmez pour envoyer.');
+        }
+
+        // --- 4. Quota IA mensuel (1 message IA = 1 unité) ---
+        $aiQuota = $this->quotas->consume($user, 'ai');
+        if (! $aiQuota['ok']) {
+            return back()->with('error', 'Quota IA mensuel atteint ('.$aiQuota['used'].'/'
+                .$aiQuota['quota'].'). Passez à un plan supérieur ou attendez la prochaine période.');
+        }
+
+        // --- 5. Session (création si nouvelle) ---
         if (! $chatSession || $chatSession->user_id !== $user->id) {
             $chatSession = ChatSession::create([
                 'user_id' => $user->id,
@@ -98,14 +142,14 @@ class ChatController extends Controller
             ]);
         }
 
-        // --- 4. Enregistrer le message utilisateur ---
+        // --- 6. Enregistrer le message utilisateur ---
         ChatMessage::create([
             'chat_session_id' => $chatSession->id,
             'role' => 'user',
             'content' => $messageContent,
         ]);
 
-        // --- 5. Débit immédiat (estimation) ---
+        // --- 7. Débit immédiat (estimation) ---
         $debit = $this->credits->debit(
             $user,
             $estimatedCredits,
@@ -119,7 +163,7 @@ class ChatController extends Controller
             return back()->with('error', 'Impossible de débiter vos crédits ('.$debit['reason'].').');
         }
 
-        // --- 6. Historique du chat (contexte) ---
+        // --- 8. Historique du chat (contexte) ---
         $history = $chatSession->messages()
             ->orderByDesc('created_at')
             ->take(10)
@@ -129,11 +173,27 @@ class ChatController extends Controller
             ->values()
             ->all();
 
-        // --- 7. Appel OpenRouter ---
+        // --- 9. Outils actionnables (function calling) ---
+        // Skills Claude réservés aux Pro : le schéma n'est injecté que pour eux.
+        $tools = $this->tools->schemas();
+        if ($this->claudeSkills->isEligible($user)) {
+            $tools[] = $this->skillSchema();
+        }
+
+        $executor = function (array $toolCall, int $turn) use ($user, $plan): array {
+            return $this->executeTool($toolCall, $user, $plan);
+        };
+
+        // --- 10. Appel OpenRouter (avec outils) ---
         try {
-            $response = $this->openRouter->chat('chat_text', $history, $plan);
+            $response = $this->openRouter->chat(
+                empty($tools) ? 'chat_text' : 'function_calling',
+                $history,
+                $plan,
+                ['tools' => $tools, 'executor' => $executor],
+            );
         } catch (\Throwable $e) {
-            // Échec → remboursement intégral
+            // Échec → remboursement intégral + restitution du quota IA
             $this->credits->credit(
                 $user,
                 $estimatedCredits,
@@ -142,6 +202,7 @@ class ChatController extends Controller
                 description: 'Remboursement chat IA (échec)',
                 metadata: ['purpose' => 'chat', 'chat_session_id' => $chatSession->id, 'refund_reason' => 'llm_failure'],
             );
+            $this->quotas->refund($user, 'ai');
 
             Log::error('Chat IA : échec appel OpenRouter', [
                 'user_id' => $user->id,
@@ -152,7 +213,7 @@ class ChatController extends Controller
             return back()->with('error', 'L\'assistant IA est momentanément indisponible. Vos crédits ont été remboursés.');
         }
 
-        // --- 8. Coût réel vs estimé → ajustement ---
+        // --- 11. Coût réel vs estimé → ajustement ---
         $actualCredits = (int) $response['cost_credits'];
         $diff = $estimatedCredits - $actualCredits;
 
@@ -174,25 +235,124 @@ class ChatController extends Controller
             ]);
         }
 
-        // --- 9. Enregistrer la réponse ---
+        // --- 12. Enregistrer la réponse ---
+        $content = (string) ($response['content'] ?? '');
+        if ($content === '' && ! empty($response['tool_turns'])) {
+            $content = 'Action(s) exécutée(s) avec succès ('.$response['tool_turns'].' appel(s) d\'outil).';
+        }
+
         ChatMessage::create([
             'chat_session_id' => $chatSession->id,
             'role' => 'assistant',
-            'content' => $response['content'],
+            'content' => $content,
             'model_used' => $response['model'],
             'cost_credits' => $actualCredits,
             'metadata' => [
                 'usage' => $response['usage'],
                 'estimated_credits' => $estimatedCredits,
+                'tool_turns' => $response['tool_turns'] ?? 0,
             ],
         ]);
 
-        // --- 10. Mise à jour de la session ---
+        // --- 13. Mise à jour de la session ---
         $chatSession->update([
             'model_used' => $response['model'],
             'total_cost_credits' => $chatSession->total_cost_credits + $actualCredits,
         ]);
 
         return redirect()->route('chat.show', $chatSession);
+    }
+
+    /* ------------------------------------------------------------------
+     |  Exécution des outils (cible de l'executor OpenRouter)
+     | ------------------------------------------------------------------ */
+
+    /**
+     * Schéma OpenAI de l'outil Skills documentaires Claude (Pro uniquement).
+     *
+     * @return array<string, mixed>
+     */
+    private function skillSchema(): array
+    {
+        return [
+            'type' => 'function',
+            'function' => [
+                'name' => 'document.skill_generate',
+                'description' => 'Génère un document natif Office (docx, xlsx, pptx ou pdf) via les '
+                    .'Skills documentaires Claude. Réservé aux abonnés Pro. Le fichier est enregistré '
+                    .'dans le stockage et son chemin est retourné.',
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'skill' => ['type' => 'string', 'enum' => ['docx', 'xlsx', 'pptx', 'pdf'], 'description' => 'Type de document à générer'],
+                        'prompt' => ['type' => 'string', 'description' => 'Instructions détaillées de génération (contenu, mise en forme)'],
+                        'output_name' => ['type' => 'string', 'description' => 'Nom du fichier (sans extension)'],
+                    ],
+                    'required' => ['skill', 'prompt'],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Exécute un tool_call : Skills Claude (Pro) ou outils internes/externes.
+     *
+     * @param array<string, mixed> $toolCall
+     *
+     * @return array{result?: string, error?: string}
+     */
+    private function executeTool(array $toolCall, $user, string $plan): array
+    {
+        $name = (string) ($toolCall['name'] ?? '');
+
+        // Skills documentaires Claude (Pro uniquement, ne bloque jamais)
+        if ($name === 'document.skill_generate') {
+            if (! $this->claudeSkills->isEligible($user)) {
+                return ['error' => 'Les Skills documentaires Claude sont réservés aux abonnés Pro.'];
+            }
+
+            $arguments = $this->decodeArguments($toolCall['arguments'] ?? '{}');
+            $skill = (string) ($arguments['skill'] ?? '');
+            $prompt = (string) ($arguments['prompt'] ?? '');
+            $outputName = (string) ($arguments['output_name'] ?? 'document_skill');
+
+            try {
+                $result = $this->claudeSkills->generate($user, $skill, $prompt, $outputName);
+
+                return ['result' => 'Document '.strtoupper($skill).' généré : '
+                    .$result['path'].' ('.$result['cost_credits'].' crédits).'];
+            } catch (\Throwable $e) {
+                Log::warning('Chat : échec Skill Claude, fallback outils internes', [
+                    'skill' => $skill,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return ['error' => 'Génération Claude indisponible : '.$e->getMessage()
+                    .' — la génération via outils internes (PHPWord) reste possible.'];
+            }
+        }
+
+        // Outils internes / externes standards
+        return $this->tools->execute($toolCall, $user, $plan);
+    }
+
+    /**
+     * Décode les arguments JSON d'un tool_call.
+     *
+     * @return array<string, mixed>
+     */
+    private function decodeArguments(mixed $arguments): array
+    {
+        if (is_array($arguments)) {
+            return $arguments;
+        }
+
+        if (! is_string($arguments) || $arguments === '') {
+            return [];
+        }
+
+        $decoded = json_decode($arguments, true);
+
+        return is_array($decoded) ? $decoded : [];
     }
 }
