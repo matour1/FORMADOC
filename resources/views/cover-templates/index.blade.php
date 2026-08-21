@@ -3,72 +3,68 @@
 @section('title', 'Modèles de page de garde')
 
 @section('content')
-<div class="mx-auto max-w-6xl px-6 py-10">
-    <div class="mb-6 flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-semibold text-slate-900">Modèles de page de garde</h1>
-            <p class="mt-1 text-sm text-slate-500">
-                Personnalisez vos couvertures et réutilisez-les sur tous vos rapports.
-            </p>
+<div class="max-w-6xl">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.6rem">
+        <div class="page-header" style="margin-bottom:0">
+            <div>
+                <span class="eyebrow">Pages de garde</span>
+                <h1>Modèles de page de garde</h1>
+                <p>
+                    Personnalisez vos couvertures et réutilisez-les sur tous vos rapports.
+                </p>
+            </div>
         </div>
-        <a href="{{ route('cover-templates.create') }}"
-           class="inline-flex items-center gap-2 rounded-full bg-[#004AC6] px-5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-[#2563eb]">
-            <span class="material-symbols-outlined text-[18px]">add</span>
+        <a href="{{ route('cover-templates.create') }}" class="btn btn-primary">
+            <i data-lucide="plus" style="width:16px;height:16px"></i>
             Nouveau modèle
         </a>
     </div>
 
-    @if(session('status'))
-        <div class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            {{ session('status') }}
-        </div>
-    @endif
-
-    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.1rem">
         @forelse ($templates as $tpl)
-            <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
-                <div class="flex items-start justify-between">
-                    <div>
-                        <h2 class="text-base font-semibold text-slate-900">{{ $tpl->name }}</h2>
-                        <p class="mt-1 line-clamp-2 text-sm text-slate-500">{{ $tpl->description ?: 'Aucune description.' }}</p>
+            <article class="card" style="display:flex;flex-direction:column;gap:.9rem">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.8rem">
+                    <div style="min-width:0">
+                        <h2 style="font-weight:600;font-size:.98rem">{{ $tpl->name }}</h2>
+                        <p style="color:var(--color-text-secondary);font-size:.82rem;margin-top:.25rem">{{ $tpl->description ?: 'Aucune description.' }}</p>
                     </div>
                     @if ($tpl->is_public)
-                        <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">Public</span>
+                        <span class="badge badge-success">Public</span>
                     @else
-                        <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">Privé</span>
+                        <span class="badge">Privé</span>
                     @endif
                 </div>
-                <div class="mt-4 flex items-center justify-between text-xs text-slate-400">
-                    <span>Mis à jour {{ $tpl->updated_at?->diffForHumans() }}</span>
+                <div style="font-size:.75rem;color:var(--color-text-muted)">
+                    Mis à jour {{ $tpl->updated_at?->diffForHumans() }}
                 </div>
-                <div class="mt-4 flex flex-wrap gap-2">
-                    <a href="{{ route('cover-templates.edit', $tpl) }}"
-                       class="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">
+                <div style="display:flex;flex-wrap:wrap;gap:.4rem;border-top:1px solid var(--color-border);padding-top:.8rem">
+                    <a href="{{ route('cover-templates.edit', $tpl) }}" class="btn btn-ghost btn-sm">
+                        <i data-lucide="pencil" style="width:14px;height:14px"></i>
                         Éditer
                     </a>
                     <form method="POST" action="{{ route('cover-templates.duplicate', $tpl) }}">
                         @csrf
-                        <button type="submit"
-                                class="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">
+                        <button type="submit" class="btn btn-ghost btn-sm">
+                            <i data-lucide="copy" style="width:14px;height:14px"></i>
                             Dupliquer
                         </button>
                     </form>
                     <form method="POST" action="{{ route('cover-templates.destroy', $tpl) }}"
                           onsubmit="return confirm('Supprimer ce modèle ?')">
                         @csrf @method('DELETE')
-                        <button type="submit"
-                                class="rounded-full border border-rose-200 px-3 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50">
+                        <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--color-correction)">
+                            <i data-lucide="trash-2" style="width:14px;height:14px"></i>
                             Supprimer
                         </button>
                     </form>
                 </div>
             </article>
         @empty
-            <div class="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
-                <span class="material-symbols-outlined text-5xl text-slate-300">inbox</span>
-                <p class="mt-4 text-sm text-slate-500">Aucun modèle pour le moment.</p>
-                <a href="{{ route('cover-templates.create') }}"
-                   class="mt-4 inline-flex items-center gap-2 rounded-full bg-[#004AC6] px-4 py-2 text-sm font-medium text-white">
+            <div style="grid-column:1 / -1;border:1px dashed var(--color-border);border-radius:var(--radius);background:var(--color-surface);padding:2.5rem 1.5rem;text-align:center">
+                <i data-lucide="inbox" style="width:44px;height:44px;color:var(--color-text-muted)"></i>
+                <p style="color:var(--color-text-secondary);font-size:.9rem;margin-top:1rem">Aucun modèle pour le moment.</p>
+                <a href="{{ route('cover-templates.create') }}" class="btn btn-primary" style="margin-top:1rem">
+                    <i data-lucide="plus" style="width:16px;height:16px"></i>
                     Créer le premier modèle
                 </a>
             </div>

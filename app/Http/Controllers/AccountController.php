@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Plan;
 use App\Services\Billing\CreditService;
+use App\Services\Billing\QuotaService;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -15,6 +16,7 @@ class AccountController extends Controller
 {
     public function __construct(
         private readonly CreditService $credits,
+        private readonly QuotaService $quotas,
     ) {
     }
 
@@ -44,6 +46,7 @@ class AccountController extends Controller
             'subscription' => $subscription,
             'transactions' => $transactions,
             'plans' => $plans,
+            'quotaStatus' => $this->quotas->status($user),
         ]);
     }
 }

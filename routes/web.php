@@ -4,11 +4,10 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CoverPageTemplateController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\FeedbackController;
+use App\Http\Controllers\LandingController;
 
-// Route de test
-Route::get('/', function () {
-    return response('OK', 200);
-});
+// Page d'accueil (landing page)
+Route::get('/', [LandingController::class, 'index']);
 
 // Routes Feedback (collecte d'avis sans compte utilisateur)
 Route::get('/feedback', [FeedbackController::class, 'showForm'])->name('feedback.form');

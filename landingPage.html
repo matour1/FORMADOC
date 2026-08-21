@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="FORMADOC — mettez en forme automatiquement vos mémoires, rapports et CV. Mode déterministe gratuit, assistance IA optionnelle." />
+<meta name="theme-color" content="#2b3f66" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232b3f66'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='Georgia'>FD</text></svg>" />
+<title>FORMADOC — Mise en forme automatique de documents</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+:root{
+  --ink-900:#161a24; --ink-700:#3a4256; --ink-500:#7e8698;
+  --paper-0:#faf9f6; --paper-100:#f2f0ea; --paper-200:#e7e3da;
+
+  --color-bg: var(--paper-0);
+  --color-surface:#ffffff;
+  --color-surface-2: var(--paper-100);
+  --color-text: var(--ink-900);
+  --color-text-secondary: var(--ink-700);
+  --color-text-muted: var(--ink-500);
+  --color-border: var(--paper-200);
+  --color-border-strong:#d8d2c4;
+
+  --color-primary:#2b3f66;
+  --color-primary-dark:#1b2a47;
+  --color-primary-tint:#e8ecf4;
+
+  --color-secondary:#3c7a63;
+  --color-secondary-tint:#e2efe9;
+
+  --color-correction:#a8391f;
+  --color-correction-tint:#f7e6e1;
+
+  --radius:14px; --radius-sm:8px; --radius-full:999px;
+  --shadow-1: 0 1px 2px rgba(22,26,36,0.06), 0 1px 1px rgba(22,26,36,0.04);
+  --shadow-2: 0 8px 24px rgba(22,26,36,0.08);
+  --shadow-3: 0 20px 50px rgba(22,26,36,0.16);
+  --transition:.2s cubic-bezier(.4,0,.2,1);
+
+  --font-display:'Newsreader', Georgia, serif;
+  --font-body:'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:'IBM Plex Mono', ui-monospace, monospace;
+  --navbar-height:68px;
+}
+
+[data-theme="dark"]{
+  --color-bg:#12151d; --color-surface:#1b1f2a; --color-surface-2:#12151d;
+  --color-text:#f2f0ea; --color-text-secondary:#c3c8d4; --color-text-muted:#7e8698;
+  --color-border:#2c3140; --color-border-strong:#3a4256;
+  --color-primary:#7691c9; --color-primary-dark:#5a76ae; --color-primary-tint:#212a3d;
+  --color-secondary:#6fb79a; --color-secondary-tint:#1b2b26;
+  --color-correction:#e08064; --color-correction-tint:#2e1f1c;
+  --shadow-1:0 1px 2px rgba(0,0,0,.4); --shadow-2:0 8px 24px rgba(0,0,0,.45); --shadow-3:0 24px 60px rgba(0,0,0,.55);
+}
+
+html{ scroll-behavior:smooth; scroll-padding-top:calc(var(--navbar-height) + 1rem); }
+body{ font-family:var(--font-body); background:var(--color-bg); color:var(--color-text); line-height:1.6; -webkit-font-smoothing:antialiased; transition:background var(--transition), color var(--transition); }
+a{ color:var(--color-primary); text-decoration:none; }
+:focus-visible{ outline:2px solid var(--color-primary); outline-offset:2px; border-radius:4px; }
+h1,h2,h3,.font-display{ font-family:var(--font-display); letter-spacing:-0.01em; }
+.mono{ font-family:var(--font-mono); }
+.wrap{ max-width:1180px; margin:0 auto; padding:0 1.75rem; }
+@media (prefers-reduced-motion: reduce){ *{ animation-duration:.001ms !important; transition-duration:.001ms !important; } }
+
+.skip-link{ position:fixed; top:-100px; left:1rem; z-index:1000; background:var(--color-primary); color:#fff; padding:.6rem 1rem; border-radius:var(--radius-sm); font-weight:600; font-size:.85rem; box-shadow:var(--shadow-2); transition:top .2s ease; }
+.skip-link:focus{ top:1rem; }
+
+/* Navbar */
+.navbar{ position:sticky; top:0; z-index:80; height:var(--navbar-height); display:flex; align-items:center; background:rgba(250,249,246,.85); backdrop-filter:blur(10px); border-bottom:1px solid var(--color-border); }
+[data-theme="dark"] .navbar{ background:rgba(18,21,29,.85); }
+.navbar .wrap{ display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+.brand{ display:flex; align-items:center; gap:.6rem; font-family:var(--font-display); font-weight:700; font-size:1.2rem; color:var(--color-text); }
+.brand .mark{ width:30px; height:30px; border-radius:7px; background:var(--color-primary); color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-weight:700; font-size:.95rem; flex-shrink:0; }
+.nav-links{ display:flex; align-items:center; gap:1.6rem; }
+.nav-links a{ color:var(--color-text-secondary); font-weight:500; font-size:.9rem; }
+.nav-links a:hover{ color:var(--color-text); }
+.nav-actions{ display:flex; align-items:center; gap:.6rem; }
+.navbar-menu-toggle{ display:none; background:none; border:none; cursor:pointer; color:var(--color-text); padding:.4rem; border-radius:var(--radius-sm); }
+.theme-toggle{ background:none; border:1px solid var(--color-border); cursor:pointer; color:var(--color-text-secondary); width:36px; height:36px; border-radius:var(--radius-sm); display:flex; align-items:center; justify-content:center; }
+.theme-toggle:hover{ background:var(--color-surface-2); }
+
+/* Buttons */
+.btn{ display:inline-flex; align-items:center; gap:.5rem; padding:.6rem 1.1rem; border-radius:var(--radius-sm); font-weight:600; font-size:.87rem; border:1px solid transparent; cursor:pointer; transition:all var(--transition); font-family:var(--font-body); }
+.btn-primary{ background:var(--color-primary); color:#fff; }
+.btn-primary:hover{ background:var(--color-primary-dark); }
+.btn-secondary{ background:var(--color-surface); color:var(--color-text); border-color:var(--color-border-strong); }
+.btn-secondary:hover{ background:var(--color-surface-2); }
+.btn-ghost{ background:transparent; color:var(--color-text-secondary); border-color:var(--color-border); }
+.btn-lg{ padding:.8rem 1.6rem; font-size:1rem; }
+
+/* Sections */
+section{ padding:4.5rem 0; }
+.eyebrow{ font-family:var(--font-mono); font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; color:var(--color-primary); margin-bottom:.6rem; display:block; }
+.section-title{ font-size:clamp(1.6rem,3vw,2.3rem); font-weight:700; max-width:640px; }
+.section-sub{ color:var(--color-text-secondary); font-size:1rem; max-width:560px; margin-top:.7rem; }
+.section-head{ margin-bottom:2.5rem; }
+.badge{ display:inline-flex; align-items:center; gap:.35rem; padding:.25rem .7rem; border-radius:var(--radius-full); font-size:.76rem; font-weight:600; background:var(--color-surface-2); color:var(--color-text-secondary); }
+.badge-success{ background:var(--color-secondary-tint); color:var(--color-secondary); }
+.badge-info{ background:var(--color-primary-tint); color:var(--color-primary); }
+.proof-stamp{ display:inline-flex; align-items:center; gap:.35rem; font-family:var(--font-mono); font-size:.7rem; letter-spacing:.06em; text-transform:uppercase; font-weight:600; padding:.25rem .6rem; border:1.5px solid currentColor; border-radius:4px; transform:rotate(-2deg); color:var(--color-secondary); }
+
+/* Hero */
+.hero{ padding-top:3rem; }
+.hero .wrap{ display:grid; grid-template-columns:minmax(0,.95fr) minmax(360px,1.05fr); gap:2.5rem; align-items:center; }
+.hero h1{ font-size:clamp(2.2rem,5vw,3.6rem); line-height:1; font-weight:700; }
+.hero p{ color:var(--color-text-secondary); font-size:1.05rem; max-width:560px; margin:1.1rem 0 1.5rem; }
+.hero-actions{ display:flex; gap:.7rem; flex-wrap:wrap; align-items:center; }
+.hero-proof{ display:flex; gap:.55rem; flex-wrap:wrap; margin-top:1.4rem; }
+.document-stage{ position:relative; min-height:460px; border:1px solid var(--color-border); border-radius:var(--radius); background:var(--color-surface); overflow:hidden; box-shadow:var(--shadow-2); }
+.document-stage::before{ content:''; position:absolute; inset:0; background-image:linear-gradient(var(--color-border) 1px, transparent 1px), linear-gradient(90deg, var(--color-border) 1px, transparent 1px); background-size:34px 34px; opacity:.28; }
+.doc-sheet{ position:absolute; width:56%; min-width:230px; aspect-ratio:210/297; background:#fff; border-radius:4px; box-shadow:0 24px 60px rgba(22,26,36,.2); padding:1.3rem; color:#161a24; transform:rotate(-3deg); left:8%; top:11%; display:flex; flex-direction:column; gap:.4rem; }
+.doc-sheet.after{ left:auto; right:8%; top:19%; transform:rotate(2deg); }
+.doc-sheet .doc-line{ height:7px; background:#d8d2c4; border-radius:2px; }
+.doc-sheet .doc-line.title{ height:14px; width:70%; background:#2b3f66; margin-bottom:.4rem; }
+.doc-sheet .doc-line.accent{ width:45%; background:#3c7a63; }
+.doc-sheet .doc-line.w90{ width:90%; } .doc-sheet .doc-line.w75{ width:75%; } .doc-sheet .doc-line.w55{ width:55%; }
+.doc-sheet .doc-table{ display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin:.5rem 0; }
+.doc-sheet .doc-table span{ height:18px; background:#f2f0ea; border:1px solid #e7e3da; border-radius:2px; }
+.flow-card{ position:absolute; left:50%; top:49%; transform:translate(-50%,-50%); background:var(--color-surface); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:.7rem .85rem; box-shadow:var(--shadow-3); min-width:180px; animation:pulseFloat 3.2s ease-in-out infinite; }
+.progress{ width:100%; height:6px; background:var(--color-border); border-radius:var(--radius-full); overflow:hidden; margin-top:.45rem; }
+.progress-bar{ height:100%; width:72%; background:var(--color-primary); border-radius:var(--radius-full); }
+@keyframes pulseFloat{ 0%,100%{ transform:translate(-50%,-50%) translateY(0); } 50%{ transform:translate(-50%,-50%) translateY(-8px); } }
+
+/* Logos / trust strip */
+.trust-strip{ padding:1.75rem 0; border-top:1px solid var(--color-border); border-bottom:1px solid var(--color-border); }
+.trust-strip .wrap{ display:flex; flex-wrap:wrap; gap:1.4rem; align-items:center; justify-content:center; color:var(--color-text-muted); font-size:.82rem; font-family:var(--font-mono); }
+
+/* Features */
+.feature-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:1.1rem; }
+.feature-item{ border:1px solid var(--color-border); background:var(--color-surface); border-radius:var(--radius); padding:1.3rem; }
+.feature-item .icon-wrap{ width:40px; height:40px; border-radius:var(--radius-sm); display:flex; align-items:center; justify-content:center; color:var(--color-primary); background:var(--color-primary-tint); margin-bottom:.9rem; }
+.feature-item h3{ font-size:1.05rem; margin-bottom:.3rem; }
+.feature-item p{ color:var(--color-text-muted); font-size:.88rem; }
+
+/* Steps */
+.steps{ display:grid; grid-template-columns:repeat(4,1fr); gap:1.1rem; counter-reset:step; }
+.step-item{ position:relative; padding:1.4rem 1.2rem 1.2rem; border:1px solid var(--color-border); border-radius:var(--radius); background:var(--color-surface); }
+.step-item .step-num{ font-family:var(--font-mono); font-size:.75rem; font-weight:700; color:var(--color-primary); background:var(--color-primary-tint); width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin-bottom:.8rem; }
+.step-item h3{ font-size:.98rem; margin-bottom:.3rem; }
+.step-item p{ color:var(--color-text-muted); font-size:.85rem; }
+
+/* Pricing */
+.plan-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:1rem; }
+.plan-card{ border:1.5px solid var(--color-border); border-radius:var(--radius); padding:1.4rem 1.15rem; background:var(--color-surface); display:flex; flex-direction:column; gap:.2rem; position:relative; transition:all var(--transition); }
+.plan-card:hover{ border-color:var(--color-primary); box-shadow:var(--shadow-2); transform:translateY(-3px); }
+.plan-card.popular{ border-color:var(--color-primary); }
+.plan-card .plan-tag{ position:absolute; top:-11px; left:1.1rem; background:var(--color-primary); color:#fff; font-size:.65rem; font-weight:700; padding:.15rem .5rem; border-radius:var(--radius-full); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:.04em; }
+.plan-card .plan-name{ font-weight:700; font-size:.98rem; }
+.plan-card .price{ font-family:var(--font-display); font-size:1.7rem; font-weight:700; margin:.2rem 0; }
+.plan-card .price span{ font-size:.8rem; font-weight:400; color:var(--color-text-muted); font-family:var(--font-body); }
+.plan-card .plan-desc{ color:var(--color-text-muted); font-size:.8rem; margin-bottom:.9rem; min-height:2.2em; }
+.plan-card ul{ list-style:none; display:flex; flex-direction:column; gap:.4rem; margin-bottom:1rem; }
+.plan-card ul li{ font-size:.8rem; color:var(--color-text-secondary); display:flex; gap:.4rem; align-items:flex-start; }
+.plan-card ul li::before{ content:'✓'; color:var(--color-secondary); font-weight:700; flex-shrink:0; }
+.plan-card .btn{ margin-top:auto; justify-content:center; }
+
+/* FAQ */
+.faq{ max-width:760px; margin:0 auto; }
+.faq details{ border:1px solid var(--color-border); border-radius:var(--radius-sm); background:var(--color-surface); margin-bottom:.6rem; overflow:hidden; }
+.faq summary{ padding:1rem 1.2rem; cursor:pointer; font-weight:600; font-size:.94rem; list-style:none; display:flex; justify-content:space-between; align-items:center; gap:1rem; }
+.faq summary::-webkit-details-marker{ display:none; }
+.faq summary::after{ content:'+'; font-size:1.3rem; color:var(--color-text-muted); font-weight:400; flex-shrink:0; transition:transform var(--transition); }
+.faq details[open] summary::after{ transform:rotate(45deg); }
+.faq .faq-body{ padding:0 1.2rem 1.1rem; color:var(--color-text-secondary); font-size:.88rem; }
+
+/* Final CTA */
+.cta-band{ background:var(--color-primary); color:#fff; border-radius:var(--radius); padding:3rem 2rem; text-align:center; }
+.cta-band h2{ font-size:clamp(1.5rem,3vw,2.1rem); margin-bottom:.6rem; }
+.cta-band p{ color:rgba(255,255,255,.82); max-width:520px; margin:0 auto 1.5rem; }
+.cta-band .btn-primary{ background:#fff; color:var(--color-primary); }
+.cta-band .btn-primary:hover{ background:var(--paper-100); }
+.cta-band .btn-secondary{ background:transparent; border-color:rgba(255,255,255,.4); color:#fff; }
+.cta-band .btn-secondary:hover{ background:rgba(255,255,255,.1); }
+
+/* Footer with backlinks */
+footer{ border-top:1px solid var(--color-border); padding:3rem 0 2rem; margin-top:1rem; }
+.footer-grid{ display:grid; grid-template-columns:1.4fr repeat(4,1fr); gap:2rem; margin-bottom:2.5rem; }
+.footer-brand p{ color:var(--color-text-muted); font-size:.85rem; margin-top:.8rem; max-width:260px; }
+.footer-col h4{ font-size:.78rem; text-transform:uppercase; letter-spacing:.06em; color:var(--color-text-muted); font-weight:700; margin-bottom:.9rem; }
+.footer-col ul{ list-style:none; display:flex; flex-direction:column; gap:.6rem; }
+.footer-col a{ color:var(--color-text-secondary); font-size:.88rem; }
+.footer-col a:hover{ color:var(--color-primary); }
+.footer-bottom{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; padding-top:1.5rem; border-top:1px solid var(--color-border); font-size:.8rem; color:var(--color-text-muted); }
+.footer-payments{ display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; font-family:var(--font-mono); font-size:.72rem; }
+.footer-payments span{ background:var(--color-surface-2); padding:.2rem .55rem; border-radius:4px; }
+
+@media (max-width:1024px){
+  .plan-grid{ grid-template-columns:repeat(3,1fr); }
+  .footer-grid{ grid-template-columns:1fr 1fr 1fr; }
+  .hero .wrap{ grid-template-columns:1fr; }
+  .document-stage{ min-height:400px; }
+}
+@media (max-width:768px){
+  .navbar-menu-toggle{ display:flex; align-items:center; justify-content:center; }
+  .nav-links{ display:none; }
+  section{ padding:3rem 0; }
+  .feature-grid, .steps{ grid-template-columns:1fr 1fr; }
+  .plan-grid{ grid-template-columns:1fr 1fr; }
+  .footer-grid{ grid-template-columns:1fr 1fr; }
+  .doc-sheet{ width:62%; min-width:200px; }
+}
+@media (max-width:520px){
+  .feature-grid, .steps, .plan-grid, .footer-grid{ grid-template-columns:1fr; }
+  .hero-actions .btn{ width:100%; justify-content:center; }
+  .doc-sheet.after{ display:none; }
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Aller au contenu principal</a>
+
+<header class="navbar">
+  <div class="wrap">
+    <a class="brand" href="#main"><span class="mark">FD</span> FORMADOC</a>
+    <nav class="nav-links" aria-label="Navigation principale">
+      <a href="#fonctionnalites">Fonctionnalités</a>
+      <a href="#parcours">Comment ça marche</a>
+      <a href="#tarifs">Tarifs</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="nav-actions">
+      <button class="theme-toggle" id="themeToggle" aria-label="Basculer le thème clair/sombre" aria-pressed="false">
+        <svg id="themeIcon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <a class="btn btn-ghost" href="formadoc-template.html#auth">Connexion</a>
+      <a class="btn btn-primary" href="formadoc-template.html#auth">Essayer gratuitement</a>
+      <button class="navbar-menu-toggle" aria-label="Ouvrir le menu"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <span class="eyebrow">FORMADOC SaaS</span>
+        <h1>Vos documents, mis en forme au cordeau.</h1>
+        <p>Rapports, mémoires, CV et documents professionnels transformés automatiquement en fichiers propres et cohérents — avec ou sans assistance IA.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary btn-lg" href="formadoc-template.html#auth">Commencer gratuitement</a>
+          <a class="btn btn-secondary btn-lg" href="formadoc-template.html#templates">Voir les modèles</a>
+        </div>
+        <div class="hero-proof">
+          <span class="proof-stamp">DOCX / PDF</span>
+          <span class="badge badge-success">2 documents gratuits/mois</span>
+          <span class="badge badge-info">IA optionnelle</span>
+        </div>
+      </div>
+
+      <div class="document-stage" aria-label="Aperçu visuel de transformation documentaire">
+        <div class="doc-sheet">
+          <div class="doc-line title"></div>
+          <div class="doc-line w55"></div>
+          <div class="doc-line w90"></div>
+          <div class="doc-line w75"></div>
+          <div class="doc-line w90"></div>
+          <div class="doc-table"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="doc-line w75"></div>
+          <div class="doc-line w90"></div>
+        </div>
+        <div class="flow-card">
+          <div style="font-weight:700;font-size:.86rem;">Analyse en cours</div>
+          <div class="mono" style="font-size:.72rem;color:var(--color-text-muted);">Structure · styles · figures</div>
+          <div class="progress"><div class="progress-bar"></div></div>
+        </div>
+        <div class="doc-sheet after">
+          <div class="doc-line title"></div>
+          <div class="doc-line accent"></div>
+          <div class="doc-line w90"></div>
+          <div class="doc-line w90"></div>
+          <div class="doc-line w75"></div>
+          <div class="doc-table"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="doc-line w90"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRUST STRIP -->
+  <div class="trust-strip">
+    <div class="wrap">
+      <span>MODE DÉTERMINISTE TOUJOURS DISPONIBLE</span>
+      <span>·</span>
+      <span>PAIEMENT KPAY · ORANGE MONEY · MTN MOMO</span>
+      <span>·</span>
+      <span>COÛT AFFICHÉ AVANT TOUTE ACTION IA</span>
+    </div>
+  </div>
+
+  <!-- FEATURES -->
+  <section id="fonctionnalites">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Fonctionnalités</span>
+        <h2 class="section-title">Tout ce qu'il faut pour un document impeccable</h2>
+        <p class="section-sub">Un moteur déterministe fait le travail de base ; l'IA n'intervient que si vous le décidez, et son coût est toujours visible avant exécution.</p>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-item">
+          <div class="icon-wrap"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg></div>
+          <h3>Structure détectée</h3>
+          <p>Titres, listes, tableaux, images, légendes et notes de bas de page sont reconnus automatiquement.</p>
+        </div>
+        <div class="feature-item">
+          <div class="icon-wrap"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div>
+          <h3>Gabarits maîtrisés</h3>
+          <p>Modèles académiques, professionnels ou personnalisés — appliqués sans jamais perdre le contenu.</p>
+        </div>
+        <div class="feature-item">
+          <div class="icon-wrap"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="1"/><path d="M8 7h5"/><circle cx="15" cy="15" r="2"/></svg></div>
+          <h3>Page de garde sur mesure</h3>
+          <p>Composez votre propre couverture ou choisissez un modèle prêt à l'emploi.</p>
+        </div>
+        <div class="feature-item">
+          <div class="icon-wrap"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+          <h3>Assistant IA intégré</h3>
+          <p>Le modèle le plus adapté est choisi automatiquement selon la tâche — analyse, correction ou mise en forme.</p>
+        </div>
+        <div class="feature-item">
+          <div class="icon-wrap"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v12"/><path d="M8 10h8"/></svg></div>
+          <h3>Crédits transparents</h3>
+          <p>Chaque action IA affiche son coût estimé avant exécution ; repli gratuit sans IA à tout moment.</p>
+        </div>
+        <div class="feature-item">
+          <div class="icon-wrap"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <h3>Aperçu fidèle</h3>
+          <p>Contrôlez le rendu PDF avant de télécharger le document final au format DOCX.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMMENT ÇA MARCHE -->
+  <section id="parcours" style="background:var(--color-surface-2);">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Parcours</span>
+        <h2 class="section-title">De votre brouillon au document final, en quatre étapes</h2>
+      </div>
+      <div class="steps">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <h3>Téléversez</h3>
+          <p>Un fichier DOCX ou PDF, jusqu'à 50 Mo.</p>
+        </div>
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <h3>Choisissez un gabarit</h3>
+          <p>Un modèle public, ou le vôtre.</p>
+        </div>
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <h3>IA facultative</h3>
+          <p>Coût affiché avant validation, repli gratuit possible.</p>
+        </div>
+        <div class="step-item">
+          <div class="step-num">4</div>
+          <h3>Téléchargez</h3>
+          <p>Aperçu PDF, puis export DOCX final.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TARIFS -->
+  <section id="tarifs">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Tarifs</span>
+        <h2 class="section-title">Un plan pour chaque usage</h2>
+        <p class="section-sub">1 crédit = 1 FCFA. Achetez des crédits ponctuellement ou choisissez un abonnement mensuel, résiliable à tout moment.</p>
+      </div>
+      <div class="plan-grid">
+        <div class="plan-card">
+          <div class="plan-name">Gratuit</div>
+          <div class="price mono">0 <span>FCFA/mois</span></div>
+          <div class="plan-desc">Pour tester le mode déterministe.</div>
+          <ul>
+            <li>2 documents / mois</li>
+            <li>Mode déterministe uniquement</li>
+            <li>Modèles publics</li>
+          </ul>
+          <a class="btn btn-secondary" href="formadoc-template.html#auth">Commencer</a>
+        </div>
+        <div class="plan-card">
+          <div class="plan-name">Standard</div>
+          <div class="price mono">3 000 <span>FCFA/mois</span></div>
+          <div class="plan-desc">Pour un usage régulier.</div>
+          <ul>
+            <li>5 documents IA / mois</li>
+            <li>100 crédits chat</li>
+            <li>Modèles publics</li>
+          </ul>
+          <a class="btn btn-secondary" href="formadoc-template.html#auth">Choisir</a>
+        </div>
+        <div class="plan-card popular">
+          <span class="plan-tag">Populaire</span>
+          <div class="plan-name">Premium</div>
+          <div class="price mono">5 000 <span>FCFA/mois</span></div>
+          <div class="plan-desc">Personnalisation avancée.</div>
+          <ul>
+            <li>15 documents IA / mois</li>
+            <li>300 crédits chat</li>
+            <li>Comparaison de gabarits</li>
+          </ul>
+          <a class="btn btn-primary" href="formadoc-template.html#auth">Choisir Premium</a>
+        </div>
+        <div class="plan-card">
+          <div class="plan-name">Pro</div>
+          <div class="price mono">8 000 <span>FCFA/mois</span></div>
+          <div class="plan-desc">Traitement complet haute qualité.</div>
+          <ul>
+            <li>Documents IA illimités</li>
+            <li>1 000 crédits chat</li>
+            <li>Accès prioritaire aux modèles</li>
+          </ul>
+          <a class="btn btn-secondary" href="formadoc-template.html#auth">Choisir Pro</a>
+        </div>
+        <div class="plan-card">
+          <div class="plan-name">Entreprise</div>
+          <div class="price">Sur devis</div>
+          <div class="plan-desc">Multi-utilisateurs et API.</div>
+          <ul>
+            <li>Utilisateurs illimités</li>
+            <li>Accès API</li>
+            <li>Accompagnement dédié</li>
+          </ul>
+          <a class="btn btn-secondary" href="#contact">Nous contacter</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq" style="background:var(--color-surface-2);">
+    <div class="wrap">
+      <div class="section-head" style="text-align:center;margin-left:auto;margin-right:auto;">
+        <span class="eyebrow">Questions fréquentes</span>
+        <h2 class="section-title" style="margin:0 auto;">Ce que les utilisateurs demandent le plus</h2>
+      </div>
+      <div class="faq">
+        <details open>
+          <summary>Le mode sans IA est-il vraiment gratuit ?</summary>
+          <div class="faq-body">Oui. Le moteur déterministe de mise en forme est toujours disponible, y compris sur le plan Gratuit, sans jamais consommer de crédits.</div>
+        </details>
+        <details>
+          <summary>Que se passe-t-il si je n'ai pas assez de crédits ?</summary>
+          <div class="faq-body">FORMADOC vous propose d'acheter des crédits ou de continuer sans assistance IA — le traitement déterministe reste toujours accessible gratuitement.</div>
+        </details>
+        <details>
+          <summary>Puis-je annuler mon abonnement à tout moment ?</summary>
+          <div class="faq-body">Oui, l'annulation est possible à tout moment. Votre abonnement reste actif jusqu'à la fin de la période déjà payée, puis bascule vers le plan Gratuit.</div>
+        </details>
+        <details>
+          <summary>Quels formats de fichiers sont acceptés ?</summary>
+          <div class="faq-body">Les fichiers .docx et .pdf jusqu'à 50 Mo. Les PDF sont automatiquement convertis en DOCX pour l'analyse.</div>
+        </details>
+        <details>
+          <summary>Mes documents sont-ils conservés indéfiniment ?</summary>
+          <div class="faq-body">Non, les fichiers téléversés sont supprimés automatiquement après 30 jours pour votre confidentialité.</div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA FINAL -->
+  <section>
+    <div class="wrap">
+      <div class="cta-band">
+        <h2>Prêt à mettre vos documents en forme ?</h2>
+        <p>Deux documents gratuits par mois, sans carte bancaire requise pour commencer.</p>
+        <div style="display:flex;gap:.7rem;justify-content:center;flex-wrap:wrap;">
+          <a class="btn btn-primary btn-lg" href="formadoc-template.html#auth">Créer un compte gratuit</a>
+          <a class="btn btn-secondary btn-lg" href="formadoc-template.html#templates">Explorer les modèles</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- FOOTER AVEC LIENS DE RETOUR -->
+<footer id="contact">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="brand"><span class="mark">FD</span> FORMADOC</div>
+        <p>La mise en forme automatique de documents, avec ou sans assistance IA. Basé à Douala, Cameroun.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Produit</h4>
+        <ul>
+          <li><a href="#fonctionnalites">Fonctionnalités</a></li>
+          <li><a href="#tarifs">Tarifs</a></li>
+          <li><a href="formadoc-template.html#templates">Bibliothèque de modèles</a></li>
+          <li><a href="formadoc-template.html#chat">Assistant IA</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Compte</h4>
+        <ul>
+          <li><a href="formadoc-template.html#auth">Connexion</a></li>
+          <li><a href="formadoc-template.html#auth">Créer un compte</a></li>
+          <li><a href="formadoc-template.html#account">Crédits &amp; abonnement</a></li>
+          <li><a href="formadoc-template.html#dashboard">Voir la démo</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Support</h4>
+        <ul>
+          <li><a href="#faq">Questions fréquentes</a></li>
+          <li><a href="mailto:support@formadoc.example">Contacter le support</a></li>
+          <li><a href="#" data-status>État du service</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Légal</h4>
+        <ul>
+          <li><a href="#">Mentions légales</a></li>
+          <li><a href="#">Conditions générales</a></li>
+          <li><a href="#">Politique de confidentialité</a></li>
+          <li><a href="#">Cookies</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 FORMADOC. Tous droits réservés.</span>
+      <div class="footer-payments">
+        <span>Carte bancaire</span><span>KPay</span><span>Orange Money</span><span>MTN MoMo</span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var toggle = document.getElementById('themeToggle');
+  var icon = document.getElementById('themeIcon');
+  var sun = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  var bright = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>';
+  var dark = false;
+  toggle.addEventListener('click', function(){
+    dark = !dark;
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    icon.innerHTML = dark ? bright : sun;
+    toggle.setAttribute('aria-pressed', String(dark));
+  });
+})();
+</script>
+</body>
+</html>

@@ -3,131 +3,104 @@
 @section('title', 'Votre avis nous intéresse')
 
 @section('content')
-    <div class="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-gutter md:py-margin-desktop">
-        <div class="max-w-2xl mx-auto">
+    <div class="max-w-2xl mx-auto">
 
-            {{-- En-tête --}}
-            <div class="text-center mb-8 md:mb-12">
-                <p class="font-label-mono text-label-mono text-primary uppercase mb-2">Feedback</p>
-                <h1 class="font-h1-mobile text-h1-mobile md:font-h1 md:text-h1 text-on-surface mb-4">
-                    Votre avis nous intéresse
-                </h1>
-                <p class="font-body-md text-body-md text-on-surface-variant">
+        {{-- En-tête --}}
+        <div class="page-header" style="text-align:center;align-items:center;justify-content:center">
+            <div>
+                <span class="eyebrow">Feedback</span>
+                <h1>Votre avis nous intéresse</h1>
+                <p>
                     Votre feedback nous aide à améliorer FORMADOC. Merci de prendre
                     quelques minutes pour partager votre expérience !
                 </p>
             </div>
-
-            {{-- Alertes --}}
-            @if ($errors->any())
-                <div class="flex items-start gap-3 bg-error-container border border-error rounded-xl p-4 mb-6">
-                    <span class="material-symbols-outlined text-error">error</span>
-                    <ul class="text-body-md text-on-error-container">
-                        @foreach ($errors->all() as $error)
-                            <li>{{ $error }}</li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
-
-            @if (session('success'))
-                <div class="flex items-start gap-3 bg-surface-container-lowest border border-outline-variant rounded-xl p-4 mb-6">
-                    <span class="material-symbols-outlined text-primary">check_circle</span>
-                    <p class="text-body-md">{{ session('success') }}</p>
-                </div>
-            @endif
-
-            <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 md:p-8">
-                <form method="POST" action="{{ route('feedback.store') }}">
-                    @csrf
-
-                    {{-- Note (étoiles) --}}
-                    <div class="mb-6">
-                        <label class="font-label-mono text-label-mono text-secondary uppercase mb-2 block">Note</label>
-                        <div class="star-rating flex items-center gap-2" id="star-rating">
-                            @for ($i = 1; $i <= 5; $i++)
-                                <input type="radio" name="note" value="{{ $i }}" id="star{{ $i }}"
-                                       class="sr-only star-input" @checked(old('note') == $i) required>
-                                <label for="star{{ $i }}" class="star-label cursor-pointer" data-value="{{ $i }}">
-                                    <span class="material-symbols-outlined star-icon">star</span>
-                                </label>
-                            @endfor
-                            <span class="font-caption text-caption text-on-surface-variant ml-3" id="star-caption">Sélectionnez une note</span>
-                        </div>
-                        @error('note')
-                            <p class="font-caption text-caption text-error mt-2">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    {{-- Email --}}
-                    <div class="mb-6">
-                        <label for="email" class="font-label-mono text-label-mono text-secondary uppercase mb-2 block">Votre email</label>
-                        <input type="email"
-                               class="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-3 text-body-md focus:outline-none focus:ring-2 focus:ring-primary @error('email') border-error @enderror"
-                               id="email" name="email" value="{{ old('email') }}" required placeholder="vous@example.com">
-                        @error('email')
-                            <p class="font-caption text-caption text-error mt-2">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    {{-- Recommandation --}}
-                    <div class="mb-6">
-                        <label class="flex items-start gap-3 cursor-pointer">
-                            <input type="checkbox" name="recommander" value="1"
-                                   class="mt-0.5 rounded border-outline-variant text-primary focus:ring-primary" @checked(old('recommander'))>
-                            <span class="text-body-md text-on-surface">
-                                Je recommanderais FORMADOC à un camarade
-                            </span>
-                        </label>
-                    </div>
-
-                    {{-- Avis --}}
-                    <div class="mb-6">
-                        <label for="avis" class="font-label-mono text-label-mono text-secondary uppercase mb-2 block">Votre avis</label>
-                        <textarea class="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-3 text-body-md focus:outline-none focus:ring-2 focus:ring-primary @error('avis') border-error @enderror"
-                                  id="avis" name="avis" rows="5" required
-                                  placeholder="Décrivez votre expérience avec FORMADOC...">{{ old('avis') }}</textarea>
-                        <p class="font-caption text-caption text-on-surface-variant mt-2">Minimum 10 caractères</p>
-                        @error('avis')
-                            <p class="font-caption text-caption text-error mt-2">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    {{-- Problèmes rencontrés --}}
-                    <div class="mb-6">
-                        <label for="problemes_rencontres" class="font-label-mono text-label-mono text-secondary uppercase mb-2 block">Problèmes rencontrés (optionnel)</label>
-                        <textarea class="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-3 text-body-md focus:outline-none focus:ring-2 focus:ring-primary @error('problemes_rencontres') border-error @enderror"
-                                  id="problemes_rencontres" name="problemes_rencontres" rows="3"
-                                  placeholder="Avez-vous rencontré des erreurs, bugs ou difficultés ?">{{ old('problemes_rencontres') }}</textarea>
-                        @error('problemes_rencontres')
-                            <p class="font-caption text-caption text-error mt-2">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div class="flex justify-end">
-                        <button type="submit"
-                                class="inline-flex items-center gap-2 bg-primary hover:bg-primary-fixed-variant text-on-primary px-6 py-3 rounded-xl font-body-md font-semibold transition-colors">
-                            <span class="material-symbols-outlined">send</span>
-                            Envoyer mon avis
-                        </button>
-                    </div>
-                </form>
-            </div>
-
         </div>
+
+        <div class="card" style="padding:1.8rem 2rem">
+            <form method="POST" action="{{ route('feedback.store') }}">
+                @csrf
+
+                {{-- Note (étoiles) --}}
+                <div class="form-group">
+                    <label style="display:block">Note</label>
+                    <div class="star-rating" style="display:flex;align-items:center;gap:.4rem" id="star-rating">
+                        @for ($i = 1; $i <= 5; $i++)
+                            <input type="radio" name="note" value="{{ $i }}" id="star{{ $i }}"
+                                   class="sr-only star-input" @checked(old('note') == $i) required>
+                            <label for="star{{ $i }}" class="star-label" style="cursor:pointer" data-value="{{ $i }}">
+                                <i data-lucide="star" class="star-icon" style="width:40px;height:40px"></i>
+                            </label>
+                        @endfor
+                        <span style="font-size:.8rem;color:var(--color-text-muted);margin-left:.6rem" id="star-caption">Sélectionnez une note</span>
+                    </div>
+                    @error('note')
+                        <span class="field-error">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                {{-- Email --}}
+                <div class="form-group">
+                    <label for="email" style="display:block">Votre email</label>
+                    <input type="email" class="form-control @error('email') is-invalid @enderror"
+                           id="email" name="email" value="{{ old('email') }}" required placeholder="vous@example.com">
+                    @error('email')
+                        <span class="field-error">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                {{-- Recommandation --}}
+                <div class="form-group">
+                    <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;font-weight:400;font-size:.9rem">
+                        <input type="checkbox" name="recommander" value="1" style="margin-top:.2rem;accent-color:var(--color-primary)" @checked(old('recommander'))>
+                        Je recommanderais FORMADOC à un camarade
+                    </label>
+                </div>
+
+                {{-- Avis --}}
+                <div class="form-group">
+                    <label for="avis" style="display:block">Votre avis</label>
+                    <textarea class="form-control @error('avis') is-invalid @enderror"
+                              id="avis" name="avis" rows="5" required
+                              placeholder="Décrivez votre expérience avec FORMADOC...">{{ old('avis') }}</textarea>
+                    <p style="font-size:.75rem;color:var(--color-text-muted);margin-top:.3rem">Minimum 10 caractères</p>
+                    @error('avis')
+                        <span class="field-error">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                {{-- Problèmes rencontrés --}}
+                <div class="form-group">
+                    <label for="problemes_rencontres" style="display:block">Problèmes rencontrés (optionnel)</label>
+                    <textarea class="form-control @error('problemes_rencontres') is-invalid @enderror"
+                              id="problemes_rencontres" name="problemes_rencontres" rows="3"
+                              placeholder="Avez-vous rencontré des erreurs, bugs ou difficultés ?">{{ old('problemes_rencontres') }}</textarea>
+                    @error('problemes_rencontres')
+                        <span class="field-error">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div style="display:flex;justify-content:flex-end">
+                    <button type="submit" class="btn btn-primary">
+                        <i data-lucide="send" style="width:16px;height:16px"></i>
+                        Envoyer mon avis
+                    </button>
+                </div>
+            </form>
+        </div>
+
     </div>
 
     @push('scripts')
     <style>
         .star-label .star-icon {
-            font-size: 40px;
             color: #c3c6d7;
-            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 48;
-            transition: color 0.15s ease, font-variation-settings 0.15s ease, transform 0.15s ease;
+            fill: none;
+            transition: color 0.15s ease, fill 0.15s ease, transform 0.15s ease;
         }
         .star-label.active .star-icon {
-            color: #004ac6;
-            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 48;
+            color: var(--color-primary);
+            fill: var(--color-primary);
         }
         .star-label:hover .star-icon {
             transform: scale(1.1);

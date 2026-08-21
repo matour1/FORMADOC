@@ -5,55 +5,50 @@
 @section('content')
     @include('partials.flow-sidebar', ['activeStep' => 3, 'document' => $document])
 
-    <div class="md:ml-64">
-        <div class="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-gutter md:py-margin-desktop flex justify-center">
-
-            <div class="w-full max-w-2xl">
-                {{-- En-tête --}}
-                <div class="text-center mb-8 md:mb-12">
-                    <p class="font-label-mono text-label-mono text-primary uppercase mb-2">Étape 3 / 4 — Traitement</p>
-                    <h1 class="font-h1-mobile text-h1-mobile md:font-h1 md:text-h1 text-on-surface mb-4">
-                        Traitement en cours
-                    </h1>
-                    <p class="font-body-md text-body-md text-on-surface-variant">
+    <div class="flex justify-center">
+        <div class="max-w-2xl" style="width:100%">
+            {{-- En-tête --}}
+            <div class="page-header" style="text-align:center;align-items:center">
+                <div>
+                    <span class="eyebrow">Étape 3 / 4 — Traitement</span>
+                    <h1>Traitement en cours</h1>
+                    <p>
                         FORMADOC met en forme <strong>{{ $document->filename }}</strong> selon le
                         gabarit institutionnel. Veuillez patienter quelques instants…
                     </p>
                 </div>
+            </div>
 
-                {{-- Animation de traitement --}}
-                <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-8 md:p-10 flex flex-col items-center mb-6">
-                    <div class="relative w-20 h-20 mb-6">
-                        <div class="absolute inset-0 rounded-full bg-primary-fixed opacity-40 pulse-icon"></div>
-                        <div class="absolute inset-0 flex items-center justify-center">
-                            <span class="material-symbols-outlined text-primary text-[48px]">auto_awesome</span>
-                        </div>
-                    </div>
-
-                    <div class="w-full max-w-sm loading-track mb-8">
-                        <div class="loading-fill"></div>
-                    </div>
-
-                    {{-- Journal de traitement (terminal) --}}
-                    <div id="processing-log"
-                         class="w-full bg-inverse-surface text-surface-container-lowest rounded-xl p-5 font-label-mono text-label-mono text-left space-y-2 min-h-[160px]">
-                        <p><span class="text-primary-fixed-dim">$</span> Initialisation du traitement…</p>
+            {{-- Animation de traitement --}}
+            <div class="card" style="padding:2.2rem 2.4rem;display:flex;flex-direction:column;align-items:center;margin-bottom:1.5rem">
+                <div style="position:relative;width:80px;height:80px;margin-bottom:1.6rem">
+                    <div class="pulse-icon" style="position:absolute;inset:0;border-radius:50%;background:var(--color-primary);opacity:.35"></div>
+                    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+                        <i data-lucide="wand-2" style="width:42px;height:42px;color:var(--color-primary)"></i>
                     </div>
                 </div>
 
-                {{-- Repli / actions --}}
-                <div class="flex flex-col items-center gap-3">
-                    <p id="processing-hint" class="font-caption text-caption text-on-surface-variant">
-                        Vous allez être redirigé automatiquement…
-                    </p>
-                    <a href="{{ route('documents.export', $document) }}"
-                       class="inline-flex items-center gap-2 text-primary hover:bg-surface-container-high px-5 py-2 rounded-lg font-body-md font-semibold transition-colors">
-                        Continuer vers l'export
-                        <span class="material-symbols-outlined">arrow_forward</span>
-                    </a>
+                <div class="loading-track" style="width:100%;max-width:26rem;margin-bottom:2rem">
+                    <div class="loading-fill"></div>
+                </div>
+
+                {{-- Journal de traitement (terminal) --}}
+                <div id="processing-log"
+                     style="width:100%;background:var(--color-text);color:var(--color-surface);border-radius:var(--radius-sm);padding:1.2rem 1.3rem;font-family:var(--font-mono);font-size:.78rem;text-align:left;min-height:160px;line-height:1.7">
+                    <p><span class="log-prompt">$</span> Initialisation du traitement…</p>
                 </div>
             </div>
 
+            {{-- Repli / actions --}}
+            <div style="display:flex;flex-direction:column;align-items:center;gap:.7rem">
+                <p id="processing-hint" style="font-size:.8rem;color:var(--color-text-muted)">
+                    Vous allez être redirigé automatiquement…
+                </p>
+                <a href="{{ route('documents.export', $document) }}" class="btn btn-ghost">
+                    Continuer vers l'export
+                    <i data-lucide="arrow-right" style="width:16px;height:16px"></i>
+                </a>
+            </div>
         </div>
     </div>
 
@@ -76,7 +71,7 @@
             function appendLine() {
                 if (index < lines.length) {
                     const p = document.createElement('p');
-                    p.innerHTML = '<span class="text-primary-fixed-dim">$</span> ' + lines[index];
+                    p.innerHTML = '<span class="log-prompt">$</span> ' + lines[index];
                     logEl.appendChild(p);
                     logEl.scrollTop = logEl.scrollHeight;
                     index++;

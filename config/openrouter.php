@@ -139,13 +139,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Marge de sécurité sur le coût réel
+    | Marge de rentabilité et coûts d'infrastructure (exigence C)
     |--------------------------------------------------------------------------
-    | S'applique au coût brut estimé pour couvrir les frais de transaction,
-    | les échecs partiels et la volatilité des prix. 0.20 = +20 %.
+    | Chaque action facturée doit couvrir :
+    |   1. le coût direct API (tokens)
+    |   2. l'infrastructure + maintenance (+15 %)
+    |   3. la marge (40 à 60 %)
+    |
+    | Formule : prix_public = coût_API × (1 + infra) × (1 + marge)
+    | Avec infra = 0.15 et marge = 0.60 : coefficient ≈ 1.84 (≈ 2× le coût
+    | direct), dans la fourchette 2×-3× recommandée par le cahier des charges.
+    |
+    | ATTENTION : cost_margin était 0.20 (marge +20 %) avant l'exigence C.
+    | La valeur a été portée à 0.60 pour atteindre la rentabilité cible.
     */
 
-    'cost_margin' => 0.20,
+    'cost_margin' => 0.60,
+    'cost_infrastructure' => 0.15,
 
     /*
     |--------------------------------------------------------------------------

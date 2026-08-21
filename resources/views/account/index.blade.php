@@ -3,239 +3,252 @@
 @section('title', 'Mon compte')
 
 @section('content')
-    <div class="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-gutter md:py-margin-desktop">
-
-        {{-- En-tête de page --}}
-        <div class="mb-8 md:mb-12">
-            <p class="font-label-mono text-label-mono text-primary uppercase mb-2">Espace personnel</p>
-            <h1 class="font-h1-mobile text-h1-mobile md:font-h1 md:text-h1 text-on-surface mb-4">
-                Mon compte
-            </h1>
-            <p class="font-body-md text-body-md text-on-surface-variant max-w-2xl">
+    <div class="page-header">
+        <div>
+            <span class="eyebrow">Espace personnel</span>
+            <h1>Mon compte</h1>
+            <p>
                 Gérez vos crédits IA, votre abonnement et l'historique de vos achats.
                 <strong>1 crédit = 1 FCFA</strong> — achat à partir de {{ number_format(config('kpay.min_amount', 500), 0, ',', ' ') }} FCFA.
             </p>
         </div>
+        <div class="credits-badge {{ $balance < 100 ? 'low' : '' }}" title="Solde de crédits — 1 crédit = 1 FCFA">
+            <i data-lucide="coins" style="width:14px;height:14px"></i>
+            {{ number_format($balance, 0, ',', ' ') }} crédits
+        </div>
+    </div>
 
-        {{-- Alertes --}}
-        @if (session('success'))
-            <div class="flex items-start gap-3 bg-surface-container-lowest border border-outline-variant rounded-xl p-4 mb-6">
-                <span class="material-symbols-outlined text-primary">check_circle</span>
-                <p class="text-body-md">{{ session('success') }}</p>
-            </div>
-        @endif
-        @if (session('error'))
-            <div class="flex items-start gap-3 bg-error-container border border-error rounded-xl p-4 mb-6">
-                <span class="material-symbols-outlined text-error">error</span>
-                <p class="text-body-md text-on-error-container">{{ session('error') }}</p>
-            </div>
-        @endif
-        @if (session('info'))
-            <div class="flex items-start gap-3 bg-secondary-container border border-outline-variant rounded-xl p-4 mb-6">
-                <span class="material-symbols-outlined text-secondary">info</span>
-                <p class="text-body-md text-on-secondary-container">{{ session('info') }}</p>
-            </div>
-        @endif
-        @if ($errors->any())
-            <div class="flex items-start gap-3 bg-error-container border border-error rounded-xl p-4 mb-6">
-                <span class="material-symbols-outlined text-error">error</span>
-                <ul class="text-body-md text-on-error-container">
-                    @foreach ($errors->all() as $error)
-                        <li>{{ $error }}</li>
-                    @endforeach
-                </ul>
-            </div>
-        @endif
+    <div class="grid" style="grid-template-columns:1fr;gap:1.25rem">
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
-
-            {{-- Colonne gauche : solde + achat --}}
-            <div class="space-y-gutter">
-
-                {{-- Solde de crédits --}}
-                <div class="bg-primary text-on-primary rounded-xl p-6 shadow-sm">
-                    <div class="flex items-center justify-between mb-4">
-                        <p class="font-label-mono text-label-mono uppercase opacity-80">Solde de crédits</p>
-                        <span class="material-symbols-outlined">savings</span>
-                    </div>
-                    <p class="font-h1 text-h1 font-bold">{{ number_format($balance, 0, ',', ' ') }}</p>
-                    <p class="font-caption text-caption opacity-80 mt-1">crédits (1 crédit = 1 FCFA)</p>
+        {{-- Statistiques du mois : solde + quotas (exigence D) --}}
+        <div class="stat-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+            <div class="stat-item">
+                <span class="stat-label">Solde de crédits</span>
+                <span class="stat-value">{{ number_format($balance, 0, ',', ' ') }}</span>
+                <span class="stat-hint">1 crédit = 1 FCFA</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Documents traités (mois {{ $quotaStatus['month'] }})</span>
+                <span class="stat-value">
+                    {{ $quotaStatus['deterministic']['used'] }}
+                    <small style="font-size:.55em;color:var(--color-text-muted)">/ {{ $quotaStatus['deterministic']['unlimited'] ? '∞' : $quotaStatus['deterministic']['quota'] }}</small>
+                </span>
+                <div class="progress" style="margin-top:.5rem">
+                    <div class="progress-bar" style="width:{{ $quotaStatus['deterministic']['unlimited'] ? 100 : min(100, ($quotaStatus['deterministic']['quota'] > 0 ? $quotaStatus['deterministic']['used'] / $quotaStatus['deterministic']['quota'] * 100 : 0)) }}%"></div>
                 </div>
+                <span class="stat-hint">
+                    @if ($quotaStatus['deterministic']['unlimited'])
+                        Illimité
+                    @else
+                        {{ $quotaStatus['deterministic']['remaining'] }} restant(s)
+                    @endif
+                </span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Traitements IA (mois {{ $quotaStatus['month'] }})</span>
+                <span class="stat-value">
+                    {{ $quotaStatus['ai']['used'] }}
+                    <small style="font-size:.55em;color:var(--color-text-muted)">/ {{ $quotaStatus['ai']['unlimited'] ? '∞' : $quotaStatus['ai']['quota'] }}</small>
+                </span>
+                <div class="progress" style="margin-top:.5rem">
+                    <div class="progress-bar" style="width:{{ $quotaStatus['ai']['unlimited'] ? 100 : min(100, ($quotaStatus['ai']['quota'] > 0 ? $quotaStatus['ai']['used'] / $quotaStatus['ai']['quota'] * 100 : 0)) }}%"></div>
+                </div>
+                <span class="stat-hint">
+                    @if ($quotaStatus['ai']['unlimited'])
+                        Illimité
+                    @elseif ($quotaStatus['ai']['remaining'] > 0)
+                        {{ $quotaStatus['ai']['remaining'] }} restant(s)
+                    @else
+                        <span style="color:var(--color-correction)">Épuisé — plan supérieur ou crédits</span>
+                    @endif
+                </span>
+            </div>
+        </div>
 
+        <div class="grid" style="grid-template-columns:1fr;gap:1.25rem">
+
+            {{-- Abonnement actif + achat --}}
+            <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem">
                 {{-- Abonnement actif --}}
-                <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
-                    <p class="font-label-mono text-label-mono text-secondary uppercase mb-3">Abonnement actif</p>
+                <div class="card">
+                    <h2 class="card-title" style="margin-bottom:.5rem">Abonnement actif</h2>
                     @if ($subscription && $subscription->isActiveAt())
-                        <div class="flex items-center gap-3 mb-2">
-                            <span class="material-symbols-outlined text-primary">workspace_premium</span>
-                            <p class="font-h2 text-h2 text-on-surface">{{ $subscription->plan->name }}</p>
+                        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.4rem">
+                            <span class="badge badge-success"><i data-lucide="badge-check" style="width:12px;height:12px"></i> Actif</span>
+                            <h3 style="font-family:var(--font-display);font-size:1.25rem;margin:0">{{ $subscription->plan->name }}</h3>
                         </div>
-                        <p class="font-caption text-caption text-on-surface-variant">
+                        <p style="font-size:.85rem;color:var(--color-text-muted)">
                             @if ($subscription->ends_at)
                                 Valide jusqu'au {{ $subscription->ends_at->format('d/m/Y') }}
                             @else
                                 Illimité (Entreprises)
                             @endif
                         </p>
-                        <div class="mt-3 inline-flex items-center gap-1 bg-primary-fixed text-on-primary-fixed rounded-full px-3 py-1">
-                            <span class="material-symbols-outlined text-[16px]">check</span>
-                            <span class="font-caption text-caption">Actif</span>
-                        </div>
+                        <ul style="margin-top:.6rem">
+                            @foreach (($subscription->plan->features ?? []) as $feature)
+                                <li style="display:flex;gap:.4rem;font-size:.82rem;margin:.2rem 0">
+                                    <i data-lucide="check" style="width:13px;height:13px;color:var(--color-secondary);flex-shrink:0;margin-top:.15rem"></i>
+                                    {{ $feature }}
+                                </li>
+                            @endforeach
+                        </ul>
                     @else
-                        <p class="font-body-md text-body-md text-on-surface-variant mb-3">
-                            Aucun abonnement actif — plan gratuit (modèles IA économiques).
+                        <p style="font-size:.9rem;color:var(--color-text-muted);margin-bottom:.5rem">
+                            Aucun abonnement actif — plan Gratuit : 5 documents déterministes / mois, 0 traitement IA.
                         </p>
-                        <div class="flex items-center gap-2">
-                            <span class="material-symbols-outlined text-secondary">workspace_premium</span>
-                            <a href="#plans" class="font-body-md text-body-md text-primary hover:underline">
-                                Découvrir les plans
-                            </a>
-                        </div>
+                        <a href="#plans" class="btn btn-secondary btn-sm">
+                            <i data-lucide="sparkles" style="width:14px;height:14px"></i> Découvrir les plans
+                        </a>
                     @endif
                 </div>
 
                 {{-- Formulaire d'achat --}}
-                <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
-                    <p class="font-label-mono text-label-mono text-secondary uppercase mb-3">Acheter des crédits</p>
+                <div class="card">
+                    <h2 class="card-title" style="margin-bottom:.5rem">Acheter des crédits</h2>
                     <form action="{{ route('credits.purchase') }}" method="POST">
                         @csrf
-                        <label for="amount" class="font-caption text-caption text-on-surface-variant block mb-2">
-                            Montant (FCFA) — minimum {{ number_format(config('kpay.min_amount', 500), 0, ',', ' ') }}
-                        </label>
-                        <div class="flex gap-3">
+                        <div class="form-group">
+                            <label for="amount">Montant (FCFA) — minimum {{ number_format(config('kpay.min_amount', 500), 0, ',', ' ') }}</label>
                             <input type="number" name="amount" id="amount" required min="{{ config('kpay.min_amount', 500) }}"
                                    step="100" max="500000" placeholder="1 000"
-                                   class="w-full rounded-lg border-outline-variant bg-surface-container-low px-4 py-2.5 font-body-md text-body-md focus:border-primary focus:ring-primary"
-                                   value="{{ old('amount', 1000) }}">
-                            <button type="submit"
-                                    class="shrink-0 inline-flex items-center gap-2 bg-primary text-on-primary hover:bg-primary-container hover:text-on-primary-fixed px-5 py-2.5 rounded-lg font-body-md font-semibold transition-colors">
-                                <span class="material-symbols-outlined text-[20px]">payment</span>
-                                Payer
-                            </button>
+                                   class="form-control" value="{{ old('amount', 1000) }}">
+                            @error('amount')<p class="field-error">{{ $message }}</p>@enderror
                         </div>
-                        <p class="font-caption text-caption text-on-surface-variant mt-2">
+                        <button type="submit" class="btn btn-primary btn-block">
+                            <i data-lucide="credit-card" style="width:15px;height:15px"></i> Payer
+                        </button>
+                        <p class="chat-disclaimer" style="margin-top:.5rem">
                             Paiement sécurisé via KPay (carte bancaire, mobile money : Orange Money, MTN MoMo…).
                         </p>
                     </form>
                 </div>
 
                 {{-- Chat IA --}}
-                <a href="{{ route('chat.index') }}"
-                   class="flex items-center justify-between bg-surface-container-lowest border border-outline-variant rounded-xl p-6 hover:border-primary transition-colors">
-                    <div class="flex items-center gap-3">
-                        <span class="material-symbols-outlined text-primary">chat</span>
-                        <div>
-                            <p class="font-body-md font-semibold text-on-surface">Assistant IA</p>
-                            <p class="font-caption text-caption text-on-surface-variant">Posez vos questions, coût affiché en crédits</p>
-                        </div>
-                    </div>
-                    <span class="material-symbols-outlined text-outline">chevron_right</span>
+                <a href="{{ route('chat.index') }}" class="card" style="text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:.4rem">
+                    <span style="display:flex;align-items:center;gap:.5rem;font-weight:600">
+                        <i data-lucide="message-circle" style="width:17px;height:17px;color:var(--color-primary)"></i>
+                        Assistant IA
+                    </span>
+                    <span style="font-size:.82rem;color:var(--color-text-muted)">Posez vos questions, coût affiché avant envoi — outils actionnables (page de garde, reconstruction, web, images).</span>
+                    <span class="btn btn-ghost btn-sm" style="align-self:flex-start;margin-top:.3rem">Ouvrir →</span>
                 </a>
             </div>
 
-            {{-- Colonne droite : historique + plans --}}
-            <div class="lg:col-span-2 space-y-gutter">
+            {{-- Historique des transactions --}}
+            <div class="card">
+                <h2 class="card-title" style="margin-bottom:.5rem">Historique des transactions</h2>
 
-                {{-- Historique des transactions --}}
-                <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
-                    <p class="font-label-mono text-label-mono text-secondary uppercase mb-4">Historique des transactions</p>
-
-                    @if ($transactions->isEmpty())
-                        <p class="font-body-md text-body-md text-on-surface-variant py-6 text-center">
-                            Aucune transaction pour le moment.
-                        </p>
-                    @else
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left">
-                                <thead>
-                                    <tr class="border-b border-outline-variant">
-                                        <th class="font-caption text-caption text-on-surface-variant uppercase py-2 pr-4">Date</th>
-                                        <th class="font-caption text-caption text-on-surface-variant uppercase py-2 pr-4">Type</th>
-                                        <th class="font-caption text-caption text-on-surface-variant uppercase py-2 pr-4">Description</th>
-                                        <th class="font-caption text-caption text-on-surface-variant uppercase py-2 text-right">Montant</th>
-                                        <th class="font-caption text-caption text-on-surface-variant uppercase py-2 pl-4 text-right">Solde</th>
+                @if ($transactions->isEmpty())
+                    <p style="text-align:center;padding:2rem 0;color:var(--color-text-muted)">
+                        Aucune transaction pour le moment.
+                    </p>
+                @else
+                    <div class="table-wrap" style="padding:0">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Description</th>
+                                    <th style="text-align:right">Montant</th>
+                                    <th style="text-align:right">Solde</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($transactions as $tx)
+                                    <tr>
+                                        <td class="mono" style="white-space:nowrap">{{ $tx->created_at->format('d/m/Y H:i') }}</td>
+                                        <td>
+                                            @if ($tx->type === 'purchase')
+                                                <span class="badge badge-success"><i data-lucide="plus" style="width:11px;height:11px"></i> Achat</span>
+                                            @elseif ($tx->type === 'refund')
+                                                <span class="badge badge-info"><i data-lucide="rotate-ccw" style="width:11px;height:11px"></i> Remboursement</span>
+                                            @elseif ($tx->type === 'bonus')
+                                                <span class="badge badge-warning"><i data-lucide="gift" style="width:11px;height:11px"></i> Bonus</span>
+                                            @else
+                                                <span class="badge"><i data-lucide="zap" style="width:11px;height:11px"></i> Utilisation</span>
+                                            @endif
+                                        </td>
+                                        <td>{{ $tx->description ?: $tx->type }}</td>
+                                        <td style="text-align:right;font-weight:600;color:{{ $tx->amount >= 0 ? 'var(--color-secondary)' : 'var(--color-ink)' }}">
+                                            {{ $tx->amount >= 0 ? '+' : '' }}{{ number_format($tx->amount, 0, ',', ' ') }}
+                                        </td>
+                                        <td style="text-align:right" class="mono">{{ number_format($tx->balance_after, 0, ',', ' ') }}</td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach ($transactions as $tx)
-                                        <tr class="border-b border-outline-variant/60 last:border-b-0">
-                                            <td class="py-3 pr-4 font-caption text-caption text-on-surface-variant whitespace-nowrap">
-                                                {{ $tx->created_at->format('d/m/Y H:i') }}
-                                            </td>
-                                            <td class="py-3 pr-4">
-                                                <span class="inline-flex items-center gap-1 font-caption text-caption
-                                                    {{ $tx->amount >= 0 ? 'text-primary' : 'text-on-surface-variant' }}">
-                                                    @if ($tx->type === 'purchase')
-                                                        <span class="material-symbols-outlined text-[16px]">add_circle</span> Achat
-                                                    @elseif ($tx->type === 'refund')
-                                                        <span class="material-symbols-outlined text-[16px]">replay</span> Remboursement
-                                                    @elseif ($tx->type === 'bonus')
-                                                        <span class="material-symbols-outlined text-[16px]">redeem</span> Bonus
-                                                    @else
-                                                        <span class="material-symbols-outlined text-[16px]">bolt</span> Utilisation
-                                                    @endif
-                                                </span>
-                                            </td>
-                                            <td class="py-3 pr-4 font-caption text-caption text-on-surface-variant">
-                                                {{ $tx->description ?: $tx->type }}
-                                            </td>
-                                            <td class="py-3 pr-4 text-right font-body-md font-semibold
-                                                {{ $tx->amount >= 0 ? 'text-primary' : 'text-on-surface' }}">
-                                                {{ $tx->amount >= 0 ? '+' : '' }}{{ number_format($tx->amount, 0, ',', ' ') }}
-                                            </td>
-                                            <td class="py-3 pl-4 text-right font-caption text-caption text-on-surface-variant">
-                                                {{ number_format($tx->balance_after, 0, ',', ' ') }}
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        </div>
-                    @endif
-                </div>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            </div>
 
-                {{-- Plans d'abonnement --}}
-                <div id="plans" class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
-                    <p class="font-label-mono text-label-mono text-secondary uppercase mb-4">Plans d'abonnement mensuels</p>
+            {{-- Plans d'abonnement (nouveaux tarifs / quotas) --}}
+            <div id="plans" class="card">
+                <h2 class="card-title" style="margin-bottom:.3rem">Plans d'abonnement mensuels</h2>
+                <p style="font-size:.82rem;color:var(--color-text-muted);margin-bottom:1rem">
+                    Les quotas sont réinitialisés chaque mois. Traitements IA facturés en crédits en plus de l'abonnement.
+                </p>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                        @foreach ($plans as $plan)
-                            <div class="border border-outline-variant rounded-xl p-5 flex flex-col
-                                {{ $subscription && $subscription->plan_id === $plan->id ? 'border-primary ring-1 ring-primary' : '' }}">
-                                <p class="font-body-md font-semibold text-on-surface">{{ $plan->name }}</p>
-                                <p class="font-h2 text-h2 font-bold text-primary mt-2">
-                                    @if ($plan->price_fcfa > 0)
-                                        {{ number_format($plan->price_fcfa, 0, ',', ' ') }} <span class="font-caption text-caption text-on-surface-variant">FCFA/mois</span>
-                                    @else
-                                        <span class="font-caption text-caption text-on-surface-variant">Sur devis</span>
-                                    @endif
-                                </p>
-                                <p class="font-caption text-caption text-on-surface-variant mt-2 flex-1">{{ $plan->description }}</p>
-                                <ul class="mt-4 space-y-1.5">
-                                    @foreach (($plan->features ?? []) as $feature)
-                                        <li class="flex items-start gap-2 font-caption text-caption text-on-surface-variant">
-                                            <span class="material-symbols-outlined text-[16px] text-primary shrink-0">check</span>
-                                            {{ $feature }}
-                                        </li>
-                                    @endforeach
-                                </ul>
+                <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1rem">
+                    @foreach ($plans as $plan)
+                        <div class="card" style="display:flex;flex-direction:column;gap:.35rem;border:1px solid var(--color-border);
+                            {{ $subscription && $subscription->plan_id === $plan->id ? 'border-color:var(--color-primary);box-shadow:0 0 0 1px var(--color-primary)' : '' }}">
+                            <div style="display:flex;align-items:center;justify-content:space-between">
+                                <h3 style="font-family:var(--font-display);font-size:1.1rem;margin:0">{{ $plan->name }}</h3>
                                 @if ($subscription && $subscription->plan_id === $plan->id)
-                                    <span class="mt-4 inline-flex justify-center items-center gap-1 bg-primary-fixed text-on-primary-fixed rounded-full px-3 py-1.5 font-caption text-caption">
-                                        <span class="material-symbols-outlined text-[16px]">check</span> Actuel
-                                    </span>
-                                @else
-                                    <a href="{{ route('feedback.form') }}" class="mt-4 text-center font-caption text-caption text-primary hover:underline">
-                                        Contactez-nous
-                                    </a>
+                                    <span class="badge badge-success">Actuel</span>
                                 @endif
                             </div>
-                        @endforeach
-                    </div>
-                    <p class="font-caption text-caption text-on-surface-variant mt-4">
-                        Abonnement Entreprises sur devis. Souscription et renouvellement via notre équipe (formulaire de contact).
-                    </p>
+                            <p style="font-size:1.35rem;font-weight:700;color:var(--color-primary);margin:0">
+                                @if ($plan->price_fcfa > 0)
+                                    {{ number_format($plan->price_fcfa, 0, ',', ' ') }} <small style="font-size:.6em;color:var(--color-text-muted)">FCFA/mois</small>
+                                @else
+                                    <small style="font-size:.6em;color:var(--color-text-muted)">Sur devis</small>
+                                @endif
+                            </p>
+                            <p style="font-size:.8rem;color:var(--color-text-muted);flex:1">{{ $plan->description }}</p>
+                            <ul style="margin-top:.3rem">
+                                @if ($plan->quota_deterministic !== null)
+                                    <li style="display:flex;gap:.4rem;font-size:.8rem;margin:.15rem 0">
+                                        <i data-lucide="file-text" style="width:13px;height:13px;color:var(--color-secondary);flex-shrink:0;margin-top:.15rem"></i>
+                                        {{ $plan->quota_deterministic }} document(s) déterministe(s) / mois
+                                    </li>
+                                @else
+                                    <li style="display:flex;gap:.4rem;font-size:.8rem;margin:.15rem 0">
+                                        <i data-lucide="infinity" style="width:13px;height:13px;color:var(--color-secondary);flex-shrink:0;margin-top:.15rem"></i>
+                                        Documents déterministes illimités
+                                    </li>
+                                @endif
+                                @if ($plan->quota_ai !== null)
+                                    <li style="display:flex;gap:.4rem;font-size:.8rem;margin:.15rem 0">
+                                        <i data-lucide="bot" style="width:13px;height:13px;color:var(--color-secondary);flex-shrink:0;margin-top:.15rem"></i>
+                                        {{ $plan->quota_ai }} traitement(s) IA / mois
+                                    </li>
+                                @else
+                                    <li style="display:flex;gap:.4rem;font-size:.8rem;margin:.15rem 0">
+                                        <i data-lucide="infinity" style="width:13px;height:13px;color:var(--color-secondary);flex-shrink:0;margin-top:.15rem"></i>
+                                        Traitements IA illimités
+                                    </li>
+                                @endif
+                                @foreach (($plan->features ?? []) as $feature)
+                                    <li style="display:flex;gap:.4rem;font-size:.8rem;margin:.15rem 0">
+                                        <i data-lucide="check" style="width:13px;height:13px;color:var(--color-secondary);flex-shrink:0;margin-top:.15rem"></i>
+                                        {{ $feature }}
+                                    </li>
+                                @endforeach
+                            </ul>
+                            @unless ($subscription && $subscription->plan_id === $plan->id)
+                                <a href="{{ route('feedback.form') }}" class="btn btn-ghost btn-sm" style="margin-top:.5rem">Contactez-nous</a>
+                            @endunless
+                        </div>
+                    @endforeach
                 </div>
+                <p class="chat-disclaimer" style="margin-top:1rem">
+                    Abonnement Entreprises sur devis. Souscription et renouvellement via notre équipe (formulaire de contact).
+                    Le plan Gratuit (par défaut) offre 5 documents déterministes / mois et 0 traitement IA.
+                </p>
             </div>
         </div>
     </div>
 @endsection
+

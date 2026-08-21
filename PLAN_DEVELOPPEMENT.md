@@ -143,8 +143,98 @@ tests/Unit/Services/Billing/{CreditServiceTest,UsageCostCalculatorTest}.php
 
 ---
 
+## Phase 8 — Évolutions majeures du cahier des charges (✅ Terminée)
+
+Branche : `feature/evolutions-saas-phase3`. Cahier des charges v3.0 : `CAHIER_DES_CHARGES.md`.
+
+### 8.1 — Chat IA actionnable (exigence A)
+
+- **`ChatToolsService`** (`app/Services/Chat/`) : outils actionnables exposés au chat.
+  - Internes : `cover_page.generate` (page de garde DOCX via `CoverGenerationService`/`CoverPageRenderer`), `document.reconstruct` (reconstructeur), `table_of_contents` (sommaire TOC PhpWord), `structure.correct` (corrections de structure).
+  - Externes : `web.search` (recherche web native OpenRouter), `image.generate` (gpt-image-*).
+- **`OpenRouterService::chat()`** : support du function calling OpenAI (`tools[]`, `tool_choice`, `executor` callable, boucle bornée `tool_loop_max_turns` = 5).
+- **`ChatController::send`** : parcours en 13 étapes (estimation → solde/quota → débit → contexte → modèle → appel → exécution des outils → coût réel → remboursement différentiel → persistance → quota → journalisation → réponse).
+
+### 8.2 — Skills documentaires Claude — Pro only (exigence B)
+
+- **`ClaudeSkillsService`** (`app/Services/Anthropic/`) : génération de fichiers natifs **docx/xlsx/pptx/pdf** via l'API Anthropic.
+  - `POST /v1/messages`, modèle `claude-sonnet-4-6`, bêta `skills-2025-10-02`, `container.skills` (docx/xlsx/pptx/pdf), `tools: [code_execution_20260521]`.
+  - Récupération du `file_id` depuis `bash_code_execution_tool_result` → téléchargement via l'API Files → stockage disk `local`.
+  - **Éligibilité** : abonnement Pro actif + clé API configurée (`isEligible()`).
+  - **Coût** : tokens modèle + conteneur 0,05 $/h (min 5 min/exécution), majoré ×2 (coefficient de rentabilité).
+  - **Fallback systématique** sur les outils internes (PHPWord) en cas d'échec — jamais bloquant.
+- `config/anthropic.php` + variables `ANTHROPIC_*` dans `.env`.
+- Guide : `guide-skills-documentaires-api-claude.md`.
+
+### 8.3 — Règle de rentabilité (exigence C)
+
+- Formule : `prix_public = coût_API × (1 + infra) × (1 + marge)`.
+- `UsageCostCalculator::profitabilityCoefficient()` : `(1 + 0.15) × (1 + 0.60) ≈ 1.84` (≈ ×2 le coût direct).
+- Config : `config/openrouter.php` (`cost_infrastructure` = 0.15, `cost_margin` = 0.60 — relevée de 0.20).
+- Appliqué par `OpenRouterService` (chat/analyse/génération) et `ClaudeSkillsService` (skills).
+
+### 8.4 — Quotas mensuels par plan (exigence D)
+
+| Plan | Prix/mois | Docs déterministes | Traitements IA | Crédits |
+|------|-----------|--------------------|----------------|---------|
+| Gratuit | 0 FCFA | 5 | 0 | 0 |
+| Standard | 3 000 FCFA | 10 | 5 | 3 000 |
+| Premium | 5 000 FCFA | 30 | 15 | 5 000 |
+| Pro | 13 500 FCFA | illimité | 90 | 13 500 |
+| Entreprises | Sur devis | illimité | illimité | Sur mesure |
+
+- **`QuotaService`** : `canUse()` / `consume()` (verrouillage `FOR UPDATE`), reset mensuel automatique (`resetIfNeeded`), `null` = illimité.
+- Migration `2026_08_20_000001_add_quotas_to_plans_and_users` (colonnes `plans.quota_deterministic`, `plans.quota_ai`, `plans.quota_period`, `users.usage_*_month`, `users.usage_month_started_at`).
+- Branchement : `DocumentController::upload` (quota déterministe/IA), `ChatController::send` (quota IA), `AccountController` (affichage).
+
+### 8.5 — Design system + landing page (exigence E)
+
+- `resources/css/formadoc.css` : variables `--color-*`, dark mode `[data-theme="dark"]`, polices Newsreader/Inter/IBM Plex Mono, icônes lucide.
+- Landing page fidèle à `landingPage.html` : hero, fonctionnalités, parcours 4 étapes, tarifs (Gratuit/Standard/Premium/Pro/Entreprises), FAQ, footer.
+- Refonte de TOUTES les vues legacy : auth, chat, compte, upload/show/processing/export, cover-templates (index/edit), feedback, welcome.
+- Build : `npx vite build` (obligatoire après toute modif CSS).
+
+### 8.6 — Documentation (exigence F)
+
+- `CAHIER_DES_CHARGES.md` créé (v3.0 — 6 évolutions A-F).
+- `README.md` mis à jour (tarifs, quotas, skills, tools, design system, variables env).
+- `PLAN_DEVELOPPEMENT.md` mis à jour (cette phase).
+- Estimation des coûts : OpenRouter ~0,75 $/mois usage standard ; conteneur Skills 0,05 $/h (min 5 min) ; coefficient public ×1.84.
+
+### Fichiers de la phase
+
+```
+database/migrations/2026_08_20_000001_add_quotas_to_plans_and_users.php
+database/seeders/PlanSeeder.php (barème révisé)
+app/Services/Billing/QuotaService.php
+app/Services/Billing/UsageCostCalculator.php (profitabilityCoefficient, marge 0.60)
+app/Services/Chat/ChatToolsService.php
+app/Services/Anthropic/ClaudeSkillsService.php
+app/Services/OpenRouter/OpenRouterService.php (function calling + executor)
+app/Http/Controllers/{ChatController,DocumentController,AccountController}.php
+config/{openrouter,anthropic}.php
+resources/css/formadoc.css (design system + landing)
+resources/views/{landing, welcome}.blade.php + refonte de toutes les vues
+tests/Unit/Services/Billing/{QuotaServiceTest, UsageCostCalculatorTest}.php
+tests/Unit/Services/Anthropic/ClaudeSkillsServiceTest.php
+tests/Unit/Services/Chat/ChatToolsServiceTest.php
+database/factories/{PlanFactory, SubscriptionFactory}.php
+app/Models/{Plan, Subscription}.php (trait HasFactory)
+CAHIER_DES_CHARGES.md
+```
+
+### Tests (Phase 8)
+
+- MAJ `UsageCostCalculatorTest` (marge 0.20 → 0.60, coefficient ×1.84).
+- `QuotaServiceTest` (18 tests : canUse/consume, reset mensuel, illimité, verrouillage) + factories `PlanFactory` / `SubscriptionFactory` créées.
+- `ClaudeSkillsServiceTest` (13 tests : parsing file_id, échec, coût majoré min 5 min, isEligible Pro-only).
+- `ChatToolsServiceTest` (9 tests : schemas, availableTools, execute, outil inconnu, web.search, image.generate, cover_page, structure.correct, table_of_contents).
+- Suite complète : **248 tests, 944 assertions** — verte.
+
+---
+
 ## Prochaines phases (pistes)
 
-- **Phase 8** — Abonnements récurrents (renouvellement automatique, prorata), factures
-- **Phase 9** — Statistiques d'usage par utilisateur, tableau de bord admin
-- **Phase 10** — Internationalisation (EN/FR), devises multiples
+- **Phase 9** — Abonnements récurrents (renouvellement automatique, prorata), factures, UI des tâches IA (PowerPoint, analyse d'image)
+- **Phase 10** — Statistiques d'usage par utilisateur, tableau de bord admin
+- **Phase 11** — Internationalisation (EN/FR), devises multiples

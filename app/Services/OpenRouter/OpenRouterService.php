@@ -7,6 +7,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Client HTTP OpenRouter (API compatible OpenAI).
@@ -27,9 +28,18 @@ class OpenRouterService
     /**
      * Envoie une requête de chat au modèle sélectionné par le routeur.
      *
+     * Options supportées :
+     *   - tools, tool_choice : function calling OpenAI
+     *   - temperature, max_tokens, response_format
+     *   - web_search_options : recherche web native OpenRouter
+     *   - executor (callable|null) : exécute les tool_calls demandés par le
+     *     modèle, reçoit (array $toolCall, int $turn) et retourne un tableau
+     *     {result: string, error?: string}. La boucle tourne tant que le
+     *     modèle demande des outils (max tool_loop_max_turns, défaut 5).
+     *
      * @param array<int, array{role: string, content: string}> $messages
-     * @param array<string, mixed> $options options : tools, tool_choice, temperature, max_tokens, web_search_options, response_format
-     * @return array<string, mixed> {model, content, tool_calls, usage, cost_usd, cost_credits, raw}
+     * @param array<string, mixed> $options
+     * @return array<string, mixed> {model, content, tool_calls, usage, cost_usd, cost_credits, raw, tool_turns?}
      *
      * @throws \Illuminate\Http\Client\RequestException si tous les candidats échouent
      */
@@ -44,6 +54,9 @@ class OpenRouterService
         }
 
         $lastException = null;
+        $executor = $options['executor'] ?? null;
+        $maxTurns = (int) ($options['tool_loop_max_turns'] ?? 5);
+        $turns = 0;
 
         foreach ($selection['all_candidates'] as $model) {
             try {
@@ -62,7 +75,50 @@ class OpenRouterService
                     throw new RequestException($response);
                 }
 
-                return $this->parseResponse($response, $model, $selection['plan']);
+                $parsed = $this->parseResponse($response, $model, $selection['plan']);
+
+                // Boucle d'exécution des outils (function calling multi-tours)
+                while (! empty($parsed['tool_calls']) && is_callable($executor) && $turns < $maxTurns) {
+                    $turns++;
+
+                    // Exécution de chaque outil demandé
+                    foreach ($parsed['tool_calls'] as $toolCall) {
+                        $result = $executor($toolCall, $turns);
+
+                        $messages[] = [
+                            'role' => 'assistant',
+                            'content' => null,
+                            'tool_calls' => $parsed['tool_calls'],
+                        ];
+                        $messages[] = [
+                            'role' => 'tool',
+                            'tool_call_id' => $toolCall['id'] ?? 'call_'.Str::uuid(),
+                            'content' => $result['error'] ?? $result['result'],
+                        ];
+                    }
+
+                    // Second appel avec les résultats d'outils
+                    $response = Http::withHeaders($this->headers())
+                        ->timeout($this->dynamicTimeout($this->inputChars($messages), count($selection['all_candidates'])))
+                        ->retry(
+                            (int) config('openrouter.max_retries', 2),
+                            (int) config('openrouter.retry_delays_ms.0', 2000),
+                            fn (int $attempt, \Exception $e) => $this->isRetryable($e),
+                        )
+                        ->post(rtrim(config('openrouter.api_url', 'https://openrouter.ai/api/v1'), '/').'/chat/completions', $this->buildPayload($model, $messages, $options));
+
+                    if (! $response->successful()) {
+                        throw new RequestException($response);
+                    }
+
+                    $parsed = $this->parseResponse($response, $model, $selection['plan']);
+                }
+
+                if ($turns > 0) {
+                    $parsed['tool_turns'] = $turns;
+                }
+
+                return $parsed;
             } catch (\Throwable $e) {
                 $lastException = $e;
                 Log::warning('OpenRouter : échec du modèle, tentative du fallback', [
@@ -87,6 +143,10 @@ class OpenRouterService
     /**
      * Estimation du coût en USD puis en crédits (1 crédit = 1 FCFA).
      *
+     * Applique le coefficient de rentabilité (exigence C) :
+     *   prix_public = coût_API × (1 + infra) × (1 + marge)
+     * avec infra = 0.15 et marge = 0.60 → coefficient ≈ 1.84 (≈ 2×).
+     *
      * @return array{usd: float, credits: int, model: string}
      */
     public function estimateCost(string $taskType, int $inputTokens, int $outputTokens, string $plan = 'default'): array
@@ -107,17 +167,25 @@ class OpenRouterService
                  + ($outputTokens / 1_000_000) * (float) $pricing['output'];
         }
 
-        // Marge de sécurité
-        $usd *= (1 + (float) config('openrouter.cost_margin', 0.20));
-
-        $rate = (float) config('openrouter.rate_fcfa_per_usd', 620);
-        $credits = (int) ceil($usd * $rate);
+        $credits = $this->usdToCredits($usd);
 
         return [
             'usd' => round($usd, 6),
             'credits' => $credits,
             'model' => $model,
         ];
+    }
+
+    /**
+     * Coût USD → crédits avec coefficient de rentabilité.
+     */
+    private function usdToCredits(float $usd): int
+    {
+        $infra = (float) config('openrouter.cost_infrastructure', 0.15);
+        $margin = (float) config('openrouter.cost_margin', 0.60);
+        $rate = (float) config('openrouter.rate_fcfa_per_usd', 620);
+
+        return (int) ceil(max(0.0, $usd) * (1 + $infra) * (1 + $margin) * $rate);
     }
 
     /**
@@ -190,13 +258,11 @@ class OpenRouterService
         if ($pricing !== null && ! isset($pricing['image'])) {
             $usd = ($inputTokens / 1_000_000) * (float) $pricing['input']
                  + ($outputTokens / 1_000_000) * (float) $pricing['output'];
-            $usd *= (1 + (float) config('openrouter.cost_margin', 0.20));
         } else {
             $usd = 0.0;
         }
 
-        $rate = (float) config('openrouter.rate_fcfa_per_usd', 620);
-        $credits = (int) ceil($usd * $rate);
+        $credits = $this->usdToCredits($usd);
 
         return [
             'model' => $model,
