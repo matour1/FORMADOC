@@ -14,9 +14,15 @@ use Illuminate\Support\Facades\Storage;
  * Intégration EXPÉRIMENTALE des Skills documentaires Claude (docx, xlsx,
  * pptx, pdf) via l'API Anthropic (exigence B).
  *
- * Réservée aux abonnés Pro. Ne doit JAMAIS bloquer l'application :
- * toute erreur lève une exception propre attrapée par l'appelant, qui
- * bascule sur le fallback interne (PHPWord / outils internes).
+ * Accessible (Q4) :
+ *   - aux abonnés des plans payants ≥ config('billing.skills_min_plan')
+ *     (standard, premium, pro, enterprise) : inclus dans l'abonnement ;
+ *   - aux autres utilisateurs en pay-per-use via crédits, avec une
+ *     majoration de config('billing.skills_no_subscription_multiplier', 1.5).
+ *
+ * Ne doit JAMAIS bloquer l'application : toute erreur lève une exception
+ * propre attrapée par l'appelant, qui bascule sur le fallback interne
+ * (PHPWord / outils internes).
  *
  * Flux :
  *   1. POST /v1/messages avec le container de skills + code execution
@@ -28,6 +34,7 @@ use Illuminate\Support\Facades\Storage;
  *   - tokens modèle (input + output)
  *   - conteneur : 0,05 $/h, minimum 5 min par exécution
  *   - coefficient de rentabilité (×2) : couvre infrastructure + marge 40-60 %
+ *   - ×1,5 supplémentaire si l'utilisateur paie en crédits (sans abonnement)
  */
 class ClaudeSkillsService
 {
@@ -37,6 +44,19 @@ class ClaudeSkillsService
      * @var string[]
      */
     public const SKILLS = ['docx', 'xlsx', 'pptx', 'pdf'];
+
+    /**
+     * Ordre des plans pour comparer les niveaux d'accès.
+     *
+     * @var array<string, int>
+     */
+    private const PLAN_RANKS = [
+        'default' => 0,
+        'standard' => 1,
+        'premium' => 2,
+        'pro' => 3,
+        'enterprise' => 4,
+    ];
 
     public function __construct(
         private readonly \App\Services\Billing\UsageCostCalculator $costCalculator,
@@ -52,13 +72,49 @@ class ClaudeSkillsService
     }
 
     /**
-     * Vérifie que l'utilisateur est éligible (abonnement Pro actif).
+     * Vérifie que l'utilisateur est éligible aux Skills documentaires.
+     *
+     * Q4 : abonnement payant ≥ skills_min_plan (inclus) OU solde de crédits
+     * suffisant pour le pay-per-use (×1,5 sans abonnement).
      */
     public function isEligible(?\App\Models\User $user): bool
     {
-        return $user !== null
-            && $user->currentPlanSlug() === 'pro'
-            && $this->isConfigured();
+        if ($user === null || ! $this->isConfigured()) {
+            return false;
+        }
+
+        return $this->hasPaidSubscription($user)
+            || $user->hasCredits($this->minPayPerUseCredits());
+    }
+
+    /**
+     * L'utilisateur a-t-il un abonnement payant (≥ skills_min_plan) actif ?
+     */
+    public function hasPaidSubscription(\App\Models\User $user): bool
+    {
+        $minRank = $this->planRank((string) config('billing.skills_min_plan', 'standard'));
+
+        return $this->planRank($user->currentPlanSlug()) >= max(1, $minRank);
+    }
+
+    /**
+     * Coût minimal (crédits) d'un pay-per-use : le skill le moins cher
+     * (docx), avec la majoration sans abonnement.
+     */
+    public function minPayPerUseCredits(): int
+    {
+        $base = $this->estimateCredits([], 'docx');
+        $multiplier = (float) config('billing.skills_no_subscription_multiplier', 1.5);
+
+        return (int) max(1, (int) ceil($base * $multiplier));
+    }
+
+    /**
+     * Rang d'un plan (ordre décroissant d'accès).
+     */
+    private function planRank(string $slug): int
+    {
+        return self::PLAN_RANKS[$slug] ?? 0;
     }
 
     /**
@@ -139,7 +195,7 @@ class ClaudeSkillsService
         Storage::disk('local')->put($path, $fileContent);
 
         // Coût en crédits (tokens + conteneur, coefficient appliqué)
-        $costCredits = $this->estimateCredits($data, $skill);
+        $costCredits = $this->effectiveCost($data, $skill, $user);
 
         Log::info('ClaudeSkills : fichier généré', [
             'skill' => $skill,
@@ -154,6 +210,27 @@ class ClaudeSkillsService
             'cost_credits' => $costCredits,
             'model' => (string) config('anthropic.model'),
         ];
+    }
+
+    /**
+     * Coût effectif en crédits d'une génération, selon le statut de
+     * l'utilisateur (Q4) :
+     *   - abonnement payant actif → coût de base (inclus dans l'abonnement)
+     *   - pay-per-use (sans abonnement) → × skills_no_subscription_multiplier
+     *
+     * @param array<string, mixed> $responseData Réponse API (tokens réels)
+     */
+    public function effectiveCost(array $responseData, string $skill, ?\App\Models\User $user = null): int
+    {
+        $base = $this->estimateCredits($responseData, $skill);
+
+        if ($user !== null && ! $this->hasPaidSubscription($user)) {
+            $multiplier = (float) config('billing.skills_no_subscription_multiplier', 1.5);
+
+            return (int) max(1, (int) ceil($base * $multiplier));
+        }
+
+        return $base;
     }
 
     /**

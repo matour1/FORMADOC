@@ -67,71 +67,51 @@
 
         <div class="grid" style="grid-template-columns:1fr;gap:1.25rem">
 
-            {{-- Abonnement actif + achat --}}
-            <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem">
-                {{-- Abonnement actif --}}
+            {{-- Solde + Abonnement actif (credit-grid, conforme formadoc-template.html) --}}
+            <div class="credit-grid" style="margin-bottom:1.75rem;">
                 <div class="card">
-                    <h2 class="card-title" style="margin-bottom:.5rem">Abonnement actif</h2>
-                    @if ($subscription && $subscription->isActiveAt())
-                        <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.4rem">
-                            <span class="badge badge-success"><i data-lucide="badge-check" style="width:12px;height:12px"></i> Actif</span>
-                            <h3 style="font-family:var(--font-display);font-size:1.25rem;margin:0">{{ $subscription->plan->name }}</h3>
-                        </div>
-                        <p style="font-size:.85rem;color:var(--color-text-muted)">
-                            @if ($subscription->ends_at)
-                                Valide jusqu'au {{ $subscription->ends_at->format('d/m/Y') }}
-                            @else
-                                Illimité (Entreprises)
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-weight:600;">Solde de crédits</span>
+                        <span class="badge badge-success mono">{{ number_format($balance, 0, ',', ' ') }}</span>
+                    </div>
+                    <div style="margin-top:.3rem;font-size:.85rem;color:var(--color-text-muted);">1 crédit ≈ 1 FCFA</div>
+                    <button class="btn btn-primary btn-sm" style="margin-top:1.1rem;" id="showPurchaseModal">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v12"/><path d="M8 10h8"/></svg>
+                        Acheter des crédits
+                    </button>
+                </div>
+                <div class="card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-weight:600;">Abonnement actif</span>
+                        @if ($subscription && $subscription->isActiveAt())
+                            <span class="badge badge-info">{{ $subscription->plan->name }}</span>
+                        @else
+                            <span class="badge">Gratuit</span>
+                        @endif
+                    </div>
+                    <div style="margin-top:.3rem;font-size:.85rem;color:var(--color-text-muted);">
+                        @if ($subscription && $subscription->isActiveAt() && $subscription->auto_renew && $subscription->ends_at)
+                            Renouvellement automatique le {{ $subscription->ends_at->format('d/m/Y') }}
+                        @elseif ($subscription && $subscription->isActiveAt() && !$subscription->auto_renew && $subscription->ends_at)
+                            Actif jusqu'au {{ $subscription->ends_at->format('d/m/Y') }} — renouvellement désactivé
+                        @elseif ($subscription && $subscription->isActiveAt())
+                            Valide jusqu'au {{ $subscription->ends_at ? $subscription->ends_at->format('d/m/Y') : '— (illimité)' }}
+                        @else
+                            Plan gratuit : 5 documents déterministes / mois, 0 traitement IA.
+                        @endif
+                    </div>
+                    <div style="display:flex;gap:.5rem;margin-top:1.1rem;flex-wrap:wrap;">
+                        @if ($subscription && $subscription->isActiveAt())
+                            <a href="{{ route('subscriptions.checkout', $subscription->plan->slug) }}" class="btn btn-secondary btn-sm">Changer de plan</a>
+                            @if ($subscription->auto_renew)
+                                <button class="btn btn-ghost btn-sm" id="showCancelSubModal">Annuler l'abonnement</button>
                             @endif
-                        </p>
-                        <ul style="margin-top:.6rem">
-                            @foreach (($subscription->plan->features ?? []) as $feature)
-                                <li style="display:flex;gap:.4rem;font-size:.82rem;margin:.2rem 0">
-                                    <i data-lucide="check" style="width:13px;height:13px;color:var(--color-secondary);flex-shrink:0;margin-top:.15rem"></i>
-                                    {{ $feature }}
-                                </li>
-                            @endforeach
-                        </ul>
-                    @else
-                        <p style="font-size:.9rem;color:var(--color-text-muted);margin-bottom:.5rem">
-                            Aucun abonnement actif — plan Gratuit : 5 documents déterministes / mois, 0 traitement IA.
-                        </p>
-                        <a href="#plans" class="btn btn-secondary btn-sm">
-                            <i data-lucide="sparkles" style="width:14px;height:14px"></i> Découvrir les plans
-                        </a>
-                    @endif
+                        @else
+                            <a href="#plans" class="btn btn-secondary btn-sm">Découvrir les plans</a>
+                        @endif
+                        <a href="{{ route('invoices.index') }}" class="btn btn-ghost btn-sm">Mes factures</a>
+                    </div>
                 </div>
-
-                {{-- Formulaire d'achat --}}
-                <div class="card">
-                    <h2 class="card-title" style="margin-bottom:.5rem">Acheter des crédits</h2>
-                    <form action="{{ route('credits.purchase') }}" method="POST">
-                        @csrf
-                        <div class="form-group">
-                            <label for="amount">Montant (FCFA) — minimum {{ number_format(config('kpay.min_amount', 500), 0, ',', ' ') }}</label>
-                            <input type="number" name="amount" id="amount" required min="{{ config('kpay.min_amount', 500) }}"
-                                   step="100" max="500000" placeholder="1 000"
-                                   class="form-control" value="{{ old('amount', 1000) }}">
-                            @error('amount')<p class="field-error">{{ $message }}</p>@enderror
-                        </div>
-                        <button type="submit" class="btn btn-primary btn-block">
-                            <i data-lucide="credit-card" style="width:15px;height:15px"></i> Payer
-                        </button>
-                        <p class="chat-disclaimer" style="margin-top:.5rem">
-                            Paiement sécurisé via KPay (carte bancaire, mobile money : Orange Money, MTN MoMo…).
-                        </p>
-                    </form>
-                </div>
-
-                {{-- Chat IA --}}
-                <a href="{{ route('chat.index') }}" class="card" style="text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:.4rem">
-                    <span style="display:flex;align-items:center;gap:.5rem;font-weight:600">
-                        <i data-lucide="message-circle" style="width:17px;height:17px;color:var(--color-primary)"></i>
-                        Assistant IA
-                    </span>
-                    <span style="font-size:.82rem;color:var(--color-text-muted)">Posez vos questions, coût affiché avant envoi — outils actionnables (page de garde, reconstruction, web, images).</span>
-                    <span class="btn btn-ghost btn-sm" style="align-self:flex-start;margin-top:.3rem">Ouvrir →</span>
-                </a>
             </div>
 
             {{-- Historique des transactions --}}
@@ -182,64 +162,87 @@
                 @endif
             </div>
 
-            {{-- Plans d'abonnement (nouveaux tarifs / quotas) --}}
-            <div id="plans" class="card">
-                <h2 class="card-title" style="margin-bottom:.3rem">Plans d'abonnement mensuels</h2>
-                <p style="font-size:.82rem;color:var(--color-text-muted);margin-bottom:1rem">
+            {{-- Plans d'abonnement (plan-grid, conforme formadoc-template.html) --}}
+            <div id="plans" style="margin-bottom:1.75rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap">
+                    <h2 style="font-size:1.05rem;font-weight:700;margin-bottom:0;">Plans d'abonnement</h2>
+                    {{-- Sélecteur de devise (Q5b) : l'affichage et le checkout suivent la devise choisie --}}
+                    <form method="GET" action="{{ url()->current() }}" style="display:flex;align-items:center;gap:.5rem">
+                        <label for="currency-select" style="font-size:.8rem;color:var(--color-text-muted)">Devise :</label>
+                        <select name="currency" id="currency-select" class="form-control" style="width:auto;padding:.35rem .75rem;font-size:.85rem"
+                                onchange="this.form.submit()">
+                            @foreach (config('billing.currencies', []) as $code => $cfg)
+                                <option value="{{ $code }}" {{ $currency === $code ? 'selected' : '' }}>
+                                    {{ $code }} ({{ $cfg['symbol'] }})
+                                </option>
+                            @endforeach
+                        </select>
+                    </form>
+                </div>
+                <p style="font-size:.82rem;color:var(--color-text-muted);margin-bottom:1rem;margin-top:.5rem">
                     Les quotas sont réinitialisés chaque mois. Traitements IA facturés en crédits en plus de l'abonnement.
                 </p>
 
-                <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1rem">
+                <div class="plan-grid">
+                    {{-- Plan Gratuit (pas de ligne en base — plan par défaut, conforme template) --}}
+                    <div class="plan-card {{ (!$subscription || !$subscription->isActiveAt()) ? 'current' : '' }}">
+                        <div class="plan-name">Gratuit</div>
+                        <div class="price mono">0 <span>FCFA/mois</span></div>
+                        <div class="plan-desc">5 documents déterministes · 0 traitement IA</div>
+                        @if (!$subscription || !$subscription->isActiveAt())
+                            <button class="btn btn-secondary btn-sm" disabled>Plan actuel</button>
+                        @else
+                            <form action="{{ route('subscriptions.cancel') }}" method="POST" style="margin-top:auto">
+                                @csrf
+                                <button type="submit" class="btn btn-secondary btn-sm">Rétrograder</button>
+                            </form>
+                        @endif
+                    </div>
+
                     @foreach ($plans as $plan)
-                        <div class="card" style="display:flex;flex-direction:column;gap:.35rem;border:1px solid var(--color-border);
-                            {{ $subscription && $subscription->plan_id === $plan->id ? 'border-color:var(--color-primary);box-shadow:0 0 0 1px var(--color-primary)' : '' }}">
-                            <div style="display:flex;align-items:center;justify-content:space-between">
-                                <h3 style="font-family:var(--font-display);font-size:1.1rem;margin:0">{{ $plan->name }}</h3>
-                                @if ($subscription && $subscription->plan_id === $plan->id)
-                                    <span class="badge badge-success">Actuel</span>
+                        @php
+                            $isCurrent = $subscription && $subscription->plan_id === $plan->id;
+                            $isPopular = $plan->slug === 'premium';
+                            $isFree = $plan->price_fcfa <= 0 && $plan->slug !== 'enterprise';
+                            $isEnterprise = $plan->slug === 'enterprise';
+                        @endphp
+                        <div class="plan-card {{ $isCurrent ? 'current' : '' }} {{ $isPopular && !$isCurrent ? 'popular' : '' }}">
+                            @if ($isPopular && !$isCurrent)
+                                <span class="plan-tag">Populaire</span>
+                            @endif
+                            <div class="plan-name">{{ $plan->name }}</div>
+                            @if ($isEnterprise)
+                                <div class="price">Sur devis</div>
+                            @else
+                                <div class="price mono">{{ $prices[$plan->slug] ?? number_format($plan->price_fcfa, 0, ',', ' ') }} <span>/mois</span></div>
+                            @endif
+                            <div class="plan-desc">
+                                @if ($plan->quota_deterministic !== null)
+                                    {{ $plan->quota_deterministic }} documents déterministes
+                                @else
+                                    Documents illimités
+                                @endif
+                                ·
+                                @if ($plan->quota_ai !== null)
+                                    {{ $plan->quota_ai }} traitements IA
+                                @else
+                                    IA illimitée
                                 @endif
                             </div>
-                            <p style="font-size:1.35rem;font-weight:700;color:var(--color-primary);margin:0">
-                                @if ($plan->price_fcfa > 0)
-                                    {{ number_format($plan->price_fcfa, 0, ',', ' ') }} <small style="font-size:.6em;color:var(--color-text-muted)">FCFA/mois</small>
-                                @else
-                                    <small style="font-size:.6em;color:var(--color-text-muted)">Sur devis</small>
-                                @endif
-                            </p>
-                            <p style="font-size:.8rem;color:var(--color-text-muted);flex:1">{{ $plan->description }}</p>
-                            <ul style="margin-top:.3rem">
-                                @if ($plan->quota_deterministic !== null)
-                                    <li style="display:flex;gap:.4rem;font-size:.8rem;margin:.15rem 0">
-                                        <i data-lucide="file-text" style="width:13px;height:13px;color:var(--color-secondary);flex-shrink:0;margin-top:.15rem"></i>
-                                        {{ $plan->quota_deterministic }} document(s) déterministe(s) / mois
-                                    </li>
-                                @else
-                                    <li style="display:flex;gap:.4rem;font-size:.8rem;margin:.15rem 0">
-                                        <i data-lucide="infinity" style="width:13px;height:13px;color:var(--color-secondary);flex-shrink:0;margin-top:.15rem"></i>
-                                        Documents déterministes illimités
-                                    </li>
-                                @endif
-                                @if ($plan->quota_ai !== null)
-                                    <li style="display:flex;gap:.4rem;font-size:.8rem;margin:.15rem 0">
-                                        <i data-lucide="bot" style="width:13px;height:13px;color:var(--color-secondary);flex-shrink:0;margin-top:.15rem"></i>
-                                        {{ $plan->quota_ai }} traitement(s) IA / mois
-                                    </li>
-                                @else
-                                    <li style="display:flex;gap:.4rem;font-size:.8rem;margin:.15rem 0">
-                                        <i data-lucide="infinity" style="width:13px;height:13px;color:var(--color-secondary);flex-shrink:0;margin-top:.15rem"></i>
-                                        Traitements IA illimités
-                                    </li>
-                                @endif
-                                @foreach (($plan->features ?? []) as $feature)
-                                    <li style="display:flex;gap:.4rem;font-size:.8rem;margin:.15rem 0">
-                                        <i data-lucide="check" style="width:13px;height:13px;color:var(--color-secondary);flex-shrink:0;margin-top:.15rem"></i>
-                                        {{ $feature }}
-                                    </li>
-                                @endforeach
-                            </ul>
-                            @unless ($subscription && $subscription->plan_id === $plan->id)
-                                <a href="{{ route('feedback.form') }}" class="btn btn-ghost btn-sm" style="margin-top:.5rem">Contactez-nous</a>
-                            @endunless
+                            @if ($isCurrent)
+                                <button class="btn btn-secondary btn-sm" disabled>Plan actuel</button>
+                            @elseif ($isFree)
+                                <form action="{{ route('subscriptions.cancel') }}" method="POST" style="margin-top:auto">
+                                    @csrf
+                                    <button type="submit" class="btn btn-secondary btn-sm" {{ $subscription ? '' : 'disabled' }}>Rétrograder</button>
+                                </form>
+                            @elseif ($isEnterprise)
+                                <a href="{{ route('feedback.form') }}" class="btn btn-secondary btn-sm">Nous contacter</a>
+                            @else
+                                <a href="{{ route('subscriptions.checkout', [$plan->slug, 'currency' => $currency]) }}" class="btn {{ $isPopular ? 'btn-primary' : 'btn-secondary' }} btn-sm">
+                                    {{ $subscription ? 'Passer à ' . $plan->name : 'Choisir ' . $plan->name }}
+                                </a>
+                            @endif
                         </div>
                     @endforeach
                 </div>
@@ -250,5 +253,78 @@
             </div>
         </div>
     </div>
+
+    {{-- Modale : acheter des crédits (conforme formadoc-template.html) --}}
+    <div class="modal-overlay" id="purchaseModal" role="dialog" aria-modal="true" aria-labelledby="purchaseModalTitle">
+        <div class="modal">
+            <div class="modal-header"><h3 id="purchaseModalTitle">Acheter des crédits</h3><button class="modal-close" id="closePurchaseModal" aria-label="Fermer">×</button></div>
+            <form action="{{ route('credits.purchase') }}" method="POST">
+                @csrf
+                <div class="form-group">
+                    <label for="creditAmount">Montant (FCFA) — minimum {{ number_format(config('kpay.min_amount', 500), 0, ',', ' ') }}</label>
+                    <input class="form-control" type="number" name="amount" id="creditAmount" value="1000"
+                           min="{{ config('kpay.min_amount', 500) }}" step="100" max="500000" required />
+                    @error('amount')<p class="field-error">{{ $message }}</p>@enderror
+                </div>
+                <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.4rem;">
+                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="500">500</button>
+                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="1000">1 000</button>
+                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="2000">2 000</button>
+                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="5000">5 000</button>
+                </div>
+                <div style="display:flex;gap:.6rem;margin-bottom:1.4rem;justify-content:center;font-size:.85rem;color:var(--color-text-secondary);flex-wrap:wrap;">
+                    <span>Carte bancaire</span><span>·</span><span>KPay</span><span>·</span><span>Orange Money</span><span>·</span><span>MTN MoMo</span>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block" id="confirmPurchase">Payer maintenant</button>
+            </form>
+        </div>
+    </div>
+
+    {{-- Modale : annuler l'abonnement (conforme formadoc-template.html) --}}
+    @if ($subscription && $subscription->isActiveAt() && $subscription->auto_renew)
+        <div class="modal-overlay" id="cancelSubModal" role="dialog" aria-modal="true" aria-labelledby="cancelSubTitle">
+            <div class="modal">
+                <div class="modal-header"><h3 id="cancelSubTitle">Annuler l'abonnement</h3><button class="modal-close" id="closeCancelSubModal" aria-label="Fermer">×</button></div>
+                <div class="banner banner-warning" style="margin-bottom:1.1rem;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                    <div>Votre abonnement {{ $subscription->plan->name }} restera actif jusqu'au {{ $subscription->ends_at->format('d/m/Y') }} (fin de la période déjà payée), puis basculera automatiquement vers le plan Gratuit.</div>
+                </div>
+                <form action="{{ route('subscriptions.cancel') }}" method="POST" style="display:flex;gap:.6rem;">
+                    @csrf
+                    <button type="button" class="btn btn-secondary btn-block" id="keepSubscription">Garder mon abonnement</button>
+                    <button type="submit" class="btn btn-danger btn-block" id="confirmCancelSub">Confirmer l'annulation</button>
+                </form>
+            </div>
+        </div>
+    @endif
 @endsection
+
+@push('scripts')
+<script>
+    function openModal(el) { el.classList.add('open'); }
+    function closeModal(el) { el.classList.remove('open'); }
+
+    // Modale achat de crédits
+    const purchaseModal = document.getElementById('purchaseModal');
+    const showPurchaseBtn = document.getElementById('showPurchaseModal');
+    if (showPurchaseBtn && purchaseModal) {
+        showPurchaseBtn.addEventListener('click', () => openModal(purchaseModal));
+        document.getElementById('closePurchaseModal').addEventListener('click', () => closeModal(purchaseModal));
+        purchaseModal.addEventListener('click', e => { if (e.target === purchaseModal) closeModal(purchaseModal); });
+        document.querySelectorAll('.quick-amount').forEach(btn => btn.addEventListener('click', function () {
+            document.getElementById('creditAmount').value = this.dataset.amount;
+        }));
+    }
+
+    // Modale annulation d'abonnement
+    const cancelSubModal = document.getElementById('cancelSubModal');
+    const showCancelSubBtn = document.getElementById('showCancelSubModal');
+    if (showCancelSubBtn && cancelSubModal) {
+        showCancelSubBtn.addEventListener('click', () => openModal(cancelSubModal));
+        document.getElementById('closeCancelSubModal').addEventListener('click', () => closeModal(cancelSubModal));
+        cancelSubModal.addEventListener('click', e => { if (e.target === cancelSubModal) closeModal(cancelSubModal); });
+        document.getElementById('keepSubscription').addEventListener('click', () => closeModal(cancelSubModal));
+    }
+</script>
+@endpush
 

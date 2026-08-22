@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Plan;
 use App\Services\Billing\CreditService;
 use App\Services\Billing\QuotaService;
+use App\Services\Billing\SubscriptionService;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -17,6 +18,7 @@ class AccountController extends Controller
     public function __construct(
         private readonly CreditService $credits,
         private readonly QuotaService $quotas,
+        private readonly SubscriptionService $subscriptions,
     ) {
     }
 
@@ -41,12 +43,25 @@ class AccountController extends Controller
             ->orderBy('sort_order')
             ->get();
 
+        // Devise d'affichage (Q5b) : choisie via ?currency= ou devise par défaut
+        $currency = strtoupper((string) $request->query('currency', config('billing.default_currency', 'XAF')));
+        if (! array_key_exists($currency, config('billing.currencies', []))) {
+            $currency = config('billing.default_currency', 'XAF');
+        }
+
+        // Prix de chaque plan formatés dans la devise choisie
+        $prices = $plans->mapWithKeys(
+            fn (Plan $plan) => [$plan->slug => $this->subscriptions->formatPrice($plan, $currency)]
+        );
+
         return view('account.index', [
             'balance' => $balance,
             'subscription' => $subscription,
             'transactions' => $transactions,
             'plans' => $plans,
             'quotaStatus' => $this->quotas->status($user),
+            'currency' => $currency,
+            'prices' => $prices,
         ]);
     }
 }

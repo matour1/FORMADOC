@@ -8,7 +8,20 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['user_id', 'plan_id', 'status', 'starts_at', 'ends_at'])]
+#[Fillable([
+    'user_id',
+    'plan_id',
+    'status',
+    'auto_renew',
+    'payment_method',
+    'external_id',
+    'currency',
+    'last_payment_status',
+    'last_renewed_at',
+    'trial_ends_at',
+    'starts_at',
+    'ends_at',
+])]
 class Subscription extends Model
 {
     /** @use HasFactory<SubscriptionFactory> */
@@ -17,8 +30,11 @@ class Subscription extends Model
     protected function casts(): array
     {
         return [
+            'auto_renew' => 'boolean',
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
+            'last_renewed_at' => 'datetime',
+            'trial_ends_at' => 'datetime',
         ];
     }
 
@@ -30,6 +46,11 @@ class Subscription extends Model
     public function plan(): BelongsTo
     {
         return $this->belongsTo(Plan::class);
+    }
+
+    public function invoices(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Invoice::class);
     }
 
     /**

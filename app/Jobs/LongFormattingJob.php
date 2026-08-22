@@ -108,7 +108,7 @@ class LongFormattingJob implements ShouldQueue
             ]);
         } catch (\Throwable $e) {
             $this->refund($credits, $user, 'llm_failure');
-            Log::error('LongFormattingJob : échec OpenRouter', [
+            Log::error('LongFormattingJob : échec execution', [
                 'document_id' => $this->document->id,
                 'error' => $e->getMessage(),
             ]);
