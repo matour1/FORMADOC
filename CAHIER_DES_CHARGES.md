@@ -1,7 +1,7 @@
 # 📋 CAHIER DES CHARGES — FORMADOC
 
-**Version** : 3.0 (Phase 3 — Évolutions majeures SaaS)
-**Statut** : ✅ Implémenté sur branche `feature/evolutions-saas-phase3`
+**Version** : 3.1 (Phase 9 — Abonnements récurrents, factures PDF, multi-devises)
+**Statut** : ✅ Implémenté (Phase 3 sur `feature/evolutions-saas-phase3` + Phase 9 sur `feature/phase9-subscriptions`)
 **Produit** : FORMADOC — Mise en forme automatique de rapports académiques, SaaS avec assistance IA avancée.
 
 ---
@@ -11,11 +11,12 @@
 | # | Exigence | Statut | Fichiers clés |
 |---|----------|--------|---------------|
 | **A** | Chat IA actionnable (outils internes + externes, function calling) | ✅ | `ChatToolsService`, `OpenRouterService`, `ChatController` |
-| **B** | Skills documentaires Claude (docx/xlsx/pptx/pdf) — Pro only, expérimental | ✅ | `ClaudeSkillsService`, `config/anthropic.php`, `guide-skills-documentaires-api-claude.md` |
+| **B** | Skills documentaires Claude (docx/xlsx/pptx/pdf) — Standard+ ou pay-per-use ×1,5 | ✅ | `ClaudeSkillsService`, `config/anthropic.php`, `guide-skills-documentaires-api-claude.md` |
 | **C** | Règle de rentabilité : `prix_public = coût_API × (1+infra) × (1+marge)`, marge 40-60 % | ✅ | `UsageCostCalculator::profitabilityCoefficient()`, `config/openrouter.php` |
 | **D** | Nouveaux quotas mensuels par plan (Gratuit/Standard/Premium/Pro/Entreprises) | ✅ | `QuotaService`, `PlanSeeder`, migration `2026_08_20_000001_add_quotas_to_plans_and_users` |
 | **E** | Intégration template HTML `formadoc-template.html` + landing page fidèle | ✅ | `resources/css/formadoc.css`, `resources/views/landing.blade.php` |
 | **F** | MAJ cahier des charges + code + estimation coûts + plan d'action priorisé | ✅ | Ce document, `README.md`, `PLAN_DEVELOPPEMENT.md` |
+| **G** | **Phase 9** : abonnements récurrents (carte KPay, renouvellement auto, prorata), factures PDF, multi-devises | ✅ | `SubscriptionService`, `InvoiceService`, `RenewSubscriptions`, `config/billing.php` |
 
 ---
 
@@ -71,11 +72,14 @@ Le chat ne se limite plus à répondre en texte : le modèle peut **exécuter de
 
 ### Objectif
 
-Permettre aux abonnés **Pro** de générer des documents natifs (Word, Excel, PowerPoint, PDF) par simple description, via les **Skills documentaires de l'API Anthropic**.
+Permettre de générer des documents natifs (Word, Excel, PowerPoint, PDF) par simple description, via les **Skills documentaires de l'API Anthropic** — inclus dans les **plans payants** (Standard et supérieurs) ou en **pay-per-use** en crédits (Phase 9, Q4).
 
 ### Caractéristiques
 
-- **Réservé Pro** : `ClaudeSkillsService::isEligible()` vérifie `currentPlanSlug() === 'pro'` + clé API configurée.
+- **Éligibilité** (Phase 9) : `ClaudeSkillsService::isEligible()` retourne vrai si
+  - `hasPaidSubscription($user)` — abonnement **Standard ou supérieur** (`skills_min_plan` = `standard`, classement `PLAN_RANKS`), **ou**
+  - `$user->hasCredits(minPayPerUseCredits())` — **pay-per-use** : le coût est estimé (×1,5 sans abonnement, min 1 crédit) et débité avant génération.
+- **Chat IA plan Gratuit** : le quota IA étant 0, les non-abonnés sont facturés en crédits (pay-per-use ×1,5) sans consommer de quota.
 - **Expérimental** : ne doit JAMAIS bloquer l'application — toute erreur lève une exception propre attrapée par l'appelant, qui bascule sur le **fallback interne** (PHPWord / outils internes).
 - **Modèle** : `claude-sonnet-4-6` (configurable via `ANTHROPIC_MODEL`).
 - **Bêta skills** : header `betas: ["skills-2025-10-02"]`, `container.skills` avec `skill_id` docx/xlsx/pptx/pdf.
@@ -89,6 +93,7 @@ Permettre aux abonnés **Pro** de générer des documents natifs (Word, Excel, P
 | Tokens modèle (input + output) | Tarif Anthropic, converti en crédits |
 | Conteneur d'exécution | 0,05 $/h, **minimum 5 min par exécution** |
 | Coefficient de rentabilité | ×2 (infrastructure + marge 40-60 %) |
+| **Pay-per-use sans abonnement** | **×1,5** supplémentaire (`skills_no_subscription_multiplier`), min 1 crédit |
 
 ### Flux technique
 
@@ -106,6 +111,8 @@ Permettre aux abonnés **Pro** de générer des documents natifs (Word, Excel, P
 | `ANTHROPIC_API_URL` | URL de l'API | `https://api.anthropic.com/v1` |
 | `ANTHROPIC_MODEL` | Modèle utilisé | `claude-sonnet-4-6` |
 | `ANTHROPIC_CREDIT_MULTIPLIER` | Coefficient de rentabilité | `2.0` |
+| `SKILLS_MIN_PLAN` | Plan minimal inclus | `standard` |
+| `SKILLS_NO_SUBSCRIPTION_MULTIPLIER` | Majoration pay-per-use | `1.5` |
 
 ---
 
@@ -231,6 +238,50 @@ npx vite build
 4. ✅ Skills Claude Pro expérimentaux avec fallback interne (B)
 5. ✅ Design system + landing + vues converties (E)
 6. ✅ Documentation + tests + workflow Git (F)
+
+---
+
+## G. Phase 9 — Abonnements récurrents, factures PDF, multi-devises (✅ Implémentée)
+
+Branche : `feature/phase9-subscriptions`. Décisions actées (Q1-Q6) : **Q1a** renouvellement auto (cron 06:00) ; **Q2a** prorata au changement de plan ; **Q3a** factures PDF ; **Q4** Excel/PPtX inclus plans payants (Standard+) **ou** pay-per-use ×1,5 en crédits ; **Q5b** devises multiples FCFA/EUR/USD ; **Q6a** flux KPay conservé (init → passerelle → webhook HMAC).
+
+### G.1 Abonnements récurrents
+
+| Règle | Décision |
+|-------|----------|
+| Renouvellement | Automatique chaque mois via cron quotidien 06:00 (`RenewSubscriptions`), même carte KPay |
+| Période de grâce | 5 jours avant expiration (`grace_days`) |
+| Résiliation | Immédiate, **prorata crédité** : `prix × (jours restants / 30)` (`prorata` = true) |
+| Plan Gratuit | Activation directe sans paiement, `auto_renew` = false |
+| Statuts | `active \| pending \| canceled \| expired \| failed` |
+
+- **`SubscriptionService`** (`app/Services/Billing/`) : `initiateSubscription()` (KPay/gratuit), `activateFromWebhook()` (HMAC → abonnement + facture), `renew()`, `cancelCurrent()`, `markFailedPayment()`, `expire()`, `subscriptionsDueForRenewal()`, `priceInCurrency()`, `formatPrice()`.
+- **`KPayController`** : endpoints init/retour/webhook (signature HMAC-SHA256, fenêtre 10 min, idempotence).
+- Migration `2026_08_21_000001_add_recurring_subscriptions_and_invoices.php` (tables `subscriptions` + `invoices`).
+
+### G.2 Factures PDF (Q3a)
+
+- **`InvoiceService`** : numéro lisible `INV-AAAA-XXXXXX` (séquence annuelle), génération PDF via PhpWord (writer PDF, fallback Word2007), stockage disk `local`, `metadata.pdf_path`, `downloadPath()` régénère si absent.
+- Facture émise à **chaque paiement** : souscription, renouvellement, achat de crédits.
+- **`Invoice::formattedAmount()`** : FCFA entier (`5 000 FCFA`), EUR/USD décimal (`7,62 €`).
+
+### G.3 Skills Excel/PPtX : plans payants ou pay-per-use (Q4)
+
+- `ClaudeSkillsService::isEligible()` : abonnement **Standard+** (inclus) **ou** crédits suffisants (**pay-per-use ×1,5**, min 1 crédit).
+- `effectiveCost()` : estimation ×1,5 sans abonnement ; débit réel dans `ChatController::executeTool()` avant génération, remboursement du différentiel après coût réel, remboursement intégral en cas d'échec.
+- Chat IA plan Gratuit : pay-per-use en crédits (quota IA = 0 pour les non-abonnés).
+- Config : `billing.skills_min_plan` (`standard`), `billing.skills_no_subscription_multiplier` (`1.5`).
+
+### G.4 Multi-devises (Q5b)
+
+- `config/billing.php` → `currencies` : XAF (1.0), EUR (655.957), USD (620) ; `default_currency` = XAF.
+- Sélecteur de devise sur `/account` (GET `?currency=`), prix affichés dans la devise choisie, lien checkout avec `currency`.
+
+### G.5 Tests & fichiers
+
+- `SubscriptionServiceTest` (25 tests), `InvoiceServiceTest` (8 tests), `ClaudeSkillsServiceTest` (26 tests).
+- Suite complète : **288 tests** — verte.
+- Fichiers : migration `2026_08_21_000001_...`, `app/Services/Billing/{SubscriptionService,InvoiceService}.php`, `app/Models/{Subscription,Invoice}.php`, `app/Console/Commands/RenewSubscriptions.php`, `routes/{saas,console}.php`, `config/{billing,kpay}.php`, vues `account/index`, `chat/{index,show}`.
 
 ---
 

@@ -20,6 +20,9 @@ class SubscriptionFactory extends Factory
             'user_id' => User::factory(),
             'plan_id' => Plan::factory(),
             'status' => 'active',
+            'auto_renew' => true,
+            'payment_method' => 'kpay',
+            'currency' => 'XAF',
             'starts_at' => now()->subDay(),
             'ends_at' => now()->addMonth(),
         ];

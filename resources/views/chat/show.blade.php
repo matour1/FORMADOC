@@ -188,7 +188,7 @@
                 <p class="chat-disclaimer">
                     Le coût en crédits est estimé avant l'envoi et confirmé. En cas d'échec, vos crédits sont remboursés.
                     @if ($claudeEligible ?? false)
-                        Skills documentaires Claude activés (expérimental, Pro).
+                        Skills documentaires Claude activés (expérimental) : inclus Standard+, sinon pay-per-use en crédits (×1,5).
                     @endif
                 </p>
             </form>

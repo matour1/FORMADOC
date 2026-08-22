@@ -173,7 +173,25 @@ class KPayController extends Controller
         }
 
         // 5. Décision métier
+        $purpose = (string) ($metadata['purpose'] ?? 'credit_purchase');
+
         if ($status === 'completed') {
+            // --- Abonnement (souscription ou renouvellement) ---
+            if (in_array($purpose, ['subscription', 'subscription_renewal'], true)) {
+                $activated = app(\App\Services\Billing\SubscriptionService::class)
+                    ->activateFromWebhook($payload, $metadata);
+
+                Log::info('KPay webhook : abonnement traité', [
+                    'user_id' => $user->id,
+                    'purpose' => $purpose,
+                    'paymentId' => $paymentId,
+                    'activated' => $activated,
+                ]);
+
+                return response()->json(['status' => 'processed'], 200);
+            }
+
+            // --- Achat de crédits (comportement historique) ---
             $credits = (int) ($metadata['credits'] ?? $amount);
 
             $this->credits->credit(
@@ -198,10 +216,24 @@ class KPayController extends Controller
             ]);
         } else {
             // failed / cancelled → journaliser (aucun crédit)
+            // Pour un abonnement : marquer past_due (grace period)
+            if (in_array($purpose, ['subscription', 'subscription_renewal'], true)) {
+                $subscriptionId = (int) ($metadata['subscription_id'] ?? 0);
+                $subscription = $subscriptionId > 0
+                    ? \App\Models\Subscription::find($subscriptionId)
+                    : $user->activeSubscription;
+
+                if ($subscription) {
+                    app(\App\Services\Billing\SubscriptionService::class)
+                        ->markFailedPayment($subscription);
+                }
+            }
+
             Log::info('KPay webhook : paiement non abouti', [
                 'status' => $status,
                 'paymentId' => $paymentId,
                 'user_id' => $user->id,
+                'purpose' => $purpose,
             ]);
         }
 

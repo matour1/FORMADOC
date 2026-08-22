@@ -25,7 +25,8 @@ use Illuminate\View\View;
  *   3. vérification du solde → erreur si insuffisant
  *   4. débit immédiat des crédits estimés
  *   5. appel OpenRouter avec OUTILS (function calling : page de garde,
- *      reconstruction, recherche web, image…) et Skills Claude (Pro)
+ *      reconstruction, recherche web, image…) et Skills Claude
+ *      (plans payants ≥ standard inclus, sinon pay-per-use ×1,5 en crédits)
  *   6. ajustement : si coût réel < estimé → remboursement de la différence
  *   7. en cas d'échec → remboursement intégral + restitution du quota IA
  */
@@ -127,10 +128,15 @@ class ChatController extends Controller
         }
 
         // --- 4. Quota IA mensuel (1 message IA = 1 unité) ---
-        $aiQuota = $this->quotas->consume($user, 'ai');
-        if (! $aiQuota['ok']) {
-            return back()->with('error', 'Quota IA mensuel atteint ('.$aiQuota['used'].'/'
-                .$aiQuota['quota'].'). Passez à un plan supérieur ou attendez la prochaine période.');
+        // Les abonnés payants consomment leur quota inclus ; les utilisateurs
+        // sans abonnement payant (plan Gratuit, quota IA = 0) passent en
+        // pay-per-use : le chat leur est facturé en crédits (Q4), sans quota.
+        if ($this->claudeSkills->hasPaidSubscription($user)) {
+            $aiQuota = $this->quotas->consume($user, 'ai');
+            if (! $aiQuota['ok']) {
+                return back()->with('error', 'Quota IA mensuel atteint ('.$aiQuota['used'].'/'
+                    .$aiQuota['quota'].'). Passez à un plan supérieur ou attendez la prochaine période.');
+            }
         }
 
         // --- 5. Session (création si nouvelle) ---
@@ -174,7 +180,8 @@ class ChatController extends Controller
             ->all();
 
         // --- 9. Outils actionnables (function calling) ---
-        // Skills Claude réservés aux Pro : le schéma n'est injecté que pour eux.
+        // Skills Claude : injectés si éligible (plans payants ≥ standard
+        // ou pay-per-use via crédits).
         $tools = $this->tools->schemas();
         if ($this->claudeSkills->isEligible($user)) {
             $tools[] = $this->skillSchema();
@@ -202,7 +209,9 @@ class ChatController extends Controller
                 description: 'Remboursement chat IA (échec)',
                 metadata: ['purpose' => 'chat', 'chat_session_id' => $chatSession->id, 'refund_reason' => 'llm_failure'],
             );
-            $this->quotas->refund($user, 'ai');
+            if ($this->claudeSkills->hasPaidSubscription($user)) {
+                $this->quotas->refund($user, 'ai');
+            }
 
             Log::error('Chat IA : échec appel OpenRouter', [
                 'user_id' => $user->id,
@@ -268,7 +277,7 @@ class ChatController extends Controller
      | ------------------------------------------------------------------ */
 
     /**
-     * Schéma OpenAI de l'outil Skills documentaires Claude (Pro uniquement).
+     * Schéma OpenAI de l'outil Skills documentaires Claude.
      *
      * @return array<string, mixed>
      */
@@ -279,7 +288,8 @@ class ChatController extends Controller
             'function' => [
                 'name' => 'document.skill_generate',
                 'description' => 'Génère un document natif Office (docx, xlsx, pptx ou pdf) via les '
-                    .'Skills documentaires Claude. Réservé aux abonnés Pro. Le fichier est enregistré '
+                    .'Skills documentaires Claude. Inclus avec les abonnements Standard et supérieurs, '
+                    .'ou disponible en pay-per-use via crédits (×1,5). Le fichier est enregistré '
                     .'dans le stockage et son chemin est retourné.',
                 'parameters' => [
                     'type' => 'object',
@@ -295,7 +305,7 @@ class ChatController extends Controller
     }
 
     /**
-     * Exécute un tool_call : Skills Claude (Pro) ou outils internes/externes.
+     * Exécute un tool_call : Skills Claude ou outils internes/externes.
      *
      * @param array<string, mixed> $toolCall
      *
@@ -305,10 +315,11 @@ class ChatController extends Controller
     {
         $name = (string) ($toolCall['name'] ?? '');
 
-        // Skills documentaires Claude (Pro uniquement, ne bloque jamais)
+        // Skills documentaires Claude (plans payants ou pay-per-use crédits)
         if ($name === 'document.skill_generate') {
             if (! $this->claudeSkills->isEligible($user)) {
-                return ['error' => 'Les Skills documentaires Claude sont réservés aux abonnés Pro.'];
+                return ['error' => 'Les Skills documentaires Claude nécessitent un abonnement Standard '
+                    .'ou supérieur, ou des crédits suffisants (pay-per-use ×1,5).'];
             }
 
             $arguments = $this->decodeArguments($toolCall['arguments'] ?? '{}');
@@ -316,12 +327,65 @@ class ChatController extends Controller
             $prompt = (string) ($arguments['prompt'] ?? '');
             $outputName = (string) ($arguments['output_name'] ?? 'document_skill');
 
+            // Pay-per-use : vérifier le solde AVANT génération et débiter
+            // le coût skill (tokens + conteneur) majoré ×1,5 sans abonnement.
+            $paidSub = $this->claudeSkills->hasPaidSubscription($user);
+            $skillCost = $this->claudeSkills->effectiveCost([], $skill, $user);
+            $debit = null;
+
+            if (! $paidSub) {
+                if (! $user->hasCredits($skillCost)) {
+                    return ['error' => 'Crédits insuffisants pour générer ce document ('.$skillCost
+                        .' crédits requis, pay-per-use sans abonnement). Ajoutez des crédits depuis votre compte.'];
+                }
+
+                $debit = $this->credits->debit(
+                    $user,
+                    $skillCost,
+                    type: 'usage',
+                    reference: 'skill:'.$skill.':'.Str::uuid(),
+                    description: 'Skill documentaire Claude '.strtoupper($skill).' (pay-per-use ×1,5)',
+                    metadata: ['purpose' => 'skill_generate', 'skill' => $skill, 'pay_per_use' => true],
+                );
+
+                if (! $debit['ok']) {
+                    return ['error' => 'Impossible de débiter vos crédits ('.$debit['reason'].').'];
+                }
+            }
+
             try {
                 $result = $this->claudeSkills->generate($user, $skill, $prompt, $outputName);
+
+                // Ajustement : coût réel (tokens réels) vs estimation initiale
+                if ($debit) {
+                    $diff = $skillCost - $result['cost_credits'];
+                    if ($diff > 0) {
+                        $this->credits->credit(
+                            $user,
+                            $diff,
+                            type: 'refund',
+                            reference: 'skill:'.$skill.':'.$user->id,
+                            description: 'Ajustement skill Claude (coût réel inférieur à l\'estimation)',
+                            metadata: ['purpose' => 'skill_generate', 'skill' => $skill, 'adjustment' => true],
+                        );
+                    }
+                }
 
                 return ['result' => 'Document '.strtoupper($skill).' généré : '
                     .$result['path'].' ('.$result['cost_credits'].' crédits).'];
             } catch (\Throwable $e) {
+                // Échec → remboursement du débit pay-per-use
+                if ($debit && $debit['ok']) {
+                    $this->credits->credit(
+                        $user,
+                        $skillCost,
+                        type: 'refund',
+                        reference: 'skill:'.$skill.':'.$user->id,
+                        description: 'Remboursement skill Claude (échec génération)',
+                        metadata: ['purpose' => 'skill_generate', 'skill' => $skill, 'refund_reason' => 'generation_failure'],
+                    );
+                }
+
                 Log::warning('Chat : échec Skill Claude, fallback outils internes', [
                     'skill' => $skill,
                     'error' => $e->getMessage(),

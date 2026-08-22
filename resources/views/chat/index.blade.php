@@ -40,7 +40,7 @@
             <p class="chat-disclaimer" style="margin-top:.5rem">
                 Une nouvelle conversation sera créée. Chaque message est facturé à son coût réel (ajustement automatique).
                 @if ($claudeEligible ?? false)
-                    Skills documentaires Claude activés (expérimental, Pro).
+                    Skills documentaires Claude activés (expérimental) : inclus Standard+, sinon pay-per-use en crédits (×1,5).
                 @endif
             </p>
         </form>

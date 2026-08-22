@@ -56,6 +56,15 @@ FORMADOC est désormais une plateforme SaaS : l'IA avancée (chat, analyse de do
 - L'IA est **optionnelle** : quota IA épuisé → le mode déterministe reste disponible, et l'utilisateur peut acheter des crédits.
 - Le déterministe ne consomme **aucun crédit**, uniquement le quota.
 - Les crédits s'achètent à la carte (**minimum 500 FCFA**) depuis la page **Mon compte** (`/account`).
+- **Multi-devises** (Phase 9) : sélecteur de devise sur `/account` — FCFA (XAF), EUR, USD (`config/billing.php` → `currencies`).
+
+### Abonnements récurrents & factures (Phase 9)
+
+- **Souscription carte bancaire** via KPay (init → passerelle → webhook HMAC) depuis `/account` (`/subscriptions/checkout/{plan}`).
+- **Renouvellement automatique** chaque mois (cron quotidien 06:00, `RenewSubscriptions`), même carte ; période de grâce 5 jours avant expiration.
+- **Résiliation** : prorata crédité en crédits (`prix × jours restants / 30`).
+- **Factures PDF** : émises à chaque paiement (souscription, renouvellement, achat de crédits) — numéro `INV-AAAA-XXXXXX`, téléchargeable depuis le compte.
+- Plan **Gratuit** : activation directe sans paiement (`auto_renew` = false).
 
 ### Routage des modèles IA (OpenRouter)
 
@@ -91,6 +100,7 @@ Avec `infra = 0.15` et `marge = 0.60` : `prix_public ≈ coût_API × 1.84 (≈ 
 - **Webhook signé HMAC-SHA256** (`X-KPAY-Signature` + `X-KPAY-Event`) : seule source d'autorité — les crédits sont crédités **uniquement** sur événement `completed` signé et valide.
 - Idempotence par référence (`paymentId`), fenêtre de signature de 10 min sur le retour, backoff 1s/2s/4s sur les 429.
 - Le retour utilisateur (`/credits/return`) vérifie la signature mais **n'accrédite jamais** : décision uniquement côté webhook.
+- Abonnements : `POST /subscriptions/checkout/{plan}` → init KPay (carte), activation via webhook `subscription.completed` (+ facture PDF).
 
 ### Chat IA assisté & actionnable (exigence A)
 
@@ -101,11 +111,12 @@ Avec `infra = 0.15` et `marge = 0.60` : `prix_public ≈ coût_API × 1.84 (≈ 
   - Internes : `cover_page.generate` (page de garde DOCX), `document.reconstruct` (reconstructeur), `table_of_contents` (sommaire TOC), `structure.correct` (corrections de structure) — via `ChatToolsService`.
   - Externes : `web.search` (recherche web native), `image.generate` (gpt-image-*).
 
-### Skills documentaires Claude — Pro only, expérimental (exigence B)
+### Skills documentaires Claude — Standard+, ou pay-per-use ×1,5 (expérimental, exigence B)
 
 - Génération de fichiers natifs **docx / xlsx / pptx / pdf** par description, via l'API Anthropic (`ClaudeSkillsService`).
-- Réservé aux abonnés **Pro** (`isEligible()`), modèle `claude-sonnet-4-6`, bêta `skills-2025-10-02`, conteneur de code (`code_execution_20260521`).
-- Coût : tokens modèle + conteneur 0,05 $/h (minimum 5 min/exécution), majoré ×2 (coefficient de rentabilité).
+- **Éligibilité** (Phase 9, Q4) : abonnement **Standard ou supérieur** inclus, **sinon pay-per-use en crédits** (coût ×1,5, minimum 1 crédit) — le chat IA des plans Gratuit est aussi facturé en crédits sans quota.
+- Modèle `claude-sonnet-4-6`, bêta `skills-2025-10-02`, conteneur de code (`code_execution_20260521`).
+- Coût : tokens modèle + conteneur 0,05 $/h (minimum 5 min/exécution), majoré ×2 (coefficient de rentabilité) pour les abonnés.
 - **Fallback systématique** sur les outils internes (PHPWord) en cas d'échec ou de clé absente.
 - Variables : `ANTHROPIC_API_KEY`, `ANTHROPIC_API_URL`, `ANTHROPIC_MODEL`, `ANTHROPIC_CREDIT_MULTIPLIER`.
 - Guide technique : `guide-skills-documentaires-api-claude.md`.
@@ -222,7 +233,7 @@ app/
 | **7** | ✅ Terminée | **SaaS & monétisation** : crédits (1 crédit = 1 FCFA), plans Gratuit/Standard/Premium/Pro/Entreprises, paiement KPay (webhook signé HMAC), routage OpenRouter par tâche × plan, chat IA payant, file d'attente (`LongFormattingJob`) |
 | **7b** | ✅ Terminée | **Authentification** : inscription/connexion/déconnexion par session, protection des routes `/account` et `/chat` |
 | **8** | ✅ Terminée | **Évolutions Phase 3** : quotas mensuels par plan (Gratuit 5/0, Standard 3 000/10/5, Premium 5 000/30/15, Pro 13 500/illimité/90), règle de rentabilité ×2 (infra 15 % + marge 60 %), chat IA actionnable (function calling : page de garde, reconstructeur, sommaire, structure, recherche web, images), skills documentaires Claude Pro (docx/xlsx/pptx/pdf) avec fallback interne, design system complet (landing + toutes les vues, dark mode, icônes lucide) |
-| **9** | ⏳ À faire | Abonnements récurrents (renouvellement automatique, prorata), factures, UI des tâches IA (PowerPoint, analyse d'image), statistiques d'usage, tableau de bord admin |
+| **9** | ✅ Terminée | **Abonnements récurrents & factures** : souscription carte via KPay, renouvellement automatique (cron 06:00), prorata crédits à la résiliation, factures PDF `INV-AAAA-XXXXXX`, multi-devises (FCFA/EUR/USD) sur `/account`, skills Excel/PPtX **Standard+ ou pay-per-use ×1,5** |
 
 ## 🔑 Variables d'environnement
 
@@ -243,10 +254,12 @@ app/
 | `RATE_FCFA_PER_USD` | Taux de conversion USD → FCFA (défaut `620`) |
 | `OPENROUTER_COST_MARGIN` | Marge de rentabilité (défaut `0.60` — exigence C, 40-60 %) |
 | `OPENROUTER_COST_INFRA` | Coût d'infrastructure (défaut `0.15`) |
-| `ANTHROPIC_API_KEY` | Clé API Anthropic (skills documentaires Claude — Pro only). **Vide = skills indisponibles, fallback outils internes.** |
+| `ANTHROPIC_API_KEY` | Clé API Anthropic (skills documentaires Claude — Standard+ ou pay-per-use ×1,5). **Vide = skills indisponibles, fallback outils internes.** |
 | `ANTHROPIC_API_URL` | URL de l'API Anthropic (défaut `https://api.anthropic.com/v1`) |
 | `ANTHROPIC_MODEL` | Modèle skills (défaut `claude-sonnet-4-6`) |
 | `ANTHROPIC_CREDIT_MULTIPLIER` | Coefficient de rentabilité skills (défaut `2.0`) |
+| `SKILLS_MIN_PLAN` | Plan minimal donnant accès aux skills (défaut `standard`) |
+| `SKILLS_NO_SUBSCRIPTION_MULTIPLIER` | Majoration pay-per-use sans abonnement (défaut `1.5`) |
 | `KPAY_API_KEY` | Clé API KPay (préfixe `test_` ou `prod_`) |
 | `KPAY_SECRET_KEY` | Clé secrète KPay |
 | `KPAY_WEBHOOK_SECRET` | Secret HMAC de signature des webhooks KPay |
@@ -288,10 +301,10 @@ Toutes les vues (landing, auth, chat, compte, parcours document, pages de garde,
 6. **`routes/web.php` ne doit pas être modifiée** : les routes SaaS vivent dans `routes/saas.php` et les routes d'auth dans `routes/auth.php` (chargés via `bootstrap/app.php`)
 7. **Authentification** : mot de passe haché (`bcrypt`), sessions régénérées à la connexion, `remember_token` pour « Se souvenir de moi »
 8. **Workflow Git** : une fonctionnalité = une branche `feature/<nom>` créée depuis `main`, puis fusionnée dans `main` — jamais de commit direct sur `main` pour une nouvelle fonctionnalité (seuls correctifs et hygiène) ; clés API jamais commitées (`.env` ignoré)
-9. **Tests** : suite complète = **248 tests, 944 assertions** (`php artisan test`) ; tout ajout de fonctionnalité doit être couvert par des tests
+9. **Tests** : suite complète = **288 tests** (`php artisan test`) ; tout ajout de fonctionnalité doit être couvert par des tests
 10. **Design system** : toutes les vues utilisent `resources/css/formadoc.css` (variables `--color-*`, dark mode, icônes **lucide**) — pas de Material Symbols, pas de classes Tailwind `bg-surface-container-*` ; après toute modif CSS, `npx vite build`
 11. **Quotas mensuels** : le quota IA épuisé ne bloque jamais le mode déterministe ; le déterministe ne consomme aucun crédit
-12. **Skills Claude** : expérimental Pro-only — tout échec doit basculer sur le fallback interne (PHPWord) sans bloquer l'application
+12. **Skills Claude** : expérimental — Standard+ inclus, sinon pay-per-use ×1,5 (Phase 9) ; tout échec doit basculer sur le fallback interne (PHPWord) sans bloquer l'application
 
 ## 📄 Licence
 

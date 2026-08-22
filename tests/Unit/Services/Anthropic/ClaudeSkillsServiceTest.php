@@ -18,14 +18,16 @@ use Tests\TestCase;
 
 /**
  * Tests de l'intégration EXPÉRIMENTALE des Skills documentaires Claude
- * (exigence B — docx/xlsx/pptx/pdf, réservée Pro).
+ * (exigence B — docx/xlsx/pptx/pdf).
  *
  * Couverture :
  * - SKILLS : docx, xlsx, pptx, pdf
- * - isConfigured / isEligible (Pro uniquement)
+ * - isConfigured / isEligible (Q4 : plans payants ≥ standard inclus,
+ *   sinon pay-per-use via crédits ×1,5)
  * - generate() : flux complet HTTP (messages → file_id → download → stockage)
  * - échecs : skill inconnu, clé absente, aucun fichier, erreur API
  * - estimateCredits() : tokens + conteneur (min 5 min), coefficient ×2, min 1
+ * - effectiveCost() : majoration ×1,5 sans abonnement payant
  */
 class ClaudeSkillsServiceTest extends TestCase
 {
@@ -48,6 +50,8 @@ class ClaudeSkillsServiceTest extends TestCase
             'anthropic.container_cost_per_minute' => 0.05 / 60,
             'anthropic.container_min_minutes' => 5,
             'openrouter.rate_fcfa_per_usd' => 620,
+            'billing.skills_min_plan' => 'standard',
+            'billing.skills_no_subscription_multiplier' => 1.5,
         ]);
     }
 
@@ -91,16 +95,30 @@ class ClaudeSkillsServiceTest extends TestCase
         $this->assertTrue($this->service->isEligible($user));
     }
 
-    public function test_is_eligible_plan_standard_faux(): void
+    public function test_is_eligible_plan_standard_vrai(): void
     {
         $user = $this->makeUserWithPlan('standard');
 
-        $this->assertFalse($this->service->isEligible($user));
+        $this->assertTrue($this->service->isEligible($user));
     }
 
-    public function test_is_eligible_sans_abonnement_faux(): void
+    public function test_is_eligible_plan_premium_vrai(): void
     {
-        $user = User::factory()->create();
+        $user = $this->makeUserWithPlan('premium');
+
+        $this->assertTrue($this->service->isEligible($user));
+    }
+
+    public function test_is_eligible_plan_gratuit_avec_credits_vrai(): void
+    {
+        $user = User::factory()->create(['credits_balance' => 5000]);
+
+        $this->assertTrue($this->service->isEligible($user));
+    }
+
+    public function test_is_eligible_sans_abonnement_sans_credits_faux(): void
+    {
+        $user = User::factory()->create(['credits_balance' => 0]);
 
         $this->assertFalse($this->service->isEligible($user));
     }
@@ -111,6 +129,16 @@ class ClaudeSkillsServiceTest extends TestCase
         config(['anthropic.api_key' => '']);
 
         $this->assertFalse($this->service->isEligible($user));
+    }
+
+    public function test_has_paid_subscription_plan_payant_vrai(): void
+    {
+        $this->assertTrue($this->service->hasPaidSubscription($this->makeUserWithPlan('premium')));
+    }
+
+    public function test_has_paid_subscription_gratuit_faux(): void
+    {
+        $this->assertFalse($this->service->hasPaidSubscription(User::factory()->create()));
     }
 
     /* ------------------------------------------------------------------
@@ -309,6 +337,41 @@ class ClaudeSkillsServiceTest extends TestCase
         $sansMarge = $this->service->estimateCredits([], 'docx');
 
         $this->assertGreaterThan($sansMarge, $base);
+    }
+
+    /* ------------------------------------------------------------------
+     |  effectiveCost() — majoration pay-per-use (Q4)
+     | ------------------------------------------------------------------ */
+
+    public function test_effective_cost_abonne_payant_pas_de_majoration(): void
+    {
+        $user = $this->makeUserWithPlan('standard');
+        $base = $this->service->estimateCredits([], 'docx');
+
+        $this->assertSame($base, $this->service->effectiveCost([], 'docx', $user));
+    }
+
+    public function test_effective_cost_sans_abonnement_majoration_150(): void
+    {
+        $user = User::factory()->create(['credits_balance' => 10000]);
+        $base = $this->service->estimateCredits([], 'docx');
+
+        $this->assertSame(
+            (int) max(1, (int) ceil($base * 1.5)),
+            $this->service->effectiveCost([], 'docx', $user),
+        );
+    }
+
+    public function test_effective_cost_sans_abonnement_jamais_inferieur_a_1(): void
+    {
+        config([
+            'anthropic.container_cost_per_minute' => 0,
+            'anthropic.credit_multiplier' => 1.0,
+        ]);
+        $user = User::factory()->create(['credits_balance' => 1]);
+
+        // base = 1 crédit minimum, ×1,5 → ceil(1,5) = 2 (jamais < 1)
+        $this->assertSame(2, $this->service->effectiveCost([], 'docx', $user));
     }
 
     /* ------------------------------------------------------------------

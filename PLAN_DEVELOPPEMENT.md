@@ -233,8 +233,75 @@ CAHIER_DES_CHARGES.md
 
 ---
 
+## Phase 9 — Abonnements récurrents, factures PDF, Excel/PPtX, multi-devises (✅ Terminée)
+
+Branche : `feature/phase9-subscriptions`. Décisions actées (Q1-Q6) :
+**Q1a** renouvellement automatique (cron quotidien 06:00) ; **Q2a** prorata crédits au changement de plan ; **Q3a** factures PDF ; **Q4** Excel/PPtX inclus dans les plans payants (Standard+) **ou** pay-per-use ×1,5 en crédits sans abonnement ; **Q5b** devises multiples FCFA/EUR/USD ; **Q6a** flux KPay conservé (init → passerelle → webhook HMAC).
+
+### 9.1 — Abonnements récurrents
+
+- **`SubscriptionService`** (`app/Services/Billing/`) :
+  - `initiateSubscription()` : abonnement payant → init KPay (carte) avec idempotence ; plan gratuit → activation directe (`auto_renew` = false).
+  - `activateFromWebhook()` : validation HMAC → création abonnement `active` + **facture PDF** (Q3a).
+  - `renew()` : renouvellement automatique (même carte KPay), statut `pending` pendant le paiement, `failed` en cas d'échec.
+  - `cancelCurrent()` : résiliation immédiate, **prorata** crédité en crédits (Q2a) : `prix × (jours restants / 30)`.
+  - `markFailedPayment()` / `expire()` : gestion des échecs et fin de période (période de grâce `grace_days` = 5).
+  - `subscriptionsDueForRenewal()` : requête des abonnements à renouveler (J-3, `renew_days_before`).
+- **`RenewSubscriptions` command** (`app/Console/Commands/`) : cron quotidien à **06:00** (`dailyAt('06:00')`, enregistrée dans `routes/console.php`).
+- **`KPayController`** : endpoints init/retour/webhook (signature HMAC-SHA256, fenêtre 10 min).
+- **`Subscription`** (`app/Models/`) : statuts `active|pending|canceled|expired|failed`, cast `auto_renew`, `isActiveAt()`.
+- Migration `2026_08_21_000001_add_recurring_subscriptions_and_invoices.php` (tables `subscriptions` + `invoices`).
+
+### 9.2 — Factures PDF (Q3a)
+
+- **`InvoiceService`** (`app/Services/Billing/`) : numéro lisible `INV-AAAA-XXXXXX` (séquence annuelle), génération PDF via PhpWord (writer PDF / fallback Word2007), stockage disk `local` (`config billing.invoice_storage_disk`), `metadata.pdf_path` journalisé.
+- **`Invoice`** (`app/Models/`) : types `subscription` / `credit_purchase`, montant en plus petite unité, `formattedAmount()` (FCFA entier, EUR/USD décimal).
+- **`InvoiceService::downloadPath()`** : régénère le PDF si le fichier est absent.
+- Facture émise à chaque paiement : souscription, renouvellement, achat de crédits.
+
+### 9.3 — Excel/PPtX : plans payants ou pay-per-use ×1,5 (Q4)
+
+- **`ClaudeSkillsService`** — éligibilité élargie (`isEligible()`) :
+  - Abonnement **Standard ou supérieur** (`skills_min_plan` = `standard`, `PLAN_RANKS`) → inclus.
+  - **Sinon** : pay-per-use en crédits, coût majoré ×1,5 (`skills_no_subscription_multiplier`) — le chat IA est aussi facturé en crédits sans quota pour les plans Gratuit.
+- **`effectiveCost()`** : estimation × 1,5 pour les non-abonnés (min 1 crédit) ; **débit réel** dans `ChatController::executeTool()` (document.skill_generate) avant génération, remboursement du différentiel après coût réel, remboursement intégral en cas d'échec.
+- `config/billing.php` : `skills_min_plan`, `skills_no_subscription_multiplier` (1.5), `auto_renew`, `renew_days_before` (3), `grace_days` (5), `prorata` (true), `invoice_storage_disk`, `default_currency`.
+- Textes vues chat mis à jour (« inclus Standard+, sinon pay-per-use en crédits ×1,5 »).
+
+### 9.4 — Multi-devises (Q5b)
+
+- `config/billing.php` : `currencies` (XAF taux 1.0 / EUR 655.957 / USD 620), `default_currency` = XAF.
+- `SubscriptionService::priceInCurrency()` / `formatPrice()` : conversion + affichage (`13 500 FCFA`, `20,58 €`, `21,77 $`).
+- `AccountController::index()` : sélecteur de devise (GET `?currency=`) + prix affichés dans la devise choisie + lien checkout avec `currency`.
+- `views/account/index.blade.php` : `<select name="currency">` au-dessus de la grille des plans, auto-submit.
+
+### Fichiers de la phase
+
+```
+database/migrations/2026_08_21_000001_add_recurring_subscriptions_and_invoices.php
+app/Models/{Subscription, Invoice}.php (+ factories)
+app/Services/Billing/{SubscriptionService, InvoiceService}.php
+app/Services/Anthropic/ClaudeSkillsService.php (éligibilité pay-per-use, effectiveCost, PLAN_RANKS)
+app/Http/Controllers/{KPayController, ChatController, AccountController}.php
+app/Console/Commands/RenewSubscriptions.php
+routes/saas.php
+config/{billing, kpay}.php
+routes/console.php
+resources/views/{account/index, chat/index, chat/show}.blade.php
+tests/Unit/Services/Billing/{SubscriptionServiceTest, InvoiceServiceTest}.php
+tests/Unit/Services/Anthropic/ClaudeSkillsServiceTest.php (26 tests)
+```
+
+### Tests (Phase 9)
+
+- `SubscriptionServiceTest` (25 tests) : statuts, prix/devises, initiateSubscription (KPay + gratuit), activateFromWebhook (facture + idempotence), cancel prorata, renew (auto/carte/échec), expire, subscriptionsDueForRenewal.
+- `InvoiceServiceTest` (8 tests) : numérotation séquentielle annuelle, createForSubscription, createForCreditPurchase, génération PDF stockée + `pdf_path`, `formattedAmount` XAF/EUR/USD.
+- `ClaudeSkillsServiceTest` (26 tests) : éligibilité Standard+/crédits, `hasPaidSubscription`, `effectiveCost` ×1,5 (min 1), coût réel.
+- Suite complète : **288 tests** — verte.
+
+---
+
 ## Prochaines phases (pistes)
 
-- **Phase 9** — Abonnements récurrents (renouvellement automatique, prorata), factures, UI des tâches IA (PowerPoint, analyse d'image)
 - **Phase 10** — Statistiques d'usage par utilisateur, tableau de bord admin
-- **Phase 11** — Internationalisation (EN/FR), devises multiples
+- **Phase 11** — Internationalisation (EN/FR)
