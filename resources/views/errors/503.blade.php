@@ -14,7 +14,7 @@
             'help' => [
                 'Réessayez dans quelques instants.',
                 'Vos documents sont en sécurité pendant l\'indisponibilité.',
-                'Suivez l\'état du service sur notre page de statut.',
+                'Si le problème persiste, contactez le support.',
             ],
             'actions' => [
                 ['label' => 'Réessayer', 'url' => 'javascript:location.reload()', 'primary' => true],

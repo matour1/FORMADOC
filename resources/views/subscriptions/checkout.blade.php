@@ -9,7 +9,7 @@
             <h1>Finaliser l'achat</h1>
             <p>
                 Réglez en carte bancaire ou Mobile Money — votre abonnement {{ $plan->name }}
-                sera activé immédiatement après confirmation du paiement.
+                sera activé sous quelques minutes après confirmation du paiement.
             </p>
         </div>
     </div>
@@ -43,14 +43,14 @@
                             <span class="pm-radio"></span>
                             <span class="pm-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="12" rx="2"/><path d="M6 20h12"/><path d="M12 16v4"/></svg></span>
                             <span class="pm-name">Orange Money</span>
-                            <span class="pm-note">Orange CI</span>
+                            <span class="pm-note">Orange Cameroun</span>
                         </label>
                         <label class="payment-method" data-method="mtn" role="button" tabindex="0">
                             <input type="radio" name="payment_method" value="mtn" class="pm-radio-input">
                             <span class="pm-radio"></span>
                             <span class="pm-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
                             <span class="pm-name">MTN MoMo</span>
-                            <span class="pm-note">MTN CI</span>
+                            <span class="pm-note">MTN Cameroun</span>
                         </label>
                     </div>
                 </div>

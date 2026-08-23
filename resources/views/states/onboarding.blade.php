@@ -44,7 +44,7 @@
                 <span class="proof-stamp">Étape 2</span>
                 <h2 style="font-size:1.65rem;margin:.9rem 0 .5rem;">Préparer le premier fichier</h2>
                 <ul class="check-list">
-                    <li>Accepter uniquement DOCX/PDF jusqu'à 50 Mo.</li>
+                    <li>Accepter uniquement DOCX/DOC/TXT jusqu'à 50 Mo.</li>
                     <li>Choisir rapport, mémoire, CV ou document professionnel.</li>
                     <li>Sélectionner un gabarit public ou personnel.</li>
                 </ul>

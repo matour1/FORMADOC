@@ -14,7 +14,7 @@
                     <h1>Traitement en cours</h1>
                     <p>
                         FORMADOC met en forme <strong>{{ $document->filename }}</strong> selon le
-                        gabarit institutionnel. Veuillez patienter quelques instants…
+                        gabarit choisi. Veuillez patienter quelques instants…
                     </p>
                 </div>
             </div>
@@ -61,7 +61,7 @@
                 'Analyse du document…',
                 'Détection de la structure : OK',
                 'Validation des ambiguïtés : OK',
-                'Application du gabarit institutionnel…',
+                'Application du gabarit choisi…',
                 'Génération du DOCX reconstruit…',
                 'Préparation du téléchargement…'
             ];

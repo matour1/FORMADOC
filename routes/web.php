@@ -12,6 +12,11 @@ use App\Http\Controllers\TemplateController;
 // Page d'accueil (landing page)
 Route::get('/', [LandingController::class, 'index']);
 
+// Pages légales (publiques)
+Route::view('/mentions-legales', 'pages.mentions-legales')->name('pages.legal');
+Route::view('/conditions-generales', 'pages.cgu')->name('pages.terms');
+Route::view('/politique-de-confidentialite', 'pages.confidentialite')->name('pages.privacy');
+
 // Tableau de bord + bibliothèque (authentifié)
 Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');

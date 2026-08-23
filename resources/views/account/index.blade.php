@@ -59,7 +59,7 @@
                     @elseif ($quotaStatus['ai']['remaining'] > 0)
                         {{ $quotaStatus['ai']['remaining'] }} restant(s)
                     @else
-                        <span style="color:var(--color-correction)">Épuisé — plan supérieur ou crédits</span>
+                        <span style="color:var(--color-correction)">Quota atteint — passe à un plan supérieur ou achète des crédits</span>
                     @endif
                 </span>
             </div>

@@ -47,7 +47,7 @@ class PlanSeeder extends Seeder
             [
                 'slug' => 'premium',
                 'name' => 'Premium',
-                'description' => 'Pour les professionnels : modèles IA avancés, mises en forme généreuses.',
+                'description' => 'Pour les mémoires et gros rapports : modèles IA avancés, génération d\'images, support prioritaire.',
                 'price_fcfa' => 5000,
                 'quota_deterministic' => 30,
                 'quota_ai' => 15,
@@ -77,7 +77,7 @@ class PlanSeeder extends Seeder
                     'Tous les modèles premium',
                     'Skills documentaires Claude (expérimental)',
                     'Traitement longue file d\'attente',
-                    'API & intégrations',
+                    'Accès API (sur demande)',
                     'Support dédié',
                 ],
                 'sort_order' => 3,

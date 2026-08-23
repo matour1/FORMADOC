@@ -14,7 +14,7 @@
             </div>
 
             <h2>Créer un compte</h2>
-            <p>Deux documents déterministes sont inclus chaque mois dans l'offre gratuite.</p>
+            <p>Cinq documents déterministes sont inclus chaque mois dans l'offre gratuite.</p>
 
             @if (session('error'))
                 <div class="banner banner-danger" style="margin-bottom:1rem">
@@ -76,8 +76,9 @@
                 <span class="proof-stamp">Compte sécurisé</span>
                 <h2 style="font-size:1.25rem;margin-top:.8rem;">Créez votre espace en une minute.</h2>
                 <p style="color:var(--color-text-muted);font-size:.88rem;margin-top:.35rem;">
-                    Plan Gratuit : 5 documents déterministes / mois, chat IA et pages de garde.
-                    Passez à Standard, Premium ou Pro pour débloquer les documents IA et plus de crédits.
+                    Plan Gratuit : 5 documents déterministes / mois et pages de garde incluses.
+                    Chat IA au coût réel (crédits). Passez à Standard, Premium ou Pro pour
+                    débloquer les traitements IA inclus et plus de crédits.
                 </p>
             </div>
             <div class="auth-aside-stage">

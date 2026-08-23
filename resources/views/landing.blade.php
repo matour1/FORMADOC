@@ -61,7 +61,7 @@
                         <a class="btn btn-secondary btn-lg" href="#tarifs">Voir les tarifs</a>
                     </div>
                     <div class="hero-proof">
-                        <span class="proof-stamp">DOCX / PDF</span>
+                        <span class="proof-stamp">DOCX · DOC · TXT</span>
                         <span class="badge badge-success">5 documents gratuits/mois</span>
                         <span class="badge badge-info">IA optionnelle</span>
                     </div>
@@ -161,7 +161,7 @@
                     <div class="step-item">
                         <div class="step-num">1</div>
                         <h3>Téléversez</h3>
-                        <p>Un fichier DOCX ou PDF, jusqu'à 50 Mo.</p>
+                        <p>Un fichier DOCX, DOC ou TXT, jusqu'à 50 Mo.</p>
                     </div>
                     <div class="step-item">
                         <div class="step-num">2</div>
@@ -255,7 +255,7 @@
                     </details>
                     <details>
                         <summary>Quels formats de fichiers sont acceptés ?</summary>
-                        <div class="faq-body">Les fichiers .docx et .pdf jusqu'à 50 Mo. Les PDF sont automatiquement convertis en DOCX pour l'analyse.</div>
+                        <div class="faq-body">Les fichiers .docx, .doc et .txt jusqu'à 50 Mo. D'autres formats (dont le PDF) pourront être ajoutés ultérieurement.</div>
                     </details>
                     <details>
                         <summary>Mes documents sont-ils conservés indéfiniment ?</summary>
@@ -315,15 +315,15 @@
                     <ul>
                         <li><a href="#faq">Questions fréquentes</a></li>
                         <li><a href="{{ route('feedback.form') }}">Votre avis</a></li>
-                        <li><a href="mailto:support@formadoc.example">Contacter le support</a></li>
+                        <li><a href="{{ route('feedback.form') }}">Contacter le support</a></li>
                     </ul>
                 </div>
                 <div class="footer-col">
                     <h4>Légal</h4>
                     <ul>
-                        <li><a href="#">Mentions légales</a></li>
-                        <li><a href="#">Conditions générales</a></li>
-                        <li><a href="#">Politique de confidentialité</a></li>
+                        <li><a href="{{ route('pages.legal') }}">Mentions légales</a></li>
+                        <li><a href="{{ route('pages.terms') }}">Conditions générales</a></li>
+                        <li><a href="{{ route('pages.privacy') }}">Politique de confidentialité</a></li>
                     </ul>
                 </div>
             </div>

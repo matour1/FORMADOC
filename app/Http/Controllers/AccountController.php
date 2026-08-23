@@ -154,6 +154,6 @@ class AccountController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect('/')->with('success', 'Votre compte a été supprimé définitivement. À bientôt !');
+        return redirect('/')->with('success', 'Votre compte a bien été supprimé. Merci de votre passage, et bonne continuation !');
     }
 }

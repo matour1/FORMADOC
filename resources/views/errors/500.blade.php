@@ -12,7 +12,7 @@
             'iconSvg' => 'alert-triangle',
             'help' => [
                 'Réessayez dans quelques instants.',
-                'Vérifiez l\'état du service sur notre page de statut.',
+                'Vos documents ne sont pas affectés.',
                 'Contactez le support en indiquant la référence affichée ci-dessus.',
             ],
             'actions' => [
