@@ -20,7 +20,7 @@
             </button>
             <button class="onboarding-card" data-onboarding-step="document">
                 <span class="step-num">2</span>
-                <span><strong>Téléverser un document</strong><br><span style="color:var(--color-text-muted);font-size:.84rem;">DOCX/PDF, type de document et gabarit.</span></span>
+                <span><strong>Téléverser un document</strong><br><span style="color:var(--color-text-muted);font-size:.84rem;">DOCX/DOC/TXT, type de document et gabarit.</span></span>
             </button>
             <button class="onboarding-card" data-onboarding-step="credits">
                 <span class="step-num">3</span>

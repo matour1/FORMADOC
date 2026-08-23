@@ -23,7 +23,7 @@ class AuthFlowTest extends TestCase
             'email' => 'nouveau@example.com',
             'password' => 'password123',
             'password_confirmation' => 'password123',
-        ])->assertRedirect(route('account.index'));
+        ])->assertRedirect(route('onboarding'));
 
         $this->assertAuthenticated();
         $this->assertDatabaseHas('users', [
@@ -79,5 +79,50 @@ class AuthFlowTest extends TestCase
             ->assertRedirect(route('login'));
 
         $this->assertGuest();
+    }
+
+    public function test_page_mot_de_passe_oublie_est_accessible(): void
+    {
+        $this->get(route('password.request'))
+            ->assertOk()
+            ->assertSee('Réinitialiser votre mot de passe');
+    }
+
+    public function test_envoi_lien_reinitialisation_pour_email_existant(): void
+    {
+        $user = User::factory()->create(['email' => 'reset@example.com']);
+
+        $this->post(route('password.email'), [
+            'email' => 'reset@example.com',
+        ])->assertSessionHas('status');
+
+        $this->assertDatabaseHas('password_reset_tokens', [
+            'email' => 'reset@example.com',
+        ]);
+    }
+
+    public function test_reinitialisation_mot_de_passe(): void
+    {
+        $user = User::factory()->create(['email' => 'reset2@example.com']);
+
+        $token = \Illuminate\Support\Facades\Password::broker()->createToken($user);
+
+        $this->get(route('password.reset', $token))
+            ->assertOk();
+
+        $this->post(route('password.update'), [
+            'token' => $token,
+            'email' => 'reset2@example.com',
+            'password' => 'nouveaupass123',
+            'password_confirmation' => 'nouveaupass123',
+        ])->assertRedirect(route('login'));
+
+        $this->assertDatabaseHas('users', [
+            'email' => 'reset2@example.com',
+        ]);
+
+        // Le mot de passe doit avoir changé
+        $fresh = User::where('email', 'reset2@example.com')->first();
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('nouveaupass123', $fresh->password));
     }
 }

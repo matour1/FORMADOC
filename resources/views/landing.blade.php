@@ -40,9 +40,27 @@
                     <a class="btn btn-ghost" href="{{ route('login') }}">Connexion</a>
                     <a class="btn btn-primary" href="{{ route('register') }}">Essayer gratuitement</a>
                 @endauth
-                <button class="navbar-menu-toggle" type="button" aria-label="Ouvrir le menu">
+                <button class="navbar-menu-toggle" type="button" aria-label="Ouvrir le menu" aria-expanded="false" id="landing-menu-toggle">
                     <i data-lucide="menu" style="width:22px;height:22px"></i>
                 </button>
+            </div>
+        </div>
+        {{-- Menu mobile --}}
+        <div class="landing-mobile-menu" id="landing-mobile-menu" aria-hidden="true">
+            <nav aria-label="Navigation mobile">
+                <a href="#fonctionnalites">Fonctionnalités</a>
+                <a href="#parcours">Comment ça marche</a>
+                <a href="#tarifs">Tarifs</a>
+                <a href="#faq">FAQ</a>
+            </nav>
+            <div class="landing-mobile-actions">
+                @auth
+                    <a class="btn btn-ghost btn-block" href="{{ route('account.index') }}">Mon compte</a>
+                    <a class="btn btn-primary btn-block" href="{{ route('documents.create') }}">Analyser un rapport</a>
+                @else
+                    <a class="btn btn-ghost btn-block" href="{{ route('login') }}">Connexion</a>
+                    <a class="btn btn-primary btn-block" href="{{ route('register') }}">Essayer gratuitement</a>
+                @endauth
             </div>
         </div>
     </header>
@@ -348,6 +366,34 @@
                 document.documentElement.setAttribute('data-theme', 'dark');
                 const icon = document.querySelector('#themeToggle i');
                 if (icon) { icon.setAttribute('data-lucide', 'sun'); lucide.createIcons(); }
+            }
+
+            // Menu mobile
+            const menuToggle = document.getElementById('landing-menu-toggle');
+            const mobileMenu = document.getElementById('landing-mobile-menu');
+            if (menuToggle && mobileMenu) {
+                const closeMenu = () => {
+                    mobileMenu.classList.remove('open');
+                    mobileMenu.setAttribute('aria-hidden', 'true');
+                    menuToggle.setAttribute('aria-expanded', 'false');
+                    menuToggle.setAttribute('aria-label', 'Ouvrir le menu');
+                };
+                menuToggle.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isOpen = mobileMenu.classList.toggle('open');
+                    mobileMenu.setAttribute('aria-hidden', String(!isOpen));
+                    menuToggle.setAttribute('aria-expanded', String(isOpen));
+                    menuToggle.setAttribute('aria-label', isOpen ? 'Fermer le menu' : 'Ouvrir le menu');
+                });
+                mobileMenu.querySelectorAll('a').forEach((a) => a.addEventListener('click', closeMenu));
+                document.addEventListener('click', (e) => {
+                    if (mobileMenu.classList.contains('open') && !mobileMenu.contains(e.target) && !menuToggle.contains(e.target)) {
+                        closeMenu();
+                    }
+                });
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && mobileMenu.classList.contains('open')) { closeMenu(); }
+                });
             }
         });
     </script>

@@ -167,6 +167,9 @@
             const previewText = document.getElementById('file-preview-text');
             const previewContent = document.getElementById('file-preview-content');
             const previewIcon = document.getElementById('file-preview-icon');
+            const dropzone = document.querySelector('.dropzone');
+            const MAX_SIZE = 50 * 1024 * 1024; // 50 Mo
+            const ALLOWED_EXT = ['docx', 'doc', 'txt'];
 
             // ── Aperçu du fichier sélectionné ──────────────────────────────────
             function formatSize(bytes) {
@@ -175,13 +178,36 @@
                 return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
             }
 
+            function validateFile(file) {
+                const name = (file && file.name) || '';
+                const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+                if (!ALLOWED_EXT.includes(ext)) {
+                    return 'Format non pris en charge. Formats acceptés : .docx, .doc, .txt.';
+                }
+                if (file.size > MAX_SIZE) {
+                    return 'Fichier trop volumineux (50 Mo maximum).';
+                }
+                return '';
+            }
+
             function showPreview(file) {
                 if (!file) return;
+
+                const err = validateFile(file);
+                if (err) {
+                    preview.classList.add('hidden');
+                    alert(err);
+                    input.value = '';
+                    return;
+                }
 
                 previewName.textContent = file.name;
                 previewMeta.textContent = formatSize(file.size) + ' · ' + (file.type || 'inconnu');
 
+                // Icône par type
                 if (file.name.toLowerCase().endsWith('.txt')) {
+                    previewIcon.innerHTML = '<i data-lucide="file-text"></i>';
+                } else if (file.name.toLowerCase().endsWith('.doc')) {
                     previewIcon.innerHTML = '<i data-lucide="file-text"></i>';
                 } else {
                     previewIcon.innerHTML = '<i data-lucide="file-text"></i>';
@@ -211,6 +237,33 @@
             input.addEventListener('change', function () {
                 showPreview(input.files[0]);
             });
+
+            // ── Drag & drop réel (la promesse « glissez-déposez » doit fonctionner) ──
+            if (dropzone) {
+                ['dragenter', 'dragover'].forEach(evt => {
+                    dropzone.addEventListener(evt, (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dropzone.classList.add('drag-over');
+                    });
+                });
+                ['dragleave', 'drop'].forEach(evt => {
+                    dropzone.addEventListener(evt, (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dropzone.classList.remove('drag-over');
+                    });
+                });
+                dropzone.addEventListener('drop', (e) => {
+                    const files = e.dataTransfer && e.dataTransfer.files;
+                    if (files && files.length > 0) {
+                        const dt = new DataTransfer();
+                        dt.items.add(files[0]);
+                        input.files = dt.files;
+                        showPreview(files[0]);
+                    }
+                });
+            }
 
             // ── Soumission AJAX + animation d'analyse ──────────────────────────
             const form = document.getElementById('upload-form');
@@ -293,8 +346,18 @@
                     return; // Le champ required laisse le navigateur gérer.
                 }
 
+                // Validation client avant envoi (taille + type)
+                const err = validateFile(file);
+                if (err) {
+                    e.preventDefault();
+                    alert(err);
+                    return;
+                }
+
                 // Affiche l'animation + désactive le formulaire
                 e.preventDefault();
+                const submitBtn = document.getElementById('upload-submit');
+                if (submitBtn) { submitBtn.disabled = true; submitBtn.setAttribute('aria-busy', 'true'); }
                 form.classList.add('hidden');
                 panel.classList.remove('hidden');
                 titleEl.textContent = 'Analyse en cours…';
@@ -330,11 +393,11 @@
                         titleEl.textContent = 'Analyse impossible';
                         subtitleEl.textContent = 'Veuillez réessayer.';
                     });
-                }).catch(function (err) {
+                }).catch(function () {
                     anim.finish();
-                    appendLog('Erreur réseau : ' + err.message, 'error');
+                    appendLog('Erreur réseau : vérifiez votre connexion puis réessayez.', 'error');
                     titleEl.textContent = 'Analyse impossible';
-                    subtitleEl.textContent = 'Veuillez réessayer.';
+                    subtitleEl.textContent = 'Veuillez vérifier votre connexion et réessayer.';
                 });
             });
 

@@ -42,7 +42,10 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="password">Mot de passe</label>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;">
+                        <label for="password" style="margin:0;">Mot de passe</label>
+                        <a href="{{ route('password.request') }}" style="font-size:.8rem;color:var(--color-primary);font-weight:600">Mot de passe oublié ?</a>
+                    </div>
                     <input id="password" type="password" name="password" required autocomplete="current-password"
                            class="form-control" placeholder="••••••••">
                     @error('password')
@@ -73,7 +76,7 @@
                 <span class="proof-stamp">Parcours sécurisé</span>
                 <h2 style="font-size:1.25rem;margin-top:.8rem;">Vos rapports, votre chat IA et vos crédits au même endroit.</h2>
                 <p style="color:var(--color-text-muted);font-size:.88rem;margin-top:.35rem;">
-                    FORMADOC met en forme vos rapports académiques (Word, PDF) avec des modèles professionnels,
+                    FORMADOC met en forme vos rapports académiques (DOCX, DOC, TXT) avec des modèles professionnels,
                     sans jamais perdre votre contenu.
                 </p>
             </div>

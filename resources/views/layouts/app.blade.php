@@ -292,6 +292,91 @@
                 });
             });
         }
+
+        // ── Modales accessibles (focus trap + Escape + retour de focus) ──────────
+        // Utilisation : ouvrir via window.openModal(el) ; fermer via closeModal(el).
+        // Le bouton .modal-close et un clic sur l'overlay ferment la modale.
+        // Requis : .modal-overlay[role="dialog"] .modal ; boutons .modal-close.
+        (function () {
+            const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+            let lastFocused = null;
+            let activeModal = null;
+
+            function focusableElements(modal) {
+                return Array.from(modal.querySelectorAll(FOCUSABLE)).filter(el => el.offsetParent !== null);
+            }
+
+            function trapFocus(e) {
+                if (!activeModal || e.key !== 'Tab') return;
+                const els = focusableElements(activeModal);
+                if (els.length === 0) { e.preventDefault(); return; }
+                const first = els[0];
+                const last = els[els.length - 1];
+                if (e.shiftKey && document.activeElement === first) {
+                    e.preventDefault();
+                    last.focus();
+                } else if (!e.shiftKey && document.activeElement === last) {
+                    e.preventDefault();
+                    first.focus();
+                }
+            }
+
+            function openModal(el) {
+                if (!el) return;
+                lastFocused = document.activeElement;
+                activeModal = el;
+                el.classList.add('open');
+                // Désactive le scroll de fond
+                document.body.style.overflow = 'hidden';
+                // Focus initial : premier champ ou bouton de fermeture
+                const els = focusableElements(el);
+                const closeBtn = el.querySelector('.modal-close');
+                (closeBtn || els[0])?.focus();
+                document.addEventListener('keydown', onKeydown);
+            }
+
+            function closeModal(el) {
+                if (!el) return;
+                el.classList.remove('open');
+                if (activeModal === el) activeModal = null;
+                document.body.style.overflow = '';
+                document.removeEventListener('keydown', onKeydown);
+                lastFocused?.focus?.();
+            }
+
+            function onKeydown(e) {
+                if (e.key === 'Escape' && activeModal) {
+                    e.preventDefault();
+                    closeModal(activeModal);
+                } else {
+                    trapFocus(e);
+                }
+            }
+
+            window.openModal = openModal;
+            window.closeModal = closeModal;
+
+            // Liaison générique : tout bouton [data-modal-open="id"] ouvre la modale #id
+            document.addEventListener('click', (e) => {
+                const opener = e.target.closest('[data-modal-open]');
+                if (opener) {
+                    e.preventDefault();
+                    openModal(document.getElementById(opener.dataset.modalOpen));
+                }
+            });
+            // Fermeture : boutons .modal-close et clic sur l'overlay (hors .modal)
+            document.addEventListener('click', (e) => {
+                const closeBtn = e.target.closest('.modal-close');
+                if (closeBtn) {
+                    const modal = closeBtn.closest('.modal-overlay');
+                    if (modal) closeModal(modal);
+                    return;
+                }
+                if (e.target.classList && e.target.classList.contains('modal-overlay')) {
+                    closeModal(e.target);
+                }
+            });
+        })();
     </script>
 </body>
 </html>

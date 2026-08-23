@@ -348,6 +348,20 @@
             }
         });
 
+        // Indicateur « L'assistant réfléchit… » + désactivation pendant l'envoi
+        const chatForm = document.getElementById('chat-form');
+        const typingIndicator = document.getElementById('typingIndicator');
+        const chatSend = document.getElementById('chat-send');
+        if (chatForm) {
+            chatForm.addEventListener('submit', () => {
+                const input = document.getElementById('chat-input');
+                if (!input || !input.value.trim()) return; // Laisse le required gérer
+                if (typingIndicator) typingIndicator.style.display = 'flex';
+                if (chatSend) { chatSend.disabled = true; chatSend.setAttribute('aria-busy', 'true'); }
+                if (input) input.disabled = true;
+            });
+        }
+
         // Actions rapides → remplir le champ
         document.querySelectorAll('.chat-action-btn').forEach(btn => {
             btn.addEventListener('click', () => {

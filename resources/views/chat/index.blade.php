@@ -129,6 +129,13 @@
                     <button type="button" class="suggest-chip" data-prompt="Cherche des sources récentes sur le changement climatique au Cameroun.">Recherche web</button>
                     <button type="button" class="suggest-chip" data-prompt="Génère une image pour illustrer mon rapport.">Générer une image</button>
                 </div>
+
+                {{-- Indicateur de pensée (affiché pendant l'envoi) --}}
+                <div class="thinking-indicator" id="typingIndicator" style="display:none;" aria-live="polite">
+                    <span class="thinking-avatar"><i data-lucide="sparkles" style="width:14px;height:14px"></i></span>
+                    <span class="thinking-dots"><span></span><span></span><span></span></span>
+                    <span class="thinking-label">L'assistant réfléchit…</span>
+                </div>
             </div>
 
             {{-- Composer --}}
@@ -204,6 +211,20 @@
                 document.getElementById('chat-form')?.submit();
             }
         });
+
+        // Indicateur « L'assistant réfléchit… » + désactivation pendant l'envoi
+        const chatForm = document.getElementById('chat-form');
+        const typingIndicator = document.getElementById('typingIndicator');
+        const chatSend = document.getElementById('chat-send');
+        if (chatForm) {
+            chatForm.addEventListener('submit', () => {
+                const input = document.getElementById('chat-input');
+                if (!input || !input.value.trim()) return; // Laisse le required gérer
+                if (typingIndicator) typingIndicator.style.display = 'flex';
+                if (chatSend) { chatSend.disabled = true; chatSend.setAttribute('aria-busy', 'true'); }
+                if (input) input.disabled = true;
+            });
+        }
 
         // Actions rapides et chips → remplir le champ
         document.querySelectorAll('.chat-action-btn, .suggest-chip').forEach(btn => {

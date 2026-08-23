@@ -108,4 +108,13 @@ class User extends Authenticatable
     {
         return $this->credits_balance >= $amount;
     }
+
+    /**
+     * Envoie la notification de réinitialisation de mot de passe
+     * (email personnalisé aux couleurs FORMADOC).
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        \Illuminate\Support\Facades\Mail::to($this->email)->send(new \App\Mail\PasswordResetMail($this, $token));
+    }
 }

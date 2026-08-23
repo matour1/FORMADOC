@@ -57,17 +57,17 @@
 
                 <div class="checkout-section" id="cardFields">
                     <h3>2 · Informations de facturation</h3>
-                    <div class="form-group"><label for="payName">Nom sur la carte</label><input class="form-control" id="payName" value="{{ auth()->user()->name }}" /></div>
-                    <div class="form-group"><label for="payNumber">Numéro de carte</label><input class="form-control" id="payNumber" inputmode="numeric" placeholder="1234 5678 9012 3456" /></div>
+                    <div class="form-group"><label for="payName">Nom sur la carte</label><input class="form-control" id="payName" name="cardholder_name" value="{{ auth()->user()->name }}" /></div>
+                    <div class="form-group"><label for="payNumber">Numéro de carte</label><input class="form-control" id="payNumber" name="card_number" inputmode="numeric" placeholder="1234 5678 9012 3456" /></div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;">
-                        <div class="form-group"><label for="payExp">Expiration</label><input class="form-control" id="payExp" placeholder="MM/AA" /></div>
-                        <div class="form-group"><label for="payCvc">CVC</label><input class="form-control" id="payCvc" inputmode="numeric" placeholder="123" /></div>
+                        <div class="form-group"><label for="payExp">Expiration</label><input class="form-control" id="payExp" name="card_expiry" placeholder="MM/AA" /></div>
+                        <div class="form-group"><label for="payCvc">CVC</label><input class="form-control" id="payCvc" name="card_cvc" inputmode="numeric" placeholder="123" /></div>
                     </div>
                 </div>
 
                 <div class="checkout-section" id="mobileMoneyFields" style="display:none;">
                     <h3>2 · Numéro Mobile Money</h3>
-                    <div class="form-group"><label for="payPhone">Numéro de téléphone</label><input class="form-control" id="payPhone" inputmode="tel" placeholder="+225 07 00 00 00 00" /></div>
+                    <div class="form-group"><label for="payPhone">Numéro de téléphone</label><input class="form-control" id="payPhone" name="phone" inputmode="tel" placeholder="+225 07 00 00 00 00" /></div>
                     <div class="banner banner-warning" style="margin-bottom:0;">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
                         <div>Vous recevrez une demande de validation sur votre téléphone pour confirmer le paiement.</div>

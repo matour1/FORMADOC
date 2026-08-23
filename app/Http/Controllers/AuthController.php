@@ -7,6 +7,8 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 /**
@@ -77,8 +79,8 @@ class AuthController extends Controller
         Auth::login($user);
         $request->session()->regenerate();
 
-        return redirect()->route('account.index')
-            ->with('success', 'Compte créé. Bienvenue sur FORMADOC !');
+        return redirect()->route('onboarding')
+            ->with('success', 'Compte créé. Bienvenue sur FORMADOC ! Faisons connaissance.');
     }
 
     /**
@@ -92,5 +94,67 @@ class AuthController extends Controller
 
         return redirect()->route('login')
             ->with('success', 'Vous êtes déconnecté.');
+    }
+
+    /**
+     * Affiche le formulaire « mot de passe oublié ».
+     */
+    public function showForgotPassword(): View
+    {
+        return view('auth.forgot-password');
+    }
+
+    /**
+     * Envoie le lien de réinitialisation.
+     */
+    public function sendResetLink(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email'],
+        ]);
+
+        $status = Password::sendResetLink($data);
+
+        // On renvoie toujours le même message (évite l'énumération des emails).
+        return $status === Password::RESET_LINK_SENT
+            ? back()->with('status', 'Si cette adresse existe, un lien de réinitialisation vient de vous être envoyé.')
+            : back()->withErrors(['email' => 'Impossible d\'envoyer le lien pour cette adresse.']);
+    }
+
+    /**
+     * Affiche le formulaire de nouveau mot de passe.
+     */
+    public function showResetForm(string $token, Request $request): View
+    {
+        return view('auth.reset-password', [
+            'token' => $token,
+            'email' => $request->query('email', ''),
+        ]);
+    }
+
+    /**
+     * Réinitialise le mot de passe.
+     */
+    public function reset(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'token' => ['required'],
+            'email' => ['required', 'email'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $status = Password::reset(
+            $data,
+            function ($user, $password) {
+                $user->forceFill([
+                    'password' => Hash::make($password),
+                    'remember_token' => Str::random(60),
+                ])->save();
+            }
+        );
+
+        return $status === Password::PASSWORD_RESET
+            ? redirect()->route('login')->with('success', 'Votre mot de passe a été réinitialisé. Connectez-vous.')
+            : back()->withErrors(['email' => 'Ce lien de réinitialisation est invalide ou a expiré.']);
     }
 }

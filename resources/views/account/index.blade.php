@@ -75,7 +75,7 @@
                         <span class="badge badge-success mono">{{ number_format($balance, 0, ',', ' ') }}</span>
                     </div>
                     <div style="margin-top:.3rem;font-size:.85rem;color:var(--color-text-muted);">1 crédit ≈ 1 FCFA</div>
-                    <button class="btn btn-primary btn-sm" style="margin-top:1.1rem;" id="showPurchaseModal">
+                    <button class="btn btn-primary btn-sm" style="margin-top:1.1rem;" id="showPurchaseModal" data-modal-open="purchaseModal">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v12"/><path d="M8 10h8"/></svg>
                         Acheter des crédits
                     </button>
@@ -104,7 +104,7 @@
                         @if ($subscription && $subscription->isActiveAt())
                             <a href="{{ route('subscriptions.checkout', $subscription->plan->slug) }}" class="btn btn-secondary btn-sm">Changer de plan</a>
                             @if ($subscription->auto_renew)
-                                <button class="btn btn-ghost btn-sm" id="showCancelSubModal">Annuler l'abonnement</button>
+                                <button class="btn btn-ghost btn-sm" id="showCancelSubModal" data-modal-open="cancelSubModal">Annuler l'abonnement</button>
                             @endif
                         @else
                             <a href="#plans" class="btn btn-secondary btn-sm">Découvrir les plans</a>
@@ -314,16 +314,16 @@
 
 @push('scripts')
 <script>
-    function openModal(el) { el.classList.add('open'); }
-    function closeModal(el) { el.classList.remove('open'); }
+    // Modales accessibles via le composant global (layout app) : focus trap + Escape.
+    // Repli local si le composant n'est pas disponible.
+    const openModalFn = window.openModal || function (el) { el && el.classList.add('open'); };
+    const closeModalFn = window.closeModal || function (el) { el && el.classList.remove('open'); };
 
     // Modale achat de crédits
     const purchaseModal = document.getElementById('purchaseModal');
     const showPurchaseBtn = document.getElementById('showPurchaseModal');
     if (showPurchaseBtn && purchaseModal) {
-        showPurchaseBtn.addEventListener('click', () => openModal(purchaseModal));
-        document.getElementById('closePurchaseModal').addEventListener('click', () => closeModal(purchaseModal));
-        purchaseModal.addEventListener('click', e => { if (e.target === purchaseModal) closeModal(purchaseModal); });
+        showPurchaseBtn.addEventListener('click', () => openModalFn(purchaseModal));
         document.querySelectorAll('.quick-amount').forEach(btn => btn.addEventListener('click', function () {
             document.getElementById('creditAmount').value = this.dataset.amount;
         }));
@@ -333,10 +333,8 @@
     const cancelSubModal = document.getElementById('cancelSubModal');
     const showCancelSubBtn = document.getElementById('showCancelSubModal');
     if (showCancelSubBtn && cancelSubModal) {
-        showCancelSubBtn.addEventListener('click', () => openModal(cancelSubModal));
-        document.getElementById('closeCancelSubModal').addEventListener('click', () => closeModal(cancelSubModal));
-        cancelSubModal.addEventListener('click', e => { if (e.target === cancelSubModal) closeModal(cancelSubModal); });
-        document.getElementById('keepSubscription').addEventListener('click', () => closeModal(cancelSubModal));
+        showCancelSubBtn.addEventListener('click', () => openModalFn(cancelSubModal));
+        document.getElementById('keepSubscription')?.addEventListener('click', () => closeModalFn(cancelSubModal));
     }
 </script>
 @endpush
