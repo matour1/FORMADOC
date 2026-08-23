@@ -34,16 +34,24 @@ class KPayService
         string $cancelUrl,
         string $currency = 'XAF',
         array $metadata = [],
+        ?string $customerEmail = null,
     ): array {
         $payload = [
             'amount' => $amountFcfa,
             'currency' => $currency,
             'externalId' => $externalId,
-            'paymentMethod' => config('kpay.default_payment_method', 'gateway'),
             'returnUrl' => $returnUrl,
             'cancelUrl' => $cancelUrl,
             'metadata' => $metadata,
         ];
+
+        // Passerelle générique : le client choisit carte/PayPal/mobile money sur
+        // la page KPay. Ne PAS envoyer paymentMethod (sinon 400 « doit valoir
+        // CARD ou PAYPAL ») — un paymentMethod CARD/PAYPAL restreindrait le moyen.
+        // customerEmail est accepté en passerelle générique.
+        if ($customerEmail !== null && $customerEmail !== '') {
+            $payload['customerEmail'] = $customerEmail;
+        }
 
         $response = $this->post('/payments/init', $payload);
 

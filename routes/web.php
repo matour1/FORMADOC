@@ -2,12 +2,34 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CoverPageTemplateController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\LandingController;
+use App\Http\Controllers\StateController;
+use App\Http\Controllers\TemplateController;
 
 // Page d'accueil (landing page)
 Route::get('/', [LandingController::class, 'index']);
+
+// Tableau de bord + bibliothèque (authentifié)
+Route::middleware(['auth'])->group(function () {
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/documents', [DashboardController::class, 'documents'])->name('documents.index');
+
+    // Bibliothèque de gabarits + comparaison (Premium+)
+    Route::get('/templates', [TemplateController::class, 'index'])->name('templates.index');
+    Route::get('/templates/compare', [TemplateController::class, 'compare'])->name('templates.compare');
+
+    // Onboarding (parcours premiers pas)
+    Route::get('/onboarding', [StateController::class, 'onboarding'])->name('onboarding');
+
+    // Démonstrations d'états (fidélité template)
+    Route::get('/demo/loading', [StateController::class, 'loading'])->name('demo.loading');
+    Route::get('/demo/empty', [StateController::class, 'empty'])->name('demo.empty');
+    Route::get('/demo/preview-fallback', [StateController::class, 'previewFallback'])->name('demo.preview-fallback');
+    Route::get('/demo/maintenance', [StateController::class, 'maintenance'])->name('demo.maintenance');
+});
 
 // Routes Feedback (collecte d'avis sans compte utilisateur)
 Route::get('/feedback', [FeedbackController::class, 'showForm'])->name('feedback.form');

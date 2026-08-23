@@ -20,43 +20,55 @@
         </a>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.1rem">
+    <div class="tabs" role="tablist">
+        <button class="tab active" data-filter="all" role="tab" aria-selected="true">Tous</button>
+        <button class="tab" data-filter="public" role="tab" aria-selected="false">Publics</button>
+        <button class="tab" data-filter="private" role="tab" aria-selected="false">Mes modèles</button>
+    </div>
+
+    <div class="template-grid" id="coverTemplateGrid">
         @forelse ($templates as $tpl)
-            <article class="card" style="display:flex;flex-direction:column;gap:.9rem">
-                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.8rem">
-                    <div style="min-width:0">
-                        <h2 style="font-weight:600;font-size:.98rem">{{ $tpl->name }}</h2>
-                        <p style="color:var(--color-text-secondary);font-size:.82rem;margin-top:.25rem">{{ $tpl->description ?: 'Aucune description.' }}</p>
+            <article class="template-card" data-public="{{ $tpl->is_public ? 'public' : 'private' }}" style="display:flex;flex-direction:column;cursor:default">
+                <a href="{{ route('cover-templates.edit', $tpl) }}" style="display:block" aria-label="Éditer {{ $tpl->name }}">
+                    <div class="template-thumb">
+                        <div class="tl title"></div>
+                        <div class="tl w80"></div>
+                        <div class="tl w60"></div>
+                        <div class="tl w80"></div>
+                        <div class="tl w40"></div>
                     </div>
-                    @if ($tpl->is_public)
-                        <span class="badge badge-success">Public</span>
-                    @else
-                        <span class="badge">Privé</span>
-                    @endif
-                </div>
-                <div style="font-size:.75rem;color:var(--color-text-muted)">
-                    Mis à jour {{ $tpl->updated_at?->diffForHumans() }}
-                </div>
-                <div style="display:flex;flex-wrap:wrap;gap:.4rem;border-top:1px solid var(--color-border);padding-top:.8rem">
-                    <a href="{{ route('cover-templates.edit', $tpl) }}" class="btn btn-ghost btn-sm">
-                        <i data-lucide="pencil" style="width:14px;height:14px"></i>
-                        Éditer
-                    </a>
-                    <form method="POST" action="{{ route('cover-templates.duplicate', $tpl) }}">
-                        @csrf
-                        <button type="submit" class="btn btn-ghost btn-sm">
-                            <i data-lucide="copy" style="width:14px;height:14px"></i>
-                            Dupliquer
-                        </button>
-                    </form>
-                    <form method="POST" action="{{ route('cover-templates.destroy', $tpl) }}"
-                          onsubmit="return confirm('Supprimer ce modèle ?')">
-                        @csrf @method('DELETE')
-                        <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--color-correction)">
-                            <i data-lucide="trash-2" style="width:14px;height:14px"></i>
-                            Supprimer
-                        </button>
-                    </form>
+                </a>
+                <div class="template-body" style="padding:.85rem .95rem;display:flex;flex-direction:column;gap:.45rem;flex:1">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem">
+                        <div class="t-name">{{ $tpl->name }}</div>
+                        @if ($tpl->is_public)
+                            <span class="badge badge-success">Public</span>
+                        @else
+                            <span class="badge">Privé</span>
+                        @endif
+                    </div>
+                    <div class="t-cat">{{ $tpl->description ?: 'Couverture personnalisée' }} · {{ $tpl->updated_at?->diffForHumans() }}</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:auto;padding-top:.7rem;border-top:1px solid var(--color-border)">
+                        <a href="{{ route('cover-templates.edit', $tpl) }}" class="btn btn-ghost btn-sm">
+                            <i data-lucide="pencil" style="width:14px;height:14px"></i>
+                            Éditer
+                        </a>
+                        <form method="POST" action="{{ route('cover-templates.duplicate', $tpl) }}">
+                            @csrf
+                            <button type="submit" class="btn btn-ghost btn-sm">
+                                <i data-lucide="copy" style="width:14px;height:14px"></i>
+                                Dupliquer
+                            </button>
+                        </form>
+                        <form method="POST" action="{{ route('cover-templates.destroy', $tpl) }}"
+                              onsubmit="return confirm('Supprimer ce modèle ?')">
+                            @csrf @method('DELETE')
+                            <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--color-correction)">
+                                <i data-lucide="trash-2" style="width:14px;height:14px"></i>
+                                Supprimer
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </article>
         @empty
@@ -71,4 +83,27 @@
         @endforelse
     </div>
 </div>
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // Filtres Tous / Publics / Mes modèles
+    const tabs = document.querySelectorAll('.tabs .tab[data-filter]');
+    const cards = document.querySelectorAll('#coverTemplateGrid .template-card');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const f = tab.dataset.filter;
+            tabs.forEach(t => {
+                t.classList.toggle('active', t === tab);
+                t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+            });
+            cards.forEach(card => {
+                const show = f === 'all' || card.dataset.public === f;
+                card.style.display = show ? '' : 'none';
+            });
+        });
+    });
+});
+</script>
+@endpush
 @endsection

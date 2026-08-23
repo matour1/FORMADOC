@@ -17,6 +17,10 @@ use Illuminate\Support\Facades\Route;
 // Compte utilisateur (solde, transactions, abonnement)
 Route::middleware(['web', 'auth'])->group(function () {
     Route::get('/account', [AccountController::class, 'index'])->name('account.index');
+    Route::get('/account/settings', [AccountController::class, 'settings'])->name('account.settings');
+    Route::post('/account/settings/profile', [AccountController::class, 'updateProfile'])->name('account.settings.profile');
+    Route::post('/account/settings/preferences', [AccountController::class, 'updatePreferences'])->name('account.settings.preferences');
+    Route::delete('/account', [AccountController::class, 'destroy'])->name('account.destroy');
 
     // Achat de crédits
     Route::post('/credits/purchase', [KPayController::class, 'initPurchase'])->name('credits.purchase');
@@ -37,6 +41,7 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');
     Route::get('/chat/{chatSession}', [ChatController::class, 'show'])->name('chat.show');
     Route::post('/chat/{chatSession?}', [ChatController::class, 'send'])->name('chat.send');
+    Route::delete('/chat/{chatSession}', [ChatController::class, 'destroy'])->name('chat.destroy');
 });
 
 // Webhook KPay — PAS de middleware CSRF (requête externe signée HMAC)

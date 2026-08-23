@@ -22,27 +22,53 @@
 </head>
 <body class="app">
 
+    <a class="skip-link" href="#mainContent">Aller au contenu principal</a>
+
     {{-- Sidebar (desktop : sticky ; mobile : hors écran + overlay) --}}
-    <aside class="sidebar" id="app-sidebar">
+    <aside class="sidebar" id="app-sidebar" aria-label="Navigation principale">
         <a href="/" class="sidebar-brand">
             <span class="mark">FD</span>
             FORMADOC
         </a>
 
-        <span class="sidebar-section-label">Documents</span>
+        <span class="sidebar-section-label">Espace de travail</span>
         <nav class="sidebar-nav">
-            <a href="{{ route('documents.create') }}" class="{{ request()->routeIs('documents.*') ? 'active' : '' }}">
-                <i data-lucide="file-up"></i> Analyser un rapport
+            <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">
+                <i data-lucide="layout-grid"></i> Tableau de bord
+            </a>
+            <a href="{{ route('documents.index') }}" class="{{ request()->routeIs('documents.index') ? 'active' : '' }}">
+                <i data-lucide="file-text"></i> Mes documents
+            </a>
+            <a href="{{ route('documents.create') }}" class="{{ request()->routeIs('documents.create') || request()->routeIs('documents.upload') || request()->routeIs('documents.show') || request()->routeIs('documents.processing') || request()->routeIs('documents.export') ? 'active' : '' }}">
+                <i data-lucide="file-plus-2"></i> Nouveau document
+            </a>
+            <a href="{{ route('templates.index') }}" class="{{ request()->routeIs('templates.index') ? 'active' : '' }}">
+                <i data-lucide="layout-template"></i> Modèles
+            </a>
+            <a href="{{ route('templates.compare') }}" class="{{ request()->routeIs('templates.compare') ? 'active' : '' }}">
+                <i data-lucide="columns-2"></i> Comparer des gabarits
             </a>
             @auth
+                <a href="{{ route('cover-templates.index') }}" class="{{ request()->routeIs('cover-templates.*') ? 'active' : '' }}">
+                    <i data-lucide="book-open"></i> Pages de garde
+                </a>
                 <a href="{{ route('chat.index') }}" class="{{ request()->routeIs('chat.*') ? 'active' : '' }}">
                     <i data-lucide="message-circle"></i> Assistant IA
                 </a>
-                <a href="{{ route('account.index') }}" class="{{ request()->routeIs('account.*') ? 'active' : '' }}">
-                    <i data-lucide="user"></i> Mon compte
-                </a>
             @endauth
         </nav>
+
+        @auth
+            <span class="sidebar-section-label">Compte</span>
+            <nav class="sidebar-nav">
+                <a href="{{ route('account.index') }}" class="{{ request()->routeIs('account.index') || request()->routeIs('subscriptions.*') || request()->routeIs('credits.*') || request()->routeIs('invoices.*') ? 'active' : '' }}">
+                    <i data-lucide="user"></i> Crédits &amp; abonnement
+                </a>
+                <a href="{{ route('account.settings') }}" class="{{ request()->routeIs('account.settings*') ? 'active' : '' }}">
+                    <i data-lucide="settings"></i> Paramètres
+                </a>
+            </nav>
+        @endauth
 
         <span class="sidebar-section-label">Aide</span>
         <nav class="sidebar-nav">
@@ -59,9 +85,9 @@
                     <div class="email">{{ auth()->user()->email }}</div>
                 </div>
             @else
-                <div class="user-info" style="flex:1">
+                <div class="user-info" style="flex:1;display:flex;flex-direction:column;gap:.4rem">
                     <a href="{{ route('login') }}" class="btn btn-secondary btn-sm btn-block">Connexion</a>
-                    <a href="{{ route('register') }}" class="btn btn-primary btn-sm btn-block" style="margin-top:.4rem">Inscription</a>
+                    <a href="{{ route('register') }}" class="btn btn-primary btn-sm btn-block">Inscription</a>
                 </div>
             @endauth
         </div>
@@ -69,17 +95,18 @@
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
     {{-- Zone principale --}}
-    <div class="main">
+    <div class="main" id="mainContent">
         {{-- Navbar --}}
         <header class="navbar">
             <div class="navbar-left">
-                <button class="navbar-menu-toggle" type="button" aria-label="Menu" id="navbar-menu-toggle">
+                <button class="navbar-menu-toggle" type="button" aria-label="Ouvrir le menu de navigation" aria-expanded="false" id="navbar-menu-toggle">
                     <i data-lucide="menu"></i>
                 </button>
-                <div class="navbar-search">
-                    <i data-lucide="search" style="width:14px;height:14px"></i>
-                    <input type="search" placeholder="Rechercher…" aria-label="Recherche">
-                    <span class="search-label mono" style="font-size:.68rem">Ctrl K</span>
+                <div class="navbar-search" role="search">
+                    <i data-lucide="search" style="width:15px;height:15px"></i>
+                    <label for="navbarSearchInput" class="sr-only">Rechercher</label>
+                    <input id="navbarSearchInput" type="search" placeholder="Rechercher…" autocomplete="off">
+                    <span class="search-label mono" style="font-size:.66rem">Ctrl K</span>
                 </div>
             </div>
             <div class="navbar-actions">
@@ -90,14 +117,14 @@
                         <span class="credits-label">{{ number_format(auth()->user()->credits_balance, 0, ',', ' ') }}</span>
                     </a>
                 @endauth
-                <button class="theme-toggle" type="button" aria-label="Basculer le thème" id="theme-toggle">
-                    <i data-lucide="moon"></i>
+                <button class="theme-toggle" type="button" aria-label="Basculer le thème clair/sombre" id="theme-toggle" aria-pressed="false">
+                    <i data-lucide="moon" style="width:17px;height:17px"></i>
                 </button>
                 @auth
-                    <a href="{{ route('account.index') }}" class="avatar-nav" title="Mon compte">
+                    <a href="{{ route('account.index') }}" class="avatar-nav" title="Mon compte" aria-label="Mon compte">
                         {{ strtoupper(substr(auth()->user()->name, 0, 1)) }}
                     </a>
-                    <form method="POST" action="{{ route('logout') }}" class="inline" style="display:inline">
+                    <form method="POST" action="{{ route('logout') }}" class="inline" style="display:inline" onsubmit="return confirm('Se déconnecter ?');">
                         @csrf
                         <button type="submit" class="icon-btn" aria-label="Se déconnecter" title="Déconnexion">
                             <i data-lucide="log-out" style="width:17px;height:17px"></i>
@@ -111,28 +138,59 @@
         </header>
 
         {{-- Toasts (flash messages) --}}
-        <div class="toast-container" id="toast-container">
+        <div class="toast-container" id="toast-container" aria-live="polite">
             @if (session('success'))
-                <div class="toast success">{{ session('success') }}</div>
+                <div class="toast toast-success">
+                    <i data-lucide="check-circle" style="width:17px;height:17px"></i>
+                    <div style="flex:1">{{ session('success') }}</div>
+                    <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
+                </div>
             @endif
             @if (session('error'))
-                <div class="toast error">{{ session('error') }}</div>
+                <div class="toast toast-error">
+                    <i data-lucide="alert-circle" style="width:17px;height:17px"></i>
+                    <div style="flex:1">{{ session('error') }}</div>
+                    <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
+                </div>
             @endif
             @if (session('warning'))
-                <div class="toast warning">{{ session('warning') }}</div>
+                <div class="toast toast-warning">
+                    <i data-lucide="alert-triangle" style="width:17px;height:17px"></i>
+                    <div style="flex:1">{{ session('warning') }}</div>
+                    <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
+                </div>
             @endif
             @if (session('info'))
-                <div class="toast">{{ session('info') }}</div>
+                <div class="toast">
+                    <i data-lucide="info" style="width:17px;height:17px"></i>
+                    <div style="flex:1">{{ session('info') }}</div>
+                    <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
+                </div>
+            @endif
+            @if (session('pending_cost'))
+                @php $pendingCost = session('pending_cost'); @endphp
+                <div class="toast toast-warning">
+                    <i data-lucide="hourglass" style="width:17px;height:17px"></i>
+                    <div style="flex:1">
+                        @if (is_array($pendingCost))
+                            Coût estimé : {{ $pendingCost['credits'] ?? '?' }} crédit(s) — confirmez l'envoi.
+                        @else
+                            {{ $pendingCost }}
+                        @endif
+                    </div>
+                    <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
+                </div>
             @endif
         </div>
 
         {{-- Contenu principal --}}
         <main class="page-container">
-            {{-- Erreurs de validation --}}
-            @if ($errors->any())
-                <div class="banner banner-danger">
+            {{-- Erreurs de validation (indisponible sur les pages d'erreur) --}}
+            @if (isset($errors) && $errors->any())
+                <div class="banner banner-danger" role="alert">
                     <i data-lucide="alert-circle"></i>
                     <div>
+                        <strong>Veuillez corriger les erreurs suivantes :</strong>
                         @foreach ($errors->all() as $error)
                             <div>{{ $error }}</div>
                         @endforeach
@@ -149,10 +207,17 @@
                 <p class="mono" style="font-size:.72rem;color:var(--color-text-muted)">
                     © {{ date('Y') }} FORMADOC — Mise en forme automatique de rapports académiques
                 </p>
-                <a href="{{ route('feedback.form') }}" class="mono" style="font-size:.72rem;color:var(--color-text-muted);text-decoration:underline">Envoyer un avis</a>
+                <div style="display:flex;gap:1rem;align-items:center">
+                    <a href="{{ route('feedback.form') }}" class="mono" style="font-size:.72rem;color:var(--color-text-muted);text-decoration:underline">Envoyer un avis</a>
+                    @auth
+                        <a href="{{ route('chat.index') }}" class="mono" style="font-size:.72rem;color:var(--color-text-muted);text-decoration:underline">Assistant IA</a>
+                    @endauth
+                </div>
             </div>
         </footer>
     </div>
+
+    @stack('scripts')
 
     <script>
         // Initialisation des icônes lucide (si chargées)
@@ -166,6 +231,18 @@
                 document.documentElement.setAttribute('data-theme', 'dark');
                 document.querySelector('#theme-toggle i')?.setAttribute('data-lucide', 'sun');
             }
+            // Icônes des toasts (rendus après DOMContentLoaded si lucide différé)
+            if (window.lucide) { lucide.createIcons(); }
+            // Auto-fermeture des toasts (6s) avec transition douce
+            document.querySelectorAll('.toast').forEach(t => {
+                const dismiss = () => {
+                    t.style.opacity = '0';
+                    t.style.transform = 'translateX(40px)';
+                    setTimeout(() => t.remove(), 300);
+                };
+                setTimeout(dismiss, 6000);
+                t.querySelector('.toast-close')?.addEventListener('click', dismiss);
+            });
         });
         // Toggle thème
         document.getElementById('theme-toggle')?.addEventListener('click', () => {
@@ -174,24 +251,48 @@
             root.setAttribute('data-theme', isDark ? 'light' : 'dark');
             localStorage.setItem('formadoc-theme', isDark ? 'light' : 'dark');
             const icon = document.querySelector('#theme-toggle i');
-            if (icon) { icon.setAttribute('data-lucide', isDark ? 'moon' : 'sun'); lucide.createIcons(); }
+            if (icon) { icon.setAttribute('data-lucide', isDark ? 'moon' : 'sun'); if (window.lucide) lucide.createIcons(); }
         });
-        // Sidebar mobile
-        document.getElementById('navbar-menu-toggle')?.addEventListener('click', () => {
-            document.querySelector('.sidebar')?.classList.toggle('open');
-            document.querySelector('.sidebar-overlay')?.classList.toggle('open');
-        });
-        document.querySelector('.sidebar-overlay')?.addEventListener('click', () => {
-            document.querySelector('.sidebar')?.classList.remove('open');
-            document.querySelector('.sidebar-overlay')?.classList.remove('open');
-        });
-        // Fermeture auto des toasts
-        setTimeout(() => {
-            document.querySelectorAll('.toast').forEach(t => t.remove());
-        }, 6000);
+        // Sidebar mobile (avec overlay + Escape)
+        const menuToggle = document.getElementById('navbar-menu-toggle');
+        const sidebarEl = document.querySelector('.sidebar');
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+        if (menuToggle && sidebarEl && sidebarOverlay) {
+            const closeSidebar = () => {
+                sidebarEl.classList.remove('open');
+                sidebarOverlay.classList.remove('open');
+                menuToggle.setAttribute('aria-expanded', 'false');
+            };
+            menuToggle.addEventListener('click', () => {
+                const isOpen = sidebarEl.classList.toggle('open');
+                sidebarOverlay.classList.toggle('open', isOpen);
+                menuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            });
+            sidebarOverlay.addEventListener('click', closeSidebar);
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSidebar(); });
+        }
+        // Recherche globale : filtre les éléments .doc-row, .chat-item, .template-card de la page courante
+        const navbarSearch = document.getElementById('navbarSearchInput');
+        if (navbarSearch) {
+            document.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+                    e.preventDefault();
+                    navbarSearch.focus();
+                    navbarSearch.select();
+                }
+                if (e.key === 'Escape' && document.activeElement === navbarSearch) {
+                    navbarSearch.blur();
+                }
+            });
+            navbarSearch.addEventListener('input', () => {
+                const q = navbarSearch.value.trim().toLowerCase();
+                document.querySelectorAll('.doc-row, .chat-item, .template-card').forEach(el => {
+                    const hay = (el.textContent || '').toLowerCase();
+                    el.style.display = q === '' || hay.includes(q) ? '' : 'none';
+                });
+            });
+        }
     </script>
-
-    @stack('scripts')
 </body>
 </html>
 

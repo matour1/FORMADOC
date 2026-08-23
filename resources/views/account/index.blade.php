@@ -189,6 +189,12 @@
                         <div class="plan-name">Gratuit</div>
                         <div class="price mono">0 <span>FCFA/mois</span></div>
                         <div class="plan-desc">5 documents déterministes · 0 traitement IA</div>
+                        <ul class="plan-features">
+                            <li><i data-lucide="check" style="width:13px;height:13px"></i> 5 documents traités / mois</li>
+                            <li><i data-lucide="check" style="width:13px;height:13px"></i> Mise en forme déterministe (hors-ligne)</li>
+                            <li><i data-lucide="check" style="width:13px;height:13px"></i> Gabarits publics &amp; pages de garde</li>
+                            <li><i data-lucide="minus" style="width:13px;height:13px"></i> Chat IA au coût réel (crédits)</li>
+                        </ul>
                         @if (!$subscription || !$subscription->isActiveAt())
                             <button class="btn btn-secondary btn-sm" disabled>Plan actuel</button>
                         @else
@@ -229,6 +235,13 @@
                                     IA illimitée
                                 @endif
                             </div>
+                            @if (!empty($plan->features))
+                                <ul class="plan-features">
+                                    @foreach ($plan->features as $feature)
+                                        <li><i data-lucide="check" style="width:13px;height:13px"></i> {{ $feature }}</li>
+                                    @endforeach
+                                </ul>
+                            @endif
                             @if ($isCurrent)
                                 <button class="btn btn-secondary btn-sm" disabled>Plan actuel</button>
                             @elseif ($isFree)

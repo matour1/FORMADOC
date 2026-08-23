@@ -249,7 +249,7 @@
     </form>
 
     {{-- Modal aperçu serveur --}}
-    <div x-show="previewOpen" x-transition style="position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.5);padding:1.5rem"
+    <div x-show="previewOpen" style="position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.5);padding:1.5rem;animation:fadeSlide .2s ease"
          @keydown.escape.window="previewOpen = false">
         <div class="card" style="width:100%;max-width:48rem;max-height:90vh;overflow-y:auto">
             <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--color-border);padding-bottom:.9rem;margin-bottom:1rem">

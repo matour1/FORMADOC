@@ -12,3 +12,8 @@ Artisan::command('inspire', function () {
 Schedule::command('subscriptions:renew')
     ->dailyAt('06:00')
     ->withoutOverlapping();
+
+// KPay — Synchronisation de secours des paiements (fallback webhook)
+Schedule::command('kpay:sync')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();

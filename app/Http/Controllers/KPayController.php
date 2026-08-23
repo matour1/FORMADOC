@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\PaymentReceipt;
 use App\Services\Billing\CreditService;
+use App\Services\Billing\InvoiceService;
 use App\Services\Billing\KPayService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 /**
@@ -62,6 +65,7 @@ class KPayController extends Controller
                 'amount_fcfa' => $amountFcfa,
                 'credits' => $amountFcfa, // 1 crédit = 1 FCFA
             ],
+            customerEmail: $user->email,
         );
 
         if (! $result['ok']) {
@@ -73,6 +77,26 @@ class KPayController extends Controller
             'amount_fcfa' => $amountFcfa,
             'external_id' => $externalId,
             'payment_id' => $result['paymentId'] ?? null,
+        ]);
+
+        // Enregistrer le paiement pour la synchronisation de secours (fallback webhook)
+        \App\Models\KpayPayment::create([
+            'user_id' => $user->id,
+            'payment_id' => $result['paymentId'] ?? null,
+            'external_id' => $externalId,
+            'status' => 'PENDING',
+            'purpose' => 'credit_purchase',
+            'amount_fcfa' => $amountFcfa,
+            'currency' => config('kpay.currency', 'XAF'),
+            'return_url' => route('kpay.return'),
+            'cancel_url' => route('kpay.cancel'),
+            'metadata' => [
+                'user_id' => $user->id,
+                'purpose' => 'credit_purchase',
+                'amount_fcfa' => $amountFcfa,
+                'credits' => $amountFcfa,
+            ],
+            'expires_at' => isset($result['expiresAt']) ? now()->parse($result['expiresAt']) : now()->addHours(24),
         ]);
 
         return redirect()->away($result['gatewayUrl']);
@@ -209,10 +233,48 @@ class KPayController extends Controller
                 ],
             );
 
+            // Facture PDF + email de confirmation
+            $invoiceService = app(InvoiceService::class);
+            $invoice = $invoiceService->createForCreditPurchase(
+                $user,
+                amount: $amount,
+                currency: (string) ($payload['currency'] ?? 'XAF'),
+                reference: $paymentId,
+                status: 'paid',
+            );
+
+            // Chemin absolu du PDF pour la pièce jointe
+            $pdfStoragePath = $invoiceService->downloadPath($invoice);
+            $pdfPath = $pdfStoragePath
+                ? \Illuminate\Support\Facades\Storage::disk((string) config('billing.invoice_storage_disk', 'local'))
+                    ->path($pdfStoragePath)
+                : null;
+
+            try {
+                Mail::to($user->email)->send(new PaymentReceipt(
+                    user: $user,
+                    invoice: $invoice,
+                    label: 'Achat de '.$credits.' crédits',
+                    pdfPath: $pdfPath,
+                ));
+                Log::info('KPay webhook : email de reçu envoyé', [
+                    'user_id' => $user->id,
+                    'invoice_id' => $invoice->id,
+                    'paymentId' => $paymentId,
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('KPay webhook : échec envoi email de reçu', [
+                    'user_id' => $user->id,
+                    'invoice_id' => $invoice->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             Log::info('KPay webhook : crédits ajoutés', [
                 'user_id' => $user->id,
                 'credits' => $credits,
                 'paymentId' => $paymentId,
+                'invoice_id' => $invoice->id,
             ]);
         } else {
             // failed / cancelled → journaliser (aucun crédit)
@@ -236,6 +298,15 @@ class KPayController extends Controller
                 'purpose' => $purpose,
             ]);
         }
+
+        // Mise à jour du registre local de synchronisation (fallback webhook)
+        \App\Models\KpayPayment::query()
+            ->where('external_id', $externalId)
+            ->update([
+                'status' => strtoupper($status),
+                'paid_at' => $status === 'completed' ? now() : null,
+                'last_synced_at' => now(),
+            ]);
 
         return response()->json(['status' => 'processed'], 200);
     }

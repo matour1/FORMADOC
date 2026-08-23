@@ -1,24 +1,28 @@
 @extends('layouts.app')
 
-@section('title', 'Analyser un rapport')
+@section('title', 'Nouveau document')
 
 @section('content')
-    @include('partials.flow-sidebar', ['activeStep' => 1])
-
-    <div class="max-w-3xl">
+    <div class="max-w-4xl">
 
         {{-- En-tête de page --}}
         <div class="page-header">
             <div>
-                <span class="eyebrow">Étape 1 / 4 — Upload</span>
-                <h1>Analyser un rapport</h1>
-                <p>
-                    Déposez votre rapport (stage, projet ou mémoire) au format
-                    <strong>.docx</strong>, <strong>.doc</strong> ou <strong>.txt</strong>.
-                    FORMADOC détecte automatiquement sa structure : titres, hiérarchie,
-                    en-têtes, pieds de page, tableaux, images et légendes.
-                </p>
+                <span class="eyebrow">Traitement</span>
+                <h1>Nouveau document</h1>
+                <p>Téléversez un fichier, choisissez un gabarit, puis lancez l'analyse.</p>
             </div>
+        </div>
+
+        {{-- Étapes du parcours (fidèle au template) --}}
+        <div class="upload-steps" aria-label="Étapes de création d'un document">
+            <div class="upload-step done"><span class="num">✓</span> Fichier</div>
+            <div class="upload-step-sep"></div>
+            <div class="upload-step active"><span class="num">2</span> Gabarit</div>
+            <div class="upload-step-sep"></div>
+            <div class="upload-step"><span class="num">3</span> Options IA</div>
+            <div class="upload-step-sep"></div>
+            <div class="upload-step"><span class="num">4</span> Aperçu</div>
         </div>
 
         {{-- Carte d'upload --}}
@@ -104,10 +108,11 @@
                     </label>
                 </div>
 
-                <div style="display:flex;justify-content:flex-end;margin-top:1.5rem">
+                <div style="display:flex;justify-content:flex-end;margin-top:1.5rem;gap:.65rem">
+                    <a href="{{ route('account.index') }}" class="btn btn-secondary">Annuler</a>
                     <button type="submit" id="upload-submit" class="btn btn-primary">
                         <i data-lucide="search-check" id="submit-icon" style="width:17px;height:17px"></i>
-                        <span id="submit-label">Analyser le document</span>
+                        <span id="submit-label">Lancer l'analyse</span>
                     </button>
                 </div>
             </form>

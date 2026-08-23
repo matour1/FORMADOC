@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password', 'credits_balance', 'usage_deterministic_month', 'usage_ai_month', 'usage_month'])]
+#[Fillable(['name', 'email', 'password', 'credits_balance', 'preferences', 'usage_deterministic_month', 'usage_ai_month', 'usage_month'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -30,6 +30,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'credits_balance' => 'integer',
+            'preferences' => 'array',
             'usage_deterministic_month' => 'integer',
             'usage_ai_month' => 'integer',
         ];
@@ -69,6 +70,15 @@ class User extends Authenticatable
     public function chatSessions(): HasMany
     {
         return $this->hasMany(ChatSession::class);
+    }
+
+    /**
+     * Documents liés à l'utilisateur (les documents sont associés via
+     * le JSON `metadata.user_id`, pas de colonne dédiée).
+     */
+    public function documents(): HasMany
+    {
+        return $this->hasMany(Document::class, 'metadata->user_id', 'id');
     }
 
     /*

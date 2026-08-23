@@ -14,6 +14,7 @@ use Illuminate\Support\Str;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\Shared\Converter;
+use PhpOffice\PhpWord\Settings;
 
 /**
  * Facturation (Phase 9) : création de factures + génération PDF.
@@ -141,6 +142,17 @@ class InvoiceService
     {
         $user ??= $invoice->user;
         $plan ??= $invoice->plan;
+
+        // Configurer le renderer PDF (dompdf installé via phpoffice/phpword)
+        try {
+            Settings::setPdfRendererName(Settings::PDF_RENDERER_DOMPDF);
+            Settings::setPdfRendererPath(base_path('vendor/dompdf/dompdf'));
+        } catch (\Throwable $e) {
+            Log::warning('InvoiceService : config renderer PDF impossible', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         $phpWord = new PhpWord();
         $section = $phpWord->addSection([

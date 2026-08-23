@@ -18,7 +18,11 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // Webhook KPay : requête externe signée HMAC (X-KPAY-Signature),
+        // exclue de la vérification CSRF.
+        $middleware->validateCsrfTokens(except: [
+            'kpay/webhook',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

@@ -3,60 +3,89 @@
 @section('title', 'Inscription')
 
 @section('content')
-<div class="page-container" style="max-width:460px;margin:0 auto">
-    <div class="card">
-        <span class="eyebrow">Rejoindre FORMADOC</span>
-        <h1 style="font-family:var(--font-display);font-size:1.6rem;margin:.2rem 0 .3rem">Créer un compte</h1>
-        <p style="font-size:.88rem;color:var(--color-text-muted);margin-bottom:1.5rem">
-            Inscrivez-vous pour utiliser le chat IA et acheter des crédits.
-            Plan Gratuit : 5 documents déterministes / mois.
-        </p>
+<div class="page-container">
+    <div class="auth-layout">
 
-        <form method="POST" action="{{ route('register.attempt') }}">
-            @csrf
-
-            <div class="form-group">
-                <label for="name">Nom complet</label>
-                <input id="name" type="text" name="name" value="{{ old('name') }}" required autofocus autocomplete="name"
-                       class="form-control" placeholder="Votre nom">
-                @error('name')
-                    <p class="field-error">{{ $message }}</p>
-                @enderror
+        {{-- Panneau formulaire --}}
+        <div class="auth-panel">
+            <div class="tabs" role="tablist" style="margin-bottom:1.1rem;">
+                <a class="tab" href="{{ route('login') }}" role="tab" aria-selected="false">Connexion</a>
+                <a class="tab active" href="{{ route('register') }}" role="tab" aria-selected="true">Inscription</a>
             </div>
 
-            <div class="form-group">
-                <label for="email">Adresse e-mail</label>
-                <input id="email" type="email" name="email" value="{{ old('email') }}" required autocomplete="email"
-                       class="form-control" placeholder="vous@exemple.com">
-                @error('email')
-                    <p class="field-error">{{ $message }}</p>
-                @enderror
+            <h2>Créer un compte</h2>
+            <p>Deux documents déterministes sont inclus chaque mois dans l'offre gratuite.</p>
+
+            @if (session('error'))
+                <div class="banner banner-danger" style="margin-bottom:1rem">
+                    <i data-lucide="alert-circle"></i>
+                    <div>{{ session('error') }}</div>
+                </div>
+            @endif
+
+            <form method="POST" action="{{ route('register.attempt') }}">
+                @csrf
+
+                <div class="form-group">
+                    <label for="name">Nom complet</label>
+                    <input id="name" type="text" name="name" value="{{ old('name') }}" required autofocus autocomplete="name"
+                           class="form-control" placeholder="Votre nom">
+                    @error('name')
+                        <p class="field-error">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Adresse e-mail</label>
+                    <input id="email" type="email" name="email" value="{{ old('email') }}" required autocomplete="email"
+                           class="form-control" placeholder="vous@exemple.com">
+                    @error('email')
+                        <p class="field-error">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Mot de passe</label>
+                    <input id="password" type="password" name="password" required autocomplete="new-password"
+                           class="form-control" placeholder="8 caractères minimum">
+                    @error('password')
+                        <p class="field-error">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <div class="form-group">
+                    <label for="password_confirmation">Confirmer le mot de passe</label>
+                    <input id="password_confirmation" type="password" name="password_confirmation" required autocomplete="new-password"
+                           class="form-control" placeholder="••••••••">
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">
+                    <i data-lucide="user-plus" style="width:15px;height:15px"></i> Créer mon compte
+                </button>
+            </form>
+
+            <div class="auth-alt">
+                Déjà inscrit ?
+                <a href="{{ route('login') }}" style="color:var(--color-primary);font-weight:600">Se connecter</a>
             </div>
+        </div>
 
-            <div class="form-group">
-                <label for="password">Mot de passe</label>
-                <input id="password" type="password" name="password" required autocomplete="new-password"
-                       class="form-control" placeholder="8 caractères minimum">
-                @error('password')
-                    <p class="field-error">{{ $message }}</p>
-                @enderror
+        {{-- Panneau décoratif --}}
+        <div class="auth-aside" aria-hidden="true">
+            <div class="auth-aside-top">
+                <span class="proof-stamp">Compte sécurisé</span>
+                <h2 style="font-size:1.25rem;margin-top:.8rem;">Créez votre espace en une minute.</h2>
+                <p style="color:var(--color-text-muted);font-size:.88rem;margin-top:.35rem;">
+                    Plan Gratuit : 5 documents déterministes / mois, chat IA et pages de garde.
+                    Passez à Standard, Premium ou Pro pour débloquer les documents IA et plus de crédits.
+                </p>
             </div>
-
-            <div class="form-group">
-                <label for="password_confirmation">Confirmer le mot de passe</label>
-                <input id="password_confirmation" type="password" name="password_confirmation" required autocomplete="new-password"
-                       class="form-control" placeholder="••••••••">
+            <div class="auth-aside-stage">
+                <div class="doc-sheet"><div class="doc-line title"></div><div class="doc-line w90"></div><div class="doc-line w75"></div><div class="doc-line w55"></div></div>
+                <div class="doc-sheet after"><div class="doc-line title"></div><div class="doc-line accent"></div><div class="doc-line w90"></div><div class="doc-line w75"></div></div>
             </div>
+        </div>
 
-            <button type="submit" class="btn btn-primary btn-block">
-                <i data-lucide="user-plus" style="width:15px;height:15px"></i> Créer mon compte
-            </button>
-        </form>
-
-        <p style="margin-top:1.5rem;text-align:center;font-size:.85rem;color:var(--color-text-muted)">
-            Déjà inscrit ?
-            <a href="{{ route('login') }}" style="color:var(--color-primary);font-weight:600">Se connecter</a>
-        </p>
     </div>
 </div>
 @endsection

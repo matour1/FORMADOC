@@ -55,10 +55,12 @@ class ChatController extends Controller
         // Estimation du coût d'un message pour le plan de l'utilisateur (affichée avant envoi)
         $plan = $request->user()->currentPlanSlug();
         $estimate = $this->openRouter->estimateCost('chat_text', 200, 500, $plan);
+        $chatModelName = collect(explode('/', $estimate['model']))->last();
 
         return view('chat.index', [
             'sessions' => $sessions,
             'estimatedCredits' => max(1, $estimate['credits']),
+            'chatModelName' => $chatModelName,
             'claudeEligible' => $this->claudeSkills->isEligible($request->user()),
         ]);
     }
@@ -89,6 +91,20 @@ class ChatController extends Controller
             'chatCostEstimate' => max(1, $estimate['credits']),
             'claudeEligible' => $this->claudeSkills->isEligible($request->user()),
         ]);
+    }
+
+    /**
+     * Supprime une session de chat (avec ses messages).
+     */
+    public function destroy(Request $request, ChatSession $chatSession): RedirectResponse
+    {
+        abort_unless($chatSession->user_id === $request->user()->id, 403);
+
+        $chatSession->messages()->delete();
+        $chatSession->delete();
+
+        return redirect()->route('chat.index')
+            ->with('success', 'Conversation supprimée.');
     }
 
     /**

@@ -301,7 +301,79 @@ tests/Unit/Services/Anthropic/ClaudeSkillsServiceTest.php (26 tests)
 
 ---
 
+## Phase 9.5 — Correctifs paiements KPay & fiabilisation (✅ Terminée)
+
+Branche : `main` (hotfix direct, validé en session). Suite au test réel du flux de paiement Cameroun.
+
+### Corrections apportées
+
+- **Webhook 419 (CSRF)** : Laravel 13 utilise `PreventRequestForgery` (et non `VerifyCsrfToken`) → exception ajoutée via `validateCsrfTokens(except: ['kpay/webhook'])` dans `bootstrap/app.php`.
+- **SMTP « Hôte inconnu »** : faute de frappe `MAIL_HOST=mail.reyes-developeur-web.xys` → corrigé en `.xyz` (DNS vérifié : 213.255.195.67). Port 465 SSL.
+- **PDF factures en .docx (fallback)** : renderer dompdf non configuré → `Settings::setPdfRendererName(PDF_RENDERER_DOMPDF)` + `setPdfRendererPath(base_path('vendor/dompdf/dompdf'))` dans `InvoiceService::generatePdf()`. PDF valides `%PDF`.
+- **Facture + email de reçu manquants** à l'achat de crédits → ajoutés dans `KPayController::webhook()` et dans la commande de sync.
+
+### Fallback webhook (le webhook KPay ne peut pas joindre localhost)
+
+- **Table `kpay_payments`** (`2026_08_22_234421_create_kpay_payments_table.php`) : enregistre chaque init de paiement (user_id, payment_id, external_id unique, status, purpose, amount_fcfa, currency, return_url, cancel_url, metadata, paid_at, expires_at, sync_attempts, last_synced_at).
+- **Commande `kpay:sync`** (`app/Console/Commands/SyncKpayPayments.php`) : poll `GET /api/v1/payments/:id` toutes les 5 min (`routes/console.php`, `everyFiveMinutes()->withoutOverlapping()`), idempotence via `CreditTransaction reference=paymentId type=purchase`, traitement des statuts terminaux (COMPLETED → crédits/abonnement + facture + email ; FAILED/CANCELLED → statut).
+- **`KpayPayment` model** : scope `pending()`, relation `user()`.
+- **`PaymentReceipt` mailable** + vue markdown `emails/payment-receipt` (composants mail publiés dans `resources/views/vendor/mail`).
+
+### Validation
+
+- Achat réel sandbox 500 XAF (MTN `237653456789` → COMPLETED) → init enregistré en PENDING → `kpay:sync` → COMPLETED, +500 crédits (11 495 → 11 995), transaction purchase ref=paymentId metadata `sync_fallback=true`, facture INV-2026-000003 payée (PDF valide), email de reçu envoyé.
+- **288 tests / 1051 assertions** — verts.
+
+---
+
 ## Prochaines phases (pistes)
 
 - **Phase 10** — Statistiques d'usage par utilisateur, tableau de bord admin
 - **Phase 11** — Internationalisation (EN/FR)
+
+---
+
+## Axes possibles (hors plan initial, à prioriser)
+
+### A1 — Mise en production KPay
+
+- Bascule des clés sandbox (`kpay_test_…`) vers production (`kpay_live_…`) dans `.env` (config `config/kpay.php`).
+- **Configurer l'URL de webhook sur `admin.kpay.site`** (volet Dépôts `payment.*`, sinon générique) : `https://votre-domaine.com/kpay/webhook` — c'est elle qui déclenche les crédits en réel.
+- Vérifier que `APP_URL` pointe vers le domaine HTTPS final (le `returnUrl` de la passerelle en dépend).
+- Test de bout en bout en réel avec un petit montant (ex. 500 XAF) avant communication.
+
+### A2 — Sécurité & robustesse
+
+- **Rate limiting** sur les routes sensibles : `/credits/purchase`, `/checkout/*`, webhook, auth (throttle configurable).
+- **Monitoring** : journalisation structurée des échecs KPay, alertes email sur échecs de webhook (`sync_attempts >= 5`), stats dashboard.
+- **Sauvegardes** : plan de backup MySQL + storage (`storage/app/private`) automatisé (cron).
+- Durcissement : HTTPS forcé en production, headers de sécurité (HSTS, CSP), secrets hors `.env` versionné.
+
+### A3 — Paiement par carte hors passerelle (CARD direct)
+
+- KPay accepte `paymentMethod: CARD|PAYPAL` à l'init (force la passerelle), mais le mode USSD direct (sans passerelle) nécessite `phoneNumber` + `provider` — possible pour les pays avec opérateurs configurés.
+- Ajouter un choix « Opérateur » côté formulaire (`predict-provider` pour deviner l'opérateur depuis le numéro) si on veut éviter la passerelle.
+
+### A4 — Retraits & paiements vers bénéficiaires (payouts)
+
+- Endpoint `POST /api/v1/payments/withdraw` (USSD ou GATEWAY avec `returnUrl`), suivi `GET /payments/withdraw/:id`.
+- Cas d'usage : reversements aux utilisateurs, remboursements manuels, ou paiement de contributeurs.
+- Webhooks dédiés `payout.*` (URL volet Retraits sur admin.kpay.site).
+- **Attention** : solde wallet requis (422 si insuffisant), retrait min 100 XAF, commission 5 %.
+
+### A5 — Transferts inter-wallet (multi-pays)
+
+- `POST /api/wallets/transfer` (JWT via `POST /api/v1/payments/token`, 30 min) pour déplacer des fonds entre pays (CMR→GAB 1:1, CMR→SEN taux réel).
+- Taux consultable via `GET /api/v1/payments/exchange-rate`.
+- Cas d'usage : consolider les fonds des wallets pays vers un wallet central, ou alimenter un wallet avant un payout.
+
+### A6 — Tableau de bord opérateur / gestion
+
+- Vue admin : soldes wallets KPay (`GET /api/v1/payments/balance`), disponibilité opérateurs (`/availability`), historique des paiements, grille tarifaire (`/api/public/pricelist`).
+- Interface de remboursement (refund) depuis l'admin : `POST /refunds` (paiement COMPLETED, fenêtre 7 jours, idempotent).
+
+### A7 — Expérience utilisateur paiement
+
+- Page de confirmation dédiée après retour passerelle (statut du paiement, bouton « réessayer » si FAILED/CANCELLED, pas seulement le flash).
+- Suivi temps réel du paiement en attente (polling léger côté client pendant SUBMITTED/PROCESSING).
+- Email de reçu avec pièce jointe PDF systématique (déjà en place) + relance si échec d'envoi (file d'attente).
