@@ -377,3 +377,12 @@ Branche : `main` (hotfix direct, validé en session). Suite au test réel du flu
 - Page de confirmation dédiée après retour passerelle (statut du paiement, bouton « réessayer » si FAILED/CANCELLED, pas seulement le flash).
 - Suivi temps réel du paiement en attente (polling léger côté client pendant SUBMITTED/PROCESSING).
 - Email de reçu avec pièce jointe PDF systématique (déjà en place) + relance si échec d'envoi (file d'attente).
+
+### A8 — Finitions copywriting & conformité (reste de l'audit)
+
+> Source : `AUDIT_COPYWRITING.md` — tâches restantes après le lot P0/P1/P2 (commit `b6444ed`).
+
+- **Flux « Mot de passe oublié » (P1)** : routes + vues + email de réinitialisation (mail transactionnel), à ajouter à l'authentification existante.
+- **6 emails transactionnels manquants (P1)** : modèles prêts dans `AUDIT_COPYWRITING.md` §6.2 — bienvenue, mot de passe oublié, document prêt, quota dépassé, échec paiement, rappel renouvellement J-3.
+- **Ton tutoiement/vouvoiement (P1)** : gros chantier transversal (toutes les vues) — décider avec l'utilisateur : tutoiement app/étudiants, vouvoiement entreprises. Application cohérente « Ton document » vs « vos documents ».
+- **Pages légales — infos réelles (P0/P1)** : renseigner les `[À COMPLÉTER]` dans `resources/views/pages/*.blade.php` (RCCM, NIU, adresse, forme juridique, directeur de publication, hébergeur) + remplacer les emails `@formadoc.cm` factices par les vrais.

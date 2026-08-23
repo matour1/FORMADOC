@@ -285,6 +285,19 @@ Branche : `feature/phase9-subscriptions`. Décisions actées (Q1-Q6) : **Q1a** r
 
 ---
 
+## H. Finitions copywriting & conformité (à faire — issue de l'audit)
+
+> Source : `AUDIT_COPYWRITING.md`. Les corrections P0/P1/P2 sûres sont appliquées (commit `b6444ed`) ; restent les tâches suivantes à prioriser.
+
+| # | Tâche | Priorité | Détail |
+|----|-------|----------|--------|
+| H1 | Flux « Mot de passe oublié » | P1 | Routes + vues + email de réinitialisation ; à intégrer à l'auth existante |
+| H2 | 6 emails transactionnels manquants | P1 | Modèles prêts dans `AUDIT_COPYWRITING.md` §6.2 : bienvenue, mot de passe oublié, document prêt, quota dépassé, échec paiement, rappel renouvellement J-3 |
+| H3 | Ton tutoiement/vouvoiement | P1 | Chantier transversal (toutes les vues) — à décider : tutoiement app/étudiants, vouvoiement entreprises ; cohérence « Ton document » vs « vos documents » |
+| H4 | Pages légales : infos réelles | P0/P1 | Renseigner les `[À COMPLÉTER]` (`RCCM`, `NIU`, adresse, forme juridique, directeur de publication, hébergeur) et remplacer les emails `@formadoc.cm` factices |
+
+---
+
 ## Non-régression
 
 - **Mode déterministe intact** : le pipeline sans IA reste 100 % fonctionnel et gratuit.
