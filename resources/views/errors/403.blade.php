@@ -18,6 +18,7 @@
             ],
             'actions' => [
                 ['label' => 'Retour au tableau de bord', 'url' => route('account.index'), 'primary' => true],
+                ['label' => 'Contacter le support', 'url' => route('feedback.form')],
                 ['label' => 'Aller à l\'accueil', 'url' => url('/')],
             ],
         ])

@@ -237,7 +237,7 @@
                 @empty
                     <div class="empty-state" style="text-align:center;padding:3rem 1rem;color:var(--color-text-muted)">
                         <i data-lucide="bot" style="width:44px;height:44px;margin:0 auto .8rem;display:block;opacity:.6"></i>
-                        <p style="font-size:.95rem">Aucun message. Posez votre première question !</p>
+                        <p style="font-size:.95rem">Aucun message. Pose ta première question !</p>
                         <p style="font-size:.78rem;margin-top:.3rem">Exemples : « génère une page de garde », « reconstruis mon document », « cherche des sources sur le changement climatique au Cameroun »</p>
                     </div>
                 @endforelse
@@ -267,7 +267,7 @@
 
                 <div class="composer-box">
                     <textarea name="message" id="chat-input" rows="1" required maxlength="12000"
-                              placeholder="Posez une question ou demandez une action…"
+                              placeholder="Pose ta question ou demande une action…"
                               aria-label="Votre message"></textarea>
                     <div class="composer-tools">
                         <div class="composer-tools-wrap">

@@ -30,3 +30,10 @@ Route::middleware(['web', 'guest'])->group(function () {
 });
 
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout')->middleware(['web', 'auth']);
+
+// Vérification d'email (non bloquant : l'utilisateur peut tout utiliser sans confirmer)
+Route::middleware(['web', 'auth'])->group(function () {
+    Route::get('/email/verify', [AuthController::class, 'showVerificationNotice'])->name('verification.notice');
+    Route::get('/email/verify/{user}', [AuthController::class, 'verify'])->name('verification.verify');
+    Route::post('/email/resend', [AuthController::class, 'resendVerification'])->name('verification.send');
+});

@@ -618,18 +618,18 @@ L'équipe FORMADOC
 - [x] **P0-4** — Créer les 3 pages légales (modèles §6.1) + routes `pages.legal`, `pages.terms`, `pages.privacy` + liens footer.
 - [x] **P0-5** — Remplacer `support@formadoc.example` (landing) par l'email réel ; configurer `app.project_owner_email` (feedback).
 - [ ] **P1** — Normaliser le ton (tutoiement app/étudiants, vouvoiement entreprises) sur toutes les vues et emails.
-- [ ] **P1** — « immédiatement » → « sous quelques minutes » (checkout).
-- [ ] **P1** — Retirer les références à la « page de statut » (500/503) ou créer la page.
-- [ ] **P1** — Ajouter le flux « Mot de passe oublié » + lien sur le login.
-- [ ] **P1** — Rendre dynamique le « Retour estimé » (maintenance) et remplacer « LibreOffice » (aperçu) par un texte non technique.
-- [ ] **P1** — Vérifier l'implémentation de « Recherche web » (chat) et « API & intégrations » (Pro) ; sinon reformuler.
-- [ ] **P1** — Vérifier que « mois 2026-08 » (account) est dynamique.
-- [ ] **P1** — Améliorer la description du plan Premium (« mises en forme généreuses » → description concrète).
-- [ ] **P1** — Ajouter les emails de bienvenue, document prêt, échec paiement, renouvellement (modèles §6.2).
+- [x] **P1** — « immédiatement » → « sous quelques minutes » (checkout).
+- [x] **P1** — Retirer les références à la « page de statut » (500/503) ou créer la page.
+- [x] **P1** — Ajouter le flux « Mot de passe oublié » + lien sur le login.
+- [x] **P1** — Rendre dynamique le « Retour estimé » (maintenance) et remplacer « LibreOffice » (aperçu) par un texte non technique.
+- [x] **P1** — Vérifier l'implémentation de « Recherche web » (chat) et « API & intégrations » (Pro) ; sinon reformuler.
+- [x] **P1** — Vérifier que « mois 2026-08 » (account) est dynamique.
+- [x] **P1** — Améliorer la description du plan Premium (« mises en forme généreuses » → description concrète).
+- [x] **P1** — Ajouter les emails de bienvenue, document prêt, échec paiement, renouvellement (modèles §6.2).
 - [ ] **P2** — Intégrer les 3 variantes de proposition de valeur (§4) et lancer un test A/B.
-- [ ] **P2** — Ajouter la FAQ complémentaire (§6.3).
-- [ ] **P2** — Corrections de ton mineures (« À bientôt ! », « Épuisé — plan supérieur ou crédits », « gabarit institutionnel »).
-- [ ] **P2** — Ajouter l'action « Contacter le support » sur la page 403.
+- [x] **P2** — Ajouter la FAQ complémentaire (§6.3).
+- [x] **P2** — Corrections de ton mineures (« À bientôt ! », « Épuisé — plan supérieur ou crédits », « gabarit institutionnel »).
+- [x] **P2** — Ajouter l'action « Contacter le support » sur la page 403.
 - [ ] **Qualité** — Relire tous les textes en français (orthographe/grammaire), rejouer les 288 tests, vérifier le rendu des emails (Mailpit/maileclipse).
 
 ---

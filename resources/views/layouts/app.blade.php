@@ -137,6 +137,21 @@
             </div>
         </header>
 
+        {{-- Bandeau discret : email non confirmé (non bloquant) --}}
+        @auth
+            @if (! auth()->user()->hasVerifiedEmail())
+                <div class="verify-email-banner" role="status">
+                    <i data-lucide="mail-warning" style="width:15px;height:15px;flex-shrink:0"></i>
+                    <span style="flex:1">
+                        Confirme ton adresse email pour sécuriser ton compte.
+                        <a href="{{ route('verification.notice') }}" style="color:inherit;text-decoration:underline;font-weight:600">Confirmer</a>
+                    </span>
+                    <button type="button" class="verify-email-dismiss" aria-label="Fermer"
+                            onclick="this.closest('.verify-email-banner').style.display='none'">&times;</button>
+                </div>
+            @endif
+        @endauth
+
         {{-- Toasts (flash messages) --}}
         <div class="toast-container" id="toast-container" aria-live="polite">
             @if (session('success'))

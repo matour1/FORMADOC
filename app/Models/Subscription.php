@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'currency',
     'last_payment_status',
     'last_renewed_at',
+    'renewal_reminded_at',
     'trial_ends_at',
     'starts_at',
     'ends_at',
@@ -34,6 +35,7 @@ class Subscription extends Model
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
             'last_renewed_at' => 'datetime',
+            'renewal_reminded_at' => 'datetime',
             'trial_ends_at' => 'datetime',
         ];
     }

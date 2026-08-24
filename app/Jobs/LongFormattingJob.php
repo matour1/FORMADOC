@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Mail\DocumentReadyMail;
 use App\Models\Document;
 use App\Models\User;
 use App\Services\Billing\CreditService;
@@ -9,6 +10,7 @@ use App\Services\OpenRouter\OpenRouterService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * Traitement long : mise en forme complète d'un document par IA.
@@ -128,6 +130,32 @@ class LongFormattingJob implements ShouldQueue
             'status' => 'ready',
             'metadata' => $metadata,
         ]);
+
+        // Email « document prêt » (ne bloque jamais le traitement)
+        $templateName = null;
+        if (isset($metadata['template_name']) && is_string($metadata['template_name'])) {
+            $templateName = $metadata['template_name'];
+        } elseif (isset($metadata['template_id'])) {
+            $templateName = \App\Models\Template::find((int) $metadata['template_id'])?->name;
+        }
+
+        try {
+            Mail::to($user->email)->send(new DocumentReadyMail(
+                user: $user,
+                document: $this->document,
+                templateName: $templateName,
+            ));
+            Log::info('LongFormattingJob : email document prêt envoyé', [
+                'document_id' => $this->document->id,
+                'user_id' => $user->id,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('LongFormattingJob : échec envoi email document prêt', [
+                'document_id' => $this->document->id,
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         // Ajustement du coût réel (remboursement si inférieur à l'estimation)
         $actual = (int) $response['cost_credits'];

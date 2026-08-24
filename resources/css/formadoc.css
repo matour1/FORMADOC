@@ -375,6 +375,27 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
 .banner-warning { background: var(--color-warning-tint); color: var(--color-warning); border-color: color-mix(in srgb, var(--color-warning) 25%, transparent); }
 .banner svg { width: 18px; height: 18px; flex-shrink: 0; }
 
+/* ============ Bandeau vérification d'email (non bloquant) ============ */
+.verify-email-banner {
+    display: flex; align-items: center; gap: .6rem;
+    padding: .55rem 1.25rem; font-size: .82rem;
+    background: var(--color-warning-tint); color: var(--color-warning);
+    border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 25%, transparent);
+}
+.verify-email-banner a:hover { text-decoration: underline; }
+.verify-email-dismiss {
+    background: none; border: none; cursor: pointer; color: inherit;
+    font-size: 1.1rem; line-height: 1; padding: .1rem .35rem; border-radius: var(--radius-sm);
+}
+.verify-email-dismiss:hover { background: color-mix(in srgb, var(--color-warning) 12%, transparent); }
+
+/* ============ Page « Vérifie ton email » ============ */
+.mail-verify-icon {
+    display: flex; align-items: center; justify-content: center;
+    width: 64px; height: 64px; border-radius: 50%;
+    background: var(--color-primary-tint); margin: 0 auto 1rem;
+}
+
 /* ============ Tables ============ */
 .table-wrap { overflow-x: auto; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); box-shadow: var(--shadow-1); }
 table.data-table { width: 100%; border-collapse: collapse; font-size: .88rem; }

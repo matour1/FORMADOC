@@ -38,6 +38,33 @@ class User extends Authenticatable
 
     /*
     |--------------------------------------------------------------------------
+    | Vérification d'email (non bloquante)
+    |--------------------------------------------------------------------------
+    | L'utilisateur peut tout utiliser sans confirmer son adresse : un bandeau
+    | discret l'invite à le faire, et le lien signé expire après 24 h.
+    */
+
+    public function hasVerifiedEmail(): bool
+    {
+        return $this->email_verified_at !== null;
+    }
+
+    public function markEmailAsVerified(): bool
+    {
+        return $this->forceFill([
+            'email_verified_at' => $this->freshTimestamp(),
+        ])->save();
+    }
+
+    public function sendEmailVerificationNotification(): void
+    {
+        // Les envois passent par AuthController::sendEmailVerification()
+        // (try/catch, non bloquant) — cette méthode reste pour la compatibilité
+        // avec le contrat MustVerifyEmail.
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | Relations SaaS
     |--------------------------------------------------------------------------
     */

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentReceipt;
 use App\Services\Billing\CreditService;
 use App\Services\Billing\InvoiceService;
@@ -279,6 +280,7 @@ class KPayController extends Controller
         } else {
             // failed / cancelled → journaliser (aucun crédit)
             // Pour un abonnement : marquer past_due (grace period)
+            $failedSubscription = null;
             if (in_array($purpose, ['subscription', 'subscription_renewal'], true)) {
                 $subscriptionId = (int) ($metadata['subscription_id'] ?? 0);
                 $subscription = $subscriptionId > 0
@@ -288,7 +290,30 @@ class KPayController extends Controller
                 if ($subscription) {
                     app(\App\Services\Billing\SubscriptionService::class)
                         ->markFailedPayment($subscription);
+                    $failedSubscription = $subscription;
                 }
+            }
+
+            // Email de notification d'échec (ne bloque jamais le webhook)
+            try {
+                Mail::to($user->email)->send(new PaymentFailedMail(
+                    user: $user,
+                    amount: $amount,
+                    currency: (string) ($payload['currency'] ?? 'XAF'),
+                    reference: $paymentId,
+                    subscription: $failedSubscription,
+                ));
+                Log::info('KPay webhook : email d\'échec de paiement envoyé', [
+                    'user_id' => $user->id,
+                    'paymentId' => $paymentId,
+                    'status' => $status,
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('KPay webhook : échec envoi email d\'échec de paiement', [
+                    'user_id' => $user->id,
+                    'paymentId' => $paymentId,
+                    'error' => $e->getMessage(),
+                ]);
             }
 
             Log::info('KPay webhook : paiement non abouti', [

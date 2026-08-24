@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="FORMADOC — mettez en forme automatiquement vos mémoires, rapports et CV. Mode déterministe gratuit, assistance IA optionnelle.">
+    <meta name="description" content="FORMADOC met en forme automatiquement vos rapports, mémoires et CV — DQP, BTS, licence, master. 5 documents gratuits par mois, assistance IA optionnelle à coût affiché.">
     <meta name="theme-color" content="#2b3f66">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232b3f66'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='Georgia'>FD</text></svg>">
-    <title>FORMADOC — Mise en forme automatique de documents</title>
+    <title>FORMADOC — Mise en forme automatique de rapports, mémoires et CV</title>
 
     {{-- Polices : Newsreader (display), Inter (corps), IBM Plex Mono (libellés) --}}
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -217,11 +217,13 @@
                     <div class="plan-card">
                         <div class="plan-name">Gratuit</div>
                         <div class="price mono">0 <span>FCFA/mois</span></div>
-                        <div class="plan-desc">Pour tester le mode déterministe.</div>
+                        <div class="plan-desc">Pour commencer gratuitement, sans carte bancaire.</div>
                         <ul>
                             <li>5 documents / mois</li>
                             <li>Mode déterministe uniquement</li>
                             <li>Modèles publics</li>
+                            <li>Pages de garde incluses</li>
+                            <li>Chat IA au coût réel (crédits)</li>
                         </ul>
                         <a class="btn btn-secondary" href="{{ route('register') }}">Commencer</a>
                     </div>
@@ -247,7 +249,7 @@
                             </ul>
                             <a class="btn {{ $plan->slug === 'premium' ? 'btn-primary' : 'btn-secondary' }}"
                                href="{{ $plan->slug === 'enterprise' ? '#contact' : route('register') }}">
-                                {{ $plan->slug === 'enterprise' ? 'Nous contacter' : 'Choisir' }}
+                                {{ $plan->slug === 'enterprise' ? 'Nous contacter' : ($plan->slug === 'premium' ? 'Passer à Premium' : 'Choisir ' . $plan->name) }}
                             </a>
                         </div>
                     @endforeach
@@ -278,6 +280,26 @@
                     <details>
                         <summary>Quels formats de fichiers sont acceptés ?</summary>
                         <div class="faq-body">Les fichiers .docx, .doc et .txt jusqu'à 50 Mo. D'autres formats (dont le PDF) pourront être ajoutés ultérieurement.</div>
+                    </details>
+                    <details>
+                        <summary>Mes documents sont-ils transmis à l'IA ?</summary>
+                        <div class="faq-body">Non, pas par défaut. Le mode déterministe traite vos documents sans envoi à un service externe. L'assistance IA ne s'active que si vous cochez l'option, et son coût est affiché avant chaque action.</div>
+                    </details>
+                    <details>
+                        <summary>Comment payer avec Orange Money ou MTN MoMo ?</summary>
+                        <div class="faq-body">Au moment du paiement, choisissez « Orange Money » ou « MTN MoMo » : vous êtes redirigé vers la passerelle sécurisée (KPay) pour confirmer le règlement depuis votre téléphone. Vous recevez ensuite un reçu par email.</div>
+                    </details>
+                    <details>
+                        <summary>Que deviennent mes fichiers après le traitement ?</summary>
+                        <div class="faq-body">Vos fichiers sont supprimés automatiquement 30 jours après le traitement, pour votre confidentialité. Vous pouvez les télécharger à tout moment avant cette échéance.</div>
+                    </details>
+                    <details>
+                        <summary>Comment sont facturés les traitements IA ?</summary>
+                        <div class="faq-body">1 crédit = 1 FCFA. Chaque action IA affiche son coût estimé avant exécution ; seul le coût réel est débité après usage. Vous pouvez acheter des crédits à partir de 500 FCFA, sans abonnement.</div>
+                    </details>
+                    <details>
+                        <summary>Le plan Gratuit est-il vraiment gratuit ?</summary>
+                        <div class="faq-body">Oui. Cinq documents déterministes par mois, sans carte bancaire, sans limite de temps. Les traitements IA et les fonctionnalités avancées sont payants, mais jamais imposés.</div>
                     </details>
                     <details>
                         <summary>Mes documents sont-ils conservés indéfiniment ?</summary>

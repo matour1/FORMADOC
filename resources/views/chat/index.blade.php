@@ -92,7 +92,7 @@
                 <div class="chat-context">
                     <span class="chat-context-dot"></span>
                     <strong>Nouvelle conversation</strong>
-                    <span class="chat-context-info">— posez une question ou demandez une action</span>
+                    <span class="chat-context-info">— pose ta question ou demande une action</span>
                 </div>
                 <div class="chat-header-actions">
                     <div class="chat-model-picker" id="chatModelPicker">
@@ -143,7 +143,7 @@
                 @csrf
                 <div class="composer-box">
                     <textarea name="message" id="chat-input" rows="1" required maxlength="12000"
-                              placeholder="Posez une question ou demandez une action…"
+                              placeholder="Pose ta question ou demande une action…"
                               aria-label="Votre message"></textarea>
                     <div class="composer-tools">
                         <button type="button" class="composer-tool-btn" title="Outils disponibles (actionnables par l'IA)"
