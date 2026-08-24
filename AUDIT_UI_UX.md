@@ -220,26 +220,26 @@ Les faiblesses majeures se concentrent sur :
 ## 5. Checklist finale de validation UI/UX (avant mise en production)
 
 ### Bloquant (P0)
-- [ ] Drag & drop réel sur la dropzone (ou retirer la promesse)
-- [ ] Validation JS taille/type avant upload
-- [ ] Polling sur l'écran de traitement (ou au minimum temps écoulé + message « toujours en cours »)
-- [ ] Onboarding branché après inscription
-- [ ] Lien « Mot de passe oublié » (flux complet)
-- [ ] Modales accessibles : focus trap + Escape + focus initial
-- [ ] `name` sur les champs de carte dans le checkout
-- [ ] État de chargement sur le bouton « Payer »
-- [ ] Indicateur « L'IA réfléchit… » dans le chat
-- [ ] Menu mobile landing fonctionnel
+- [x] Drag & drop réel sur la dropzone (ou retirer la promesse)
+- [x] Validation JS taille/type avant upload
+- [x] Polling sur l'écran de traitement (ou au minimum temps écoulé + message « toujours en cours »)
+- [x] Onboarding branché après inscription
+- [x] Lien « Mot de passe oublié » (flux complet)
+- [x] Modales accessibles : focus trap + Escape + focus initial
+- [x] `name` sur les champs de carte dans le checkout
+- [x] État de chargement sur le bouton « Payer »
+- [x] Indicateur « L'IA réfléchit… » dans le chat
+- [x] Menu mobile landing fonctionnel
 
 ### Important (P1)
-- [ ] Contraste `--color-text-muted` ≥ 4.5:1
-- [ ] Zones cliquables ≥ 44×44px
-- [ ] Tableaux (factures, docs) responsive à 320-560px
-- [ ] Recherche navbar renommée « Filtrer la page » ou recherche globale
-- [ ] Texte auth « (Word, PDF) » sans PDF
-- [ ] `role="status"` / `role="alert"` sur les toasts
-- [ ] Focus visible sur les `[role=button]` custom
-- [ ] Message générique erreur réseau dans l'upload
+- [x] Contraste `--color-text-muted` ≥ 4.5:1
+- [x] Zones cliquables ≥ 44×44px
+- [x] Tableaux (factures, docs) responsive à 320-560px
+- [x] Recherche navbar renommée « Filtrer la page » ou recherche globale
+- [x] Texte auth « (Word, PDF) » sans PDF
+- [x] `role="status"` / `role="alert"` sur les toasts
+- [x] Focus visible sur les `[role=button]` custom
+- [x] Message générique erreur réseau dans l'upload
 
 ### Amélioration continue (P2)
 - [ ] Animations FAQ, menus déroulants accessibles

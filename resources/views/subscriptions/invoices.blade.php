@@ -39,9 +39,9 @@
                     <tbody>
                         @foreach ($invoices as $invoice)
                             <tr>
-                                <td class="mono" style="white-space:nowrap">{{ $invoice->number }}</td>
-                                <td class="mono" style="white-space:nowrap">{{ $invoice->created_at->format('d/m/Y') }}</td>
-                                <td>
+                                <td class="mono" style="white-space:nowrap" data-label="N°">{{ $invoice->number }}</td>
+                                <td class="mono" style="white-space:nowrap" data-label="Date">{{ $invoice->created_at->format('d/m/Y') }}</td>
+                                <td data-label="Type">
                                     @if ($invoice->type === 'subscription')
                                         <span class="badge badge-info">Abonnement</span>
                                     @elseif ($invoice->type === 'renewal')
@@ -52,22 +52,22 @@
                                         <span class="badge">{{ $invoice->type }}</span>
                                     @endif
                                 </td>
-                                <td>
+                                <td data-label="Description">
                                     @if ($invoice->plan)
                                         {{ $invoice->plan->name }}
                                     @else
                                         Achat de crédits
                                     @endif
                                 </td>
-                                <td style="text-align:right" class="mono">{{ $invoice->formattedAmount() }}</td>
-                                <td>
+                                <td style="text-align:right" class="mono" data-label="Montant">{{ $invoice->formattedAmount() }}</td>
+                                <td data-label="Statut">
                                     @if ($invoice->status === 'paid')
                                         <span class="badge badge-success"><i data-lucide="check" style="width:11px;height:11px"></i> Payée</span>
                                     @else
                                         <span class="badge badge-warning">{{ ucfirst($invoice->status) }}</span>
                                     @endif
                                 </td>
-                                <td style="text-align:right">
+                                <td style="text-align:right" data-label="PDF">
                                     <a href="{{ route('invoices.download', $invoice) }}" class="btn btn-ghost btn-sm" title="Télécharger le PDF">
                                         <i data-lucide="download" style="width:13px;height:13px"></i> PDF
                                     </a>

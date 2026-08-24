@@ -137,8 +137,8 @@
                             <tbody>
                                 @foreach ($transactions as $tx)
                                     <tr>
-                                        <td class="mono" style="white-space:nowrap">{{ $tx->created_at->format('d/m/Y H:i') }}</td>
-                                        <td>
+                                        <td class="mono" style="white-space:nowrap" data-label="Date">{{ $tx->created_at->format('d/m/Y H:i') }}</td>
+                                        <td data-label="Type">
                                             @if ($tx->type === 'purchase')
                                                 <span class="badge badge-success"><i data-lucide="plus" style="width:11px;height:11px"></i> Achat</span>
                                             @elseif ($tx->type === 'refund')
@@ -149,11 +149,11 @@
                                                 <span class="badge"><i data-lucide="zap" style="width:11px;height:11px"></i> Utilisation</span>
                                             @endif
                                         </td>
-                                        <td>{{ $tx->description ?: $tx->type }}</td>
-                                        <td style="text-align:right;font-weight:600;color:{{ $tx->amount >= 0 ? 'var(--color-secondary)' : 'var(--color-ink)' }}">
+                                        <td data-label="Description">{{ $tx->description ?: $tx->type }}</td>
+                                        <td style="text-align:right;font-weight:600;color:{{ $tx->amount >= 0 ? 'var(--color-secondary)' : 'var(--color-ink)' }}" data-label="Montant">
                                             {{ $tx->amount >= 0 ? '+' : '' }}{{ number_format($tx->amount, 0, ',', ' ') }}
                                         </td>
-                                        <td style="text-align:right" class="mono">{{ number_format($tx->balance_after, 0, ',', ' ') }}</td>
+                                        <td style="text-align:right" class="mono" data-label="Solde">{{ number_format($tx->balance_after, 0, ',', ' ') }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>

@@ -108,6 +108,13 @@
                     if (cardFields) cardFields.style.display = isCard ? 'block' : 'none';
                     if (mobileFields) mobileFields.style.display = isCard ? 'none' : 'block';
                 });
+                // Accessibilité : sélection au clavier (Enter / Espace) — audit UI/UX P1
+                method.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        this.click();
+                    }
+                });
             });
 
             // Soumission : état chargement (conforme au template)

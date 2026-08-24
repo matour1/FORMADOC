@@ -612,11 +612,11 @@ L'équipe FORMADOC
 
 ## 7. Checklist finale avant mise en production
 
-- [ ] **P0-1** — Corriger « Deux documents » → « Cinq documents » dans `auth/register.blade.php`.
-- [ ] **P0-2** — Aligner la landing (FAQ, étapes, badge hero) et l'onboarding sur les formats réellement acceptés (DOCX/DOC/TXT) **ou** implémenter la conversion PDF.
-- [ ] **P0-3** — Corriger « Orange CI » / « MTN CI » → Cameroun (CM) dans le checkout.
-- [ ] **P0-4** — Créer les 3 pages légales (modèles §6.1) + routes `pages.legal`, `pages.terms`, `pages.privacy` + liens footer.
-- [ ] **P0-5** — Remplacer `support@formadoc.example` (landing) par l'email réel ; configurer `app.project_owner_email` (feedback).
+- [x] **P0-1** — Corriger « Deux documents » → « Cinq documents » dans `auth/register.blade.php`.
+- [x] **P0-2** — Aligner la landing (FAQ, étapes, badge hero) et l'onboarding sur les formats réellement acceptés (DOCX/DOC/TXT) **ou** implémenter la conversion PDF.
+- [x] **P0-3** — Corriger « Orange CI » / « MTN CI » → Cameroun (CM) dans le checkout.
+- [x] **P0-4** — Créer les 3 pages légales (modèles §6.1) + routes `pages.legal`, `pages.terms`, `pages.privacy` + liens footer.
+- [x] **P0-5** — Remplacer `support@formadoc.example` (landing) par l'email réel ; configurer `app.project_owner_email` (feedback).
 - [ ] **P1** — Normaliser le ton (tutoiement app/étudiants, vouvoiement entreprises) sur toutes les vues et emails.
 - [ ] **P1** — « immédiatement » → « sous quelques minutes » (checkout).
 - [ ] **P1** — Retirer les références à la « page de statut » (500/503) ou créer la page.

@@ -20,7 +20,7 @@
     --color-surface-2: var(--paper-100);
     --color-text: var(--ink-900);
     --color-text-secondary: var(--ink-700);
-    --color-text-muted: var(--ink-500);
+    --color-text-muted: #5b6478; /* contraste >= 4.5:1 sur fond clair (audit UI/UX P1) */
     --color-border: var(--paper-200);
     --color-border-strong: #d8d2c4;
 
@@ -60,7 +60,7 @@
     --color-surface-2: #12151d;
     --color-text: #f2f0ea;
     --color-text-secondary: #c3c8d4;
-    --color-text-muted: #7e8698;
+    --color-text-muted: #a9b0c0; /* contraste >= 4.5:1 sur fond sombre (audit UI/UX P1) */
     --color-border: #2c3140;
     --color-border-strong: #3a4256;
     --color-primary: #7691c9;
@@ -189,11 +189,11 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
 .credits-badge.low { background: var(--color-correction-tint); color: var(--color-correction); }
 .theme-toggle, .icon-btn {
     background: none; border: 1px solid transparent; cursor: pointer; color: var(--color-text-secondary);
-    padding: 0; border-radius: var(--radius-sm); width: 36px; height: 36px;
+    padding: 0; border-radius: var(--radius-sm); width: 44px; height: 44px;
     display: flex; align-items: center; justify-content: center; transition: all var(--transition);
 }
 .theme-toggle:hover, .icon-btn:hover { background: var(--color-surface-2); border-color: var(--color-border); }
-.avatar-nav { width: 36px; height: 36px; border-radius: 50%; background: var(--color-primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; cursor: pointer; }
+.avatar-nav { width: 44px; height: 44px; border-radius: 50%; background: var(--color-primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; cursor: pointer; }
 
 .page-container { padding: 2rem 2.25rem; flex: 1; max-width: 1320px; margin: 0 auto; width: 100%; }
 .page { display: none; animation: fadeSlide .3s ease; }
@@ -425,8 +425,10 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
 .chat-sidebar .chat-item .badge { flex-shrink: 0; font-size: .66rem; padding: .12rem .45rem; }
 .chat-sidebar .chat-item .chat-item-del {
     border: none; background: none; color: var(--color-text-muted); cursor: pointer; opacity: 0;
-    padding: .15rem; border-radius: 6px; flex-shrink: 0; display: inline-flex; transition: all var(--transition);
+    padding: .25rem; border-radius: 6px; flex-shrink: 0; display: inline-flex; transition: all var(--transition);
+    width: 30px; height: 30px; align-items: center; justify-content: center;
 }
+.chat-item .chat-item-del:focus-visible { opacity: 1; }
 .chat-sidebar .chat-item:hover .chat-item-del { opacity: 1; }
 .chat-sidebar .chat-item .chat-item-del:hover { color: var(--color-correction); background: var(--color-correction-tint); }
 .chat-sidebar .chat-item .chat-item-del svg { width: 13px; height: 13px; }
@@ -690,6 +692,50 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
 }
 
 /* ============ Responsive ============ */
+
+/* Rôle bouton custom : focus visible (audit UI/UX P1) */
+.chat-item[role="button"]:focus-visible,
+.payment-method[role="button"]:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: 12px;
+}
+.payment-method[role="button"]:focus-visible { border-radius: var(--radius-sm); }
+
+/* Tableaux : cartes empilées sur mobile (audit UI/UX P1) */
+@media (max-width: 560px) {
+    .table-wrap { overflow: visible; border: none; background: transparent; box-shadow: none; }
+    table.data-table, table.data-table tbody { display: block; }
+    table.data-table thead { display: none; }
+    table.data-table tr {
+        display: block; margin-bottom: .8rem;
+        background: var(--color-surface); border: 1px solid var(--color-border);
+        border-radius: var(--radius); box-shadow: var(--shadow-1); padding: .85rem 1rem;
+    }
+    table.data-table td {
+        display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+        padding: .45rem 0; border-bottom: 1px solid var(--color-border); text-align: right;
+    }
+    table.data-table td::before {
+        content: attr(data-label); font-size: .72rem; text-transform: uppercase;
+        letter-spacing: .05em; color: var(--color-text-muted); font-weight: 600;
+        font-family: var(--font-mono); text-align: left; flex-shrink: 0;
+    }
+    table.data-table td:last-child { border-bottom: none; }
+    table.data-table td[colspan] { justify-content: center; }
+    table.data-table td[colspan]::before { display: none; }
+    table.data-table td[data-label=""]::before, table.data-table td:empty::before { content: none; }
+
+    /* Documents : actions empilées + zones cliquables élargies */
+    .doc-row { flex-wrap: wrap; gap: .55rem; padding: .9rem; }
+    .doc-row .file-icon { width: 44px; height: 44px; }
+    .doc-row .doc-meta { flex: 1 1 100%; order: 2; }
+    .doc-row .doc-actions { flex: 1 1 100%; order: 3; justify-content: flex-start; gap: .5rem; }
+    .doc-row .doc-actions .btn { min-height: 44px; display: inline-flex; align-items: center; }
+    .doc-row .doc-actions .icon-btn { width: 44px; height: 44px; }
+    .proof-stamp { order: 1; }
+}
+
 .sidebar-overlay {
     display: none; position: fixed; inset: 0; background: rgba(22, 26, 36, .4);
     z-index: 150;
@@ -708,13 +754,12 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
 }
 @media (max-width: 560px) {
     .stat-grid { grid-template-columns: 1fr; }
-    .navbar { padding: 0 1rem; }
-    .navbar-actions { gap: .45rem; }
+    .navbar { padding: 0 .6rem; }
+    .navbar-actions { gap: .35rem; }
     .credits-badge span.credits-label { display: none; }
     .message, .message.user { max-width: 95%; }
     .chat-layout { min-height: 0; }
 }
-
 /* ============================================================
    Stepper parcours documents (Upload → Validation → Traitement → Export)
    ============================================================ */
@@ -1258,7 +1303,7 @@ a.flow-step:hover { background: var(--color-surface-2); color: var(--color-text)
 .cover-tool-group { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 1rem; }
 .cover-tool-group h4 { font-size: .8rem; font-weight: 700; margin-bottom: .7rem; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: .04em; }
 .position-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .35rem; }
-.position-grid button { aspect-ratio: 1; border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-surface); cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); }
+.position-grid button { aspect-ratio: 1; min-width: 44px; min-height: 44px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-surface); cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); }
 .position-grid button:hover { border-color: var(--color-primary); color: var(--color-primary); }
 .position-grid button.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
 .position-grid button::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -1328,9 +1373,16 @@ a.flow-step:hover { background: var(--color-surface-2); color: var(--color-text)
 }
 @media (max-width: 480px) {
     .stat-grid { grid-template-columns: 1fr; }
-    .navbar { padding: 0 1rem; }
-    .navbar-actions { gap: .45rem; }
+    .navbar { padding: 0 .6rem; }
+    .navbar-actions { gap: .35rem; }
     .credits-badge { padding: .3rem .55rem; }
+    .modal { padding: 1.25rem 1.1rem; }
+    .modal-overlay { padding: .6rem; }
+    /* Chat : la sidebar reste utilisable à 320px (audit UI/UX P1) */
+    .chat-sidebar { max-height: none; padding: .75rem .5rem; }
+    .chat-sidebar .chat-item { padding: .6rem .55rem; }
+    .chat-sidebar .chat-item .chat-item-sub { white-space: normal; }
+    .chat-sidebar .chat-item .chat-item-del { opacity: 1; }
     .landing-page .hero h1 { font-size: 2.25rem; }
     .landing-page .hero-actions .btn { width: 100%; justify-content: center; }
     .auth-panel { padding: 1.1rem; }

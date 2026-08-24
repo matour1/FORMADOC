@@ -14,6 +14,7 @@
         $piedsDePage = $data['pieds_de_page'] ?? [];
         $legends = $data['legends'] ?? [];
         $tableaux = $data['tableaux'] ?? [];
+        $images = $data['images'] ?? [];
         $titreCount = count($titres) + count($sousTitres);
         $isValidated = $document->status === 'validated';
     @endphp
@@ -195,10 +196,10 @@
                             <tbody>
                                 @foreach ($legends as $legend)
                                     <tr>
-                                        <td style="color:var(--color-text-muted)">{{ $legend['line'] }}</td>
-                                        <td>{{ $legend['type'] }}</td>
-                                        <td>{{ $legend['number'] }}</td>
-                                        <td>{{ $legend['label'] }}</td>
+                                        <td style="color:var(--color-text-muted)" data-label="Ligne">{{ $legend['line'] }}</td>
+                                        <td data-label="Type">{{ $legend['type'] }}</td>
+                                        <td data-label="N°">{{ $legend['number'] }}</td>
+                                        <td data-label="Libellé">{{ $legend['label'] }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -207,6 +208,56 @@
                 @else
                     <p style="color:var(--color-text-secondary);font-size:.88rem">Aucune légende détectée.</p>
                 @endif
+            </section>
+
+            {{-- Images et tableaux détectés --}}
+            <section class="card" style="margin-bottom:1.25rem">
+                <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:1rem">
+                    <i data-lucide="image" style="width:19px;height:19px;color:var(--color-primary)"></i>
+                    <h2 class="card-title">Images et tableaux détectés</h2>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.4rem">
+                    <div>
+                        <p style="font-family:var(--font-mono);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:.5rem">
+                            Images ({{ count($images) }})
+                        </p>
+                        @if (count($images) > 0)
+                            <ul style="display:flex;flex-direction:column;gap:.45rem;list-style:none">
+                                @foreach ($images as $image)
+                                    <li style="display:flex;align-items:center;gap:.55rem;font-size:.88rem">
+                                        <i data-lucide="image" style="width:15px;height:15px;color:var(--color-text-muted);flex-shrink:0"></i>
+                                        <span style="word-break:break-all">{{ $image['image_name'] ?? ($image['texte'] ?? 'image') }}</span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @else
+                            <p style="font-size:.85rem;color:var(--color-text-muted)">Aucune image détectée.</p>
+                        @endif
+                    </div>
+                    <div>
+                        <p style="font-family:var(--font-mono);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:.5rem">
+                            Tableaux ({{ count($tableaux) }})
+                        </p>
+                        @if (count($tableaux) > 0)
+                            <ul style="display:flex;flex-direction:column;gap:.45rem;list-style:none">
+                                @foreach ($tableaux as $tableau)
+                                    <li style="display:flex;align-items:center;gap:.55rem;font-size:.88rem">
+                                        <i data-lucide="table" style="width:15px;height:15px;color:var(--color-text-muted);flex-shrink:0"></i>
+                                        <span>
+                                            Tableau
+                                            @if (isset($tableau['rows_count']))
+                                                · {{ $tableau['rows_count'] }} ligne(s)
+                                            @endif
+                                        </span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @else
+                            <p style="font-size:.85rem;color:var(--color-text-muted)">Aucun tableau détecté.</p>
+                        @endif
+                    </div>
+                </div>
             </section>
 
             {{-- Couverture personnalisée (Phase 3, optionnel) --}}

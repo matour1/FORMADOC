@@ -104,8 +104,8 @@
                 </button>
                 <div class="navbar-search" role="search">
                     <i data-lucide="search" style="width:15px;height:15px"></i>
-                    <label for="navbarSearchInput" class="sr-only">Rechercher</label>
-                    <input id="navbarSearchInput" type="search" placeholder="Rechercher…" autocomplete="off">
+                    <label for="navbarSearchInput" class="sr-only">Filtrer la page</label>
+                    <input id="navbarSearchInput" type="search" placeholder="Filtrer la page…" autocomplete="off">
                     <span class="search-label mono" style="font-size:.66rem">Ctrl K</span>
                 </div>
             </div>
@@ -140,28 +140,28 @@
         {{-- Toasts (flash messages) --}}
         <div class="toast-container" id="toast-container" aria-live="polite">
             @if (session('success'))
-                <div class="toast toast-success">
+                <div class="toast toast-success" role="status">
                     <i data-lucide="check-circle" style="width:17px;height:17px"></i>
                     <div style="flex:1">{{ session('success') }}</div>
                     <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
                 </div>
             @endif
             @if (session('error'))
-                <div class="toast toast-error">
+                <div class="toast toast-error" role="alert">
                     <i data-lucide="alert-circle" style="width:17px;height:17px"></i>
                     <div style="flex:1">{{ session('error') }}</div>
                     <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
                 </div>
             @endif
             @if (session('warning'))
-                <div class="toast toast-warning">
+                <div class="toast toast-warning" role="status">
                     <i data-lucide="alert-triangle" style="width:17px;height:17px"></i>
                     <div style="flex:1">{{ session('warning') }}</div>
                     <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
                 </div>
             @endif
             @if (session('info'))
-                <div class="toast">
+                <div class="toast" role="status">
                     <i data-lucide="info" style="width:17px;height:17px"></i>
                     <div style="flex:1">{{ session('info') }}</div>
                     <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
@@ -169,7 +169,7 @@
             @endif
             @if (session('pending_cost'))
                 @php $pendingCost = session('pending_cost'); @endphp
-                <div class="toast toast-warning">
+                <div class="toast toast-warning" role="alert">
                     <i data-lucide="hourglass" style="width:17px;height:17px"></i>
                     <div style="flex:1">
                         @if (is_array($pendingCost))
