@@ -14,11 +14,11 @@
             </div>
         </div>
 
-        {{-- Étapes du parcours (fidèle au template) --}}
+        {{-- Étapes de création : Fichier → Gabarit → Options IA → Aperçu --}}
         <div class="upload-steps" aria-label="Étapes de création d'un document">
-            <div class="upload-step done"><span class="num">✓</span> Fichier</div>
+            <div class="upload-step active"><span class="num">1</span> Fichier</div>
             <div class="upload-step-sep"></div>
-            <div class="upload-step active"><span class="num">2</span> Gabarit</div>
+            <div class="upload-step"><span class="num">2</span> Gabarit</div>
             <div class="upload-step-sep"></div>
             <div class="upload-step"><span class="num">3</span> Options IA</div>
             <div class="upload-step-sep"></div>
@@ -137,6 +137,41 @@
                 <p><span class="log-prompt">$</span><span class="log-line">Préparation de l'analyse…</span></p>
             </div>
         </div>
+
+        {{-- Page de garde (optionnelle) : à choisir à l'étape Aperçu/Export --}}
+        <section class="card" style="margin-top:1.5rem">
+            <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
+                <i data-lucide="book-open" style="width:19px;height:19px;color:var(--color-primary)"></i>
+                <h2 class="card-title">Page de garde (page de couverture)</h2>
+            </div>
+            <p style="color:var(--color-text-secondary);font-size:.85rem;margin-bottom:1.1rem">
+                Ajoutez une couverture institutionnelle à votre rapport (facultatif).
+                Vous pourrez l'appliquer à l'étape <strong>Aperçu / Export</strong>.
+            </p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.8rem">
+                <a href="{{ route('cover-templates.from-example') }}" class="card" style="padding:1rem;text-decoration:none;display:flex;gap:.7rem;align-items:flex-start;border:1px solid var(--color-border)">
+                    <span class="rc-icon"><i data-lucide="scan-text" style="width:17px;height:17px"></i></span>
+                    <span>
+                        <strong style="display:block;font-size:.88rem">Créer à partir d'un exemple</strong>
+                        <small style="color:var(--color-text-muted);font-size:.78rem;display:block;margin-top:.2rem">Importez une couverture : les zones de texte sont détectées puis remplacées par vos informations.</small>
+                    </span>
+                </a>
+                <a href="{{ route('cover-templates.create') }}" class="card" style="padding:1rem;text-decoration:none;display:flex;gap:.7rem;align-items:flex-start;border:1px solid var(--color-border)">
+                    <span class="rc-icon"><i data-lucide="plus" style="width:17px;height:17px"></i></span>
+                    <span>
+                        <strong style="display:block;font-size:.88rem">Créer une page de garde</strong>
+                        <small style="color:var(--color-text-muted);font-size:.78rem;display:block;margin-top:.2rem">Construisez un modèle avec le builder visuel (blocs, logos, placeholders).</small>
+                    </span>
+                </a>
+                <a href="{{ route('cover-templates.index') }}" class="card" style="padding:1rem;text-decoration:none;display:flex;gap:.7rem;align-items:flex-start;border:1px solid var(--color-border)">
+                    <span class="rc-icon"><i data-lucide="copy" style="width:17px;height:17px"></i></span>
+                    <span>
+                        <strong style="display:block;font-size:.88rem">Utiliser une page de garde existante</strong>
+                        <small style="color:var(--color-text-muted);font-size:.78rem;display:block;margin-top:.2rem">Réutilisez ou dupliquez un modèle déjà enregistré.</small>
+                    </span>
+                </a>
+            </div>
+        </section>
 
         {{-- Aperçu du parcours --}}
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:1.5rem">

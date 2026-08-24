@@ -14,10 +14,20 @@
                 </p>
             </div>
         </div>
-        <a href="{{ route('cover-templates.create') }}" class="btn btn-primary">
-            <i data-lucide="plus" style="width:16px;height:16px"></i>
-            Nouveau modèle
-        </a>
+        <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+            <a href="{{ route('cover-templates.create') }}" class="btn btn-primary">
+                <i data-lucide="plus" style="width:16px;height:16px"></i>
+                Nouveau modèle
+            </a>
+            <a href="{{ route('cover-templates.create') }}" class="btn btn-secondary">
+                <i data-lucide="copy" style="width:16px;height:16px"></i>
+                Créer à partir d'un modèle existant
+            </a>
+            <a href="{{ route('cover-templates.from-example') }}" class="btn btn-secondary">
+                <i data-lucide="scan-text" style="width:16px;height:16px"></i>
+                Créer à partir d'un exemple
+            </a>
+        </div>
     </div>
 
     <div class="tabs" role="tablist">
@@ -55,9 +65,9 @@
                         </a>
                         <form method="POST" action="{{ route('cover-templates.duplicate', $tpl) }}">
                             @csrf
-                            <button type="submit" class="btn btn-ghost btn-sm">
+                            <button type="submit" class="btn btn-secondary btn-sm">
                                 <i data-lucide="copy" style="width:14px;height:14px"></i>
-                                Dupliquer
+                                Créer une copie
                             </button>
                         </form>
                         <form method="POST" action="{{ route('cover-templates.destroy', $tpl) }}"

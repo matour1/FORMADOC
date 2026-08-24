@@ -49,6 +49,13 @@ Route::get('/cover-templates/preview/{token}', [CoverPageTemplateController::cla
     ->name('cover-templates.preview.file');
 Route::post('/cover-templates/{coverTemplate}/duplicate', [CoverPageTemplateController::class, 'duplicate'])
     ->name('cover-templates.duplicate');
+// Création d'une page de garde à partir d'un exemple (détection de zones)
+Route::get('/cover-templates/from-example', [CoverPageTemplateController::class, 'fromExample'])
+    ->name('cover-templates.from-example');
+Route::post('/cover-templates/from-example', [CoverPageTemplateController::class, 'detectExample'])
+    ->name('cover-templates.detect-example');
+Route::post('/cover-templates/from-example/store', [CoverPageTemplateController::class, 'storeFromExample'])
+    ->name('cover-templates.store-from-example');
 Route::resource('cover-templates', CoverPageTemplateController::class)
     ->parameters(['cover-templates' => 'coverTemplate']);
 
