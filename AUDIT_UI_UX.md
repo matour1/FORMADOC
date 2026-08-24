@@ -242,11 +242,17 @@ Les faiblesses majeures se concentrent sur :
 - [x] Message générique erreur réseau dans l'upload
 
 ### Amélioration continue (P2)
-- [ ] Animations FAQ, menus déroulants accessibles
-- [ ] Aperçu de contenu .doc / icônes par type
-- [ ] Compteurs de statuts dans les filtres docs
-- [ ] Infinite scroll ou pagination mobile
-- [ ] `prefers-reduced-motion` couvrant chat + toasts
+- [x] Animations FAQ, menus déroulants accessibles
+- [x] Aperçu de contenu .doc / icônes par type
+- [x] Compteurs de statuts dans les filtres docs
+- [x] Infinite scroll ou pagination mobile (pagination wrappée sur mobile)
+- [x] `prefers-reduced-motion` couvrant chat + toasts (déjà global)
+- [x] Lien « Voir un exemple de résultat » ouvrant un DOCX téléchargeable (landing hero)
+- [x] Bouton téléchargement inline sur les docs `ready` du dashboard
+- [x] Gestion clavier du menu de modèle de chat (Escape, flèches, aria-expanded)
+- [x] Tabs auth : retrait `role="tablist"` (liens simples) + `aria-current="page"`
+- [x] Quick amounts : `aria-pressed` sur le bouton actif
+- [x] Page 404 minimal sans dépendance auth (layout-minimal)
 - [ ] Tests utilisateurs réels (5 étudiants, 5 pros)
 
 ---

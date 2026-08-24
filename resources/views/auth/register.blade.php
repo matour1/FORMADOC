@@ -8,9 +8,9 @@
 
         {{-- Panneau formulaire --}}
         <div class="auth-panel">
-            <div class="tabs" role="tablist" style="margin-bottom:1.1rem;">
-                <a class="tab" href="{{ route('login') }}" role="tab" aria-selected="false">Connexion</a>
-                <a class="tab active" href="{{ route('register') }}" role="tab" aria-selected="true">Inscription</a>
+            <div class="tabs" style="margin-bottom:1.1rem;">
+                <a class="tab" href="{{ route('login') }}">Connexion</a>
+                <a class="tab active" href="{{ route('register') }}" aria-current="page">Inscription</a>
             </div>
 
             <h2>Créer un compte</h2>

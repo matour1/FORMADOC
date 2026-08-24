@@ -1,9 +1,9 @@
-@extends('layouts.app')
+@extends('errors.layout-minimal')
 
 @section('title', 'Page introuvable — 404')
 
 @section('content')
-    <div class="max-w-3xl" style="margin:0 auto;padding:2.5rem 0">
+    <div class="max-w-3xl" style="margin:0 auto;padding:2.5rem 0;width:100%">
         @include('errors.partials.error-card', [
             'code' => '404',
             'title' => 'Page introuvable',
@@ -16,8 +16,8 @@
                 'Contactez le support si le problème persiste.',
             ],
             'actions' => [
-                ['label' => 'Retour au tableau de bord', 'url' => route('account.index'), 'primary' => true],
-                ['label' => 'Aller à l\'accueil', 'url' => url('/')],
+                ['label' => 'Aller à l\'accueil', 'url' => url('/'), 'primary' => true],
+                ['label' => 'Se connecter', 'url' => route('login')],
             ],
         ])
     </div>

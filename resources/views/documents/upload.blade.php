@@ -35,6 +35,7 @@
                 <div class="min-w-0 flex-1">
                     <p id="file-preview-name" class="fp-name"></p>
                     <p id="file-preview-meta" class="fp-meta"></p>
+                    <p id="file-preview-hint" class="fp-hint hidden"></p>
                     <div id="file-preview-content" class="fp-content hidden">
                         <span class="eyebrow" style="margin-bottom:.5rem">Aperçu du contenu</span>
                         <pre id="file-preview-text"></pre>
@@ -239,18 +240,21 @@
                 previewName.textContent = file.name;
                 previewMeta.textContent = formatSize(file.size) + ' · ' + (file.type || 'inconnu');
 
-                // Icône par type
-                if (file.name.toLowerCase().endsWith('.txt')) {
-                    previewIcon.innerHTML = '<i data-lucide="file-text"></i>';
-                } else if (file.name.toLowerCase().endsWith('.doc')) {
-                    previewIcon.innerHTML = '<i data-lucide="file-text"></i>';
-                } else {
-                    previewIcon.innerHTML = '<i data-lucide="file-text"></i>';
+                // Icône par type (P2 audit UI/UX : différencier visuellement)
+                const lower = file.name.toLowerCase();
+                let iconName = 'file-text';
+                if (lower.endsWith('.docx')) {
+                    iconName = 'file-text';      // Word récent
+                } else if (lower.endsWith('.doc')) {
+                    iconName = 'file-type';      // Word ancien
+                } else if (lower.endsWith('.txt')) {
+                    iconName = 'file-code-2';    // Texte brut
                 }
+                previewIcon.innerHTML = '<i data-lucide="' + iconName + '"></i>';
                 if (window.lucide) lucide.createIcons();
 
                 // Aperçu du contenu pour les .txt (petits fichiers uniquement)
-                if (file.name.toLowerCase().endsWith('.txt') && file.size < 100000) {
+                if (lower.endsWith('.txt') && file.size < 100000) {
                     const reader = new FileReader();
                     reader.onload = function (e) {
                         previewText.textContent = e.target.result.slice(0, 4000);
@@ -259,6 +263,20 @@
                     reader.readAsText(file);
                 } else {
                     previewContent.classList.add('hidden');
+                }
+
+                // Message d'aide selon le type (P2 audit UI/UX)
+                const hint = document.getElementById('file-preview-hint');
+                if (hint) {
+                    if (lower.endsWith('.txt') && file.size >= 100000) {
+                        hint.textContent = 'Aperçu disponible uniquement pour les fichiers .txt de moins de 100 Ko.';
+                        hint.classList.remove('hidden');
+                    } else if (lower.endsWith('.docx') || lower.endsWith('.doc')) {
+                        hint.textContent = 'Aperçu du contenu disponible uniquement pour les fichiers .txt.';
+                        hint.classList.remove('hidden');
+                    } else {
+                        hint.classList.add('hidden');
+                    }
                 }
 
                 preview.classList.remove('hidden');

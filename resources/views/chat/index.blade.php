@@ -254,15 +254,46 @@
         const modelSelect = document.getElementById('chatModelSelect');
         const modelMenu = document.getElementById('chatModelMenu');
         if (modelSelect && modelMenu) {
+            const closeModelMenu = () => {
+                modelMenu.classList.remove('open');
+                modelSelect.setAttribute('aria-expanded', 'false');
+            };
+            const openModelMenu = () => {
+                modelMenu.classList.add('open');
+                modelSelect.setAttribute('aria-expanded', 'true');
+            };
             modelSelect.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const open = modelMenu.classList.toggle('open');
                 modelSelect.setAttribute('aria-expanded', open ? 'true' : 'false');
             });
             document.addEventListener('click', (e) => {
-                if (!modelMenu.contains(e.target)) {
-                    modelMenu.classList.remove('open');
-                    modelSelect.setAttribute('aria-expanded', 'false');
+                if (!modelMenu.contains(e.target)) closeModelMenu();
+            });
+            // Clavier (P2 audit UI/UX) : Échap ferme, flèches parcourent, Entrée/Space choisit
+            modelSelect.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openModelMenu();
+                    const items = [...modelMenu.querySelectorAll('.model-menu-item')];
+                    const activeIdx = items.findIndex(i => i.classList.contains('active'));
+                    const nextIdx = e.key === 'ArrowDown' ? Math.min(activeIdx + 1, items.length - 1)
+                        : (e.key === 'ArrowUp' ? Math.max(activeIdx - 1, 0) : activeIdx);
+                    items.forEach(i => i.setAttribute('tabindex', '-1'));
+                    items[nextIdx]?.setAttribute('tabindex', '0');
+                    items[nextIdx]?.focus();
+                }
+            });
+            modelMenu.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') { e.preventDefault(); closeModelMenu(); modelSelect.focus(); return; }
+                const items = [...modelMenu.querySelectorAll('.model-menu-item')];
+                const idx = items.findIndex(i => i.getAttribute('tabindex') === '0');
+                if (e.key === 'ArrowDown') { e.preventDefault(); const n = (idx + 1) % items.length; items.forEach(i => i.setAttribute('tabindex', '-1')); items[n].setAttribute('tabindex', '0'); items[n].focus(); }
+                if (e.key === 'ArrowUp') { e.preventDefault(); const n = (idx - 1 + items.length) % items.length; items.forEach(i => i.setAttribute('tabindex', '-1')); items[n].setAttribute('tabindex', '0'); items[n].focus(); }
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    const item = items[idx];
+                    if (item) item.click();
                 }
             });
             modelMenu.querySelectorAll('.model-menu-item').forEach(item => {
@@ -273,8 +304,7 @@
                     if (label) {
                         document.getElementById('chatModelLabel').textContent = label.childNodes[0].textContent.trim();
                     }
-                    modelMenu.classList.remove('open');
-                    modelSelect.setAttribute('aria-expanded', 'false');
+                    closeModelMenu();
                 });
             });
         }

@@ -8,8 +8,8 @@
 
         {{-- Panneau formulaire --}}
         <div class="auth-panel">
-            <div class="tabs" role="tablist" style="margin-bottom:1.1rem;">
-                <a class="tab active" href="{{ route('password.request') }}" role="tab" aria-selected="true">Mot de passe oublié</a>
+            <div class="tabs" style="margin-bottom:1.1rem;">
+                <a class="tab active" href="{{ route('password.request') }}" aria-current="page">Mot de passe oublié</a>
             </div>
 
             <h2>Réinitialiser votre mot de passe</h2>

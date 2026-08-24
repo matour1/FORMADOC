@@ -8,8 +8,8 @@
 
         {{-- Panneau formulaire --}}
         <div class="auth-panel">
-            <div class="tabs" role="tablist" style="margin-bottom:1.1rem;">
-                <a class="tab active" href="{{ route('password.reset', $token) }}" role="tab" aria-selected="true">Nouveau mot de passe</a>
+            <div class="tabs" style="margin-bottom:1.1rem;">
+                <a class="tab active" href="{{ route('password.reset', $token) }}" aria-current="page">Nouveau mot de passe</a>
             </div>
 
             <h2>Choisissez un nouveau mot de passe</h2>

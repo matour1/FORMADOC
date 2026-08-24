@@ -78,6 +78,10 @@
                         <a class="btn btn-primary btn-lg" href="{{ auth()->check() ? route('documents.create') : route('register') }}">Commencer gratuitement</a>
                         <a class="btn btn-secondary btn-lg" href="#tarifs">Voir les tarifs</a>
                     </div>
+                    <a class="hero-example-link" href="{{ route('sample-document.download') }}">
+                        <i data-lucide="file-down" style="width:15px;height:15px"></i>
+                        Voir un exemple de résultat
+                    </a>
                     <div class="hero-proof">
                         <span class="proof-stamp">DOCX · DOC · TXT</span>
                         <span class="badge badge-success">5 documents gratuits/mois</span>

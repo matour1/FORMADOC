@@ -6,11 +6,16 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\LandingController;
+use App\Http\Controllers\SampleDocumentController;
 use App\Http\Controllers\StateController;
 use App\Http\Controllers\TemplateController;
 
 // Page d'accueil (landing page)
 Route::get('/', [LandingController::class, 'index']);
+
+// Document d'exemple téléchargeable (landing page — « Voir un exemple de résultat »)
+Route::get('/exemple-document.docx', [SampleDocumentController::class, 'download'])
+    ->name('sample-document.download');
 
 // Pages légales (publiques)
 Route::view('/mentions-legales', 'pages.mentions-legales')->name('pages.legal');

@@ -280,10 +280,10 @@
                     @error('amount')<p class="field-error">{{ $message }}</p>@enderror
                 </div>
                 <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.4rem;">
-                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="500">500</button>
-                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="1000">1 000</button>
-                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="2000">2 000</button>
-                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="5000">5 000</button>
+                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="500" aria-pressed="false">500</button>
+                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="1000" aria-pressed="true">1 000</button>
+                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="2000" aria-pressed="false">2 000</button>
+                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="5000" aria-pressed="false">5 000</button>
                 </div>
                 <div style="display:flex;gap:.6rem;margin-bottom:1.4rem;justify-content:center;font-size:.85rem;color:var(--color-text-secondary);flex-wrap:wrap;">
                     <span>Carte bancaire</span><span>·</span><span>KPay</span><span>·</span><span>Orange Money</span><span>·</span><span>MTN MoMo</span>
@@ -326,6 +326,9 @@
         showPurchaseBtn.addEventListener('click', () => openModalFn(purchaseModal));
         document.querySelectorAll('.quick-amount').forEach(btn => btn.addEventListener('click', function () {
             document.getElementById('creditAmount').value = this.dataset.amount;
+            // aria-pressed : un seul bouton actif (P2 audit UI/UX)
+            document.querySelectorAll('.quick-amount').forEach(b => b.setAttribute('aria-pressed', 'false'));
+            this.setAttribute('aria-pressed', 'true');
         }));
     }
 
