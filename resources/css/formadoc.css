@@ -828,6 +828,8 @@ a.flow-step:hover { background: var(--color-surface-2); color: var(--color-text)
 @keyframes loadingSlide {
     0% { transform: translateX(-100%); } 100% { transform: translateX(350%); }
 }
+/* Indicateur « toujours en cours » (écran de traitement) */
+.processing-pulse { animation: analysisPulse 1.6s ease-in-out infinite; }
 .analysis-log {
     background: var(--color-text); color: var(--color-surface);
     border-radius: var(--radius-sm); padding: 1rem 1.1rem;

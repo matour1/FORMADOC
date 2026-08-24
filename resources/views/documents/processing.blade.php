@@ -32,6 +32,13 @@
                     <div class="loading-fill"></div>
                 </div>
 
+                {{-- Temps écoulé + message « toujours en cours » --}}
+                <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:1.4rem;font-family:var(--font-mono);font-size:.78rem;color:var(--color-text-muted)">
+                    <span class="processing-pulse" style="width:8px;height:8px;border-radius:50%;background:var(--color-primary);display:inline-block" aria-hidden="true"></span>
+                    <span id="processing-elapsed" role="timer" aria-live="off">0s</span>
+                    <span>Toujours en cours…</span>
+                </div>
+
                 {{-- Journal de traitement (terminal) --}}
                 <div id="processing-log"
                      style="width:100%;background:var(--color-text);color:var(--color-surface);border-radius:var(--radius-sm);padding:1.2rem 1.3rem;font-family:var(--font-mono);font-size:.78rem;text-align:left;min-height:160px;line-height:1.7">
@@ -57,6 +64,7 @@
         (function () {
             const logEl = document.getElementById('processing-log');
             const hintEl = document.getElementById('processing-hint');
+            const elapsedEl = document.getElementById('processing-elapsed');
             const lines = [
                 'Analyse du document…',
                 'Détection de la structure : OK',
@@ -66,6 +74,15 @@
                 'Préparation du téléchargement…'
             ];
             const exportUrl = @json(route('documents.export', $document));
+
+            // Temps écoulé (mise à jour chaque seconde)
+            const start = Date.now();
+            const elapsedTimer = setInterval(() => {
+                if (elapsedEl) {
+                    const seconds = Math.floor((Date.now() - start) / 1000);
+                    elapsedEl.textContent = seconds + 's';
+                }
+            }, 1000);
 
             let index = 0;
             function appendLine() {
@@ -80,6 +97,7 @@
                     if (hintEl) {
                         hintEl.textContent = 'Traitement terminé. Redirection en cours…';
                     }
+                    clearInterval(elapsedTimer);
                     setTimeout(function () {
                         window.location.href = exportUrl;
                     }, 600);
