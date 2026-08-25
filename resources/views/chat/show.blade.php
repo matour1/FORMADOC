@@ -54,6 +54,7 @@
                 @csrf
                 <input type="hidden" name="message" value="{{ $pendingCost['message'] }}">
                 <input type="hidden" name="confirm_cost" value="1">
+                <input type="hidden" name="confirm_token" value="{{ $pendingCost['token'] ?? '' }}">
                 <button type="submit" class="btn btn-primary btn-sm">Confirmer et envoyer</button>
                 <a href="{{ route('chat.show', $chatSession) }}" class="btn btn-ghost btn-sm">Annuler</a>
             </form>

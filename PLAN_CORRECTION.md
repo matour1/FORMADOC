@@ -33,13 +33,13 @@
 | P2-3 | Honeypot feedback | `FeedbackController` | ✅ (déjà couvert par P1-1 : champ `website` + test `RateLimitingTest`) |
 | P2-4 | Purge fichiers temporaires (`preview-*`, `test_scripts`) | commande | ✅ (gen_*.docx orphelins purgés, scripts conservés) |
 | P2-5 | `InvoiceService::nextNumber` atomique (séquence dédiée) | `InvoiceService` | ✅ (table invoice_sequences + lockForUpdate + backfill) |
-| P2-6 | Idempotence gate `confirm_cost` (token) | `ChatController` | ⬜ |
+| P2-6 | Idempotence gate `confirm_cost` (token) | `ChatController` | ✅ (token one-time + hash du message + tests) |
 | P2-7 | Harmoniser `cost_infrastructure` (défaut code 0.25 vs config 0.15) | `OpenRouterService` | ⬜ |
 | P2-8 | Créer un test Feature de sécurité : 403 si cross-user, auth requise | `tests/Feature/` | ⬜ |
 
 ## 🧪 Validation finale (avant commit)
 
-- [x] `php artisan test` — **350 tests / 1309 assertions verts** (347 + 3 nouveaux P2-5 : numérotation atomique) 
+- [x] `php artisan test` — **354 tests / 1353 assertions verts** (350 + 4 nouveaux P2-6 : gate idempotence confirm_cost)
 - [x] Vérifier qu'un document d'un autre utilisateur renvoie 404 (tests `DocumentOwnershipSecurityTest` : 4/4)
 - [x] Vérifier que le webhook KPay ne double jamais le crédit (tests `KPayWebhookIdempotenceTest` : 4/4)
 - [x] Vérifier la suppression complète du compte (fichiers inclus) — `AccountDeletionPurgeTest` : 1/1
@@ -168,6 +168,16 @@
   - Backfill : ligne de l'année courante initialisée au max des suffixes existants (jamais de réutilisation de numéro émis)
 - Tests : `InvoiceServiceTest` (3 nouveaux) — deux appels sans création donnent des numéros distincts, séquence continue après factures existantes (backfill à 42 → 43), séparation par année (2025 et 2026 repartent de 1)
 - ⚠️ Test existant adapté : `test_next_number_sequence_croissante` créait la facture via `Invoice::factory()` (hors séquence) → le `count()+1` donnait 000002 mais la séquence restait à 0. Désormais il passe par `createForCreditPurchase()` (flux réel).
+
+### P2-6 — Idempotence gate `confirm_cost` (token one-time) (implémenté)
+- **Gap** : un POST direct `message + confirm_cost=1` (sans passer par l'estimation) exécutait le message ; un double-clic ou un rechargement du banner de confirmation ré-envoyait le même message 2 fois → double débit + messages dupliqués ; le message était stocké en clair dans le champ caché de la vue.
+- Correctif :
+  - `ChatController::send()` étape 3 : à la première soumission (estimation, sans `confirm_cost`), un token `Str::random(32)` est généré et inclus dans le flash `pending_cost`
+  - Étape confirmation : le POST doit fournir `confirm_token` EXACTEMENT égal au token en session (`hash_equals`, constant-time) ET le message confirmé doit être celui estimé (même logique `hash_equals` sur le message) → sinon `back()` avec « Confirmation expirée ou invalide », AUCUN message créé, AUCUN débit
+  - Le token est à usage unique : `session()->forget('pending_cost')` dès la confirmation consommée → un double-clic / rechargement / rejeu du même token est rejeté (pas de double débit, pas de doublon)
+  - `chat/show.blade.php` : champ caché `confirm_token` ajouté au formulaire de confirmation
+- Tests : `ChatConfirmationTokenTest` (4 tests) — confirmation sans token refusée (aucun message), mauvais token refusé (solde intact), token à usage unique (double POST → 1 seul message, 1 seul débit), message différent avec le bon token refusé
+- ⚠️ Tests adaptés : `ChatAttachmentsTest` (5 POSTs) passent désormais par le flux complet via le helper `confirmChat()` (estimation → lecture du token en session → confirmation)
 
 ### P1-5 — Session mismatch chat (403 explicite)
 - `ChatController::send()` : si une session est fournie dans l'URL mais `user_id !== auth()->id()` → `abort(403)`

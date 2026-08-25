@@ -276,7 +276,7 @@ class ChatController extends Controller
             return back()->with('error', 'Crédits insuffisants ('.$estimatedCredits.' requis pour ce message). Ajoutez des crédits depuis votre compte.');
         }
 
-        // --- 3. Confirmation du coût AVANT exécution (exigence A) ---
+        // --- 3. Confirmation du coût AVANT exécution (exigence A) + idempotence (P2-6) ---
         // La première soumission affiche le coût estimé ; l'utilisateur
         // confirme explicitement (confirm_cost=1) pour déclencher l'envoi.
         if (! $request->boolean('confirm_cost')) {
@@ -284,11 +284,35 @@ class ChatController extends Controller
                 'message' => $messageContent,
                 'credits' => $estimatedCredits,
                 'plan' => $plan,
+                // P2-6 : token d'idempotence — la confirmation doit présenter
+                // CE token pour exécuter le message. Un double-clic, un
+                // rechargement ou un POST forgé ne peut pas ré-exécuter le
+                // même envoi (le flash est consommé au premier usage).
+                'token' => Str::random(32),
             ]);
 
             return back()->with('info', 'Coût estimé pour ce message : '.$estimatedCredits
                 .' crédit(s) (plan '.$plan.'). Confirmez pour envoyer.');
         }
+
+        // P2-6 : gate d'idempotence — la confirmation doit être accompagnée du
+        // token généré à l'étape d'estimation, et le message confirmé doit être
+        // celui qui a été estimé. Sans cela, on refuse (le flux légitime passe
+        // par l'estimation d'abord).
+        $pendingCost = session('pending_cost');
+        $expectedToken = is_array($pendingCost) ? ($pendingCost['token'] ?? null) : null;
+        $submittedToken = (string) $request->input('confirm_token', '');
+        $matchesMessage = is_array($pendingCost)
+            && isset($pendingCost['message'])
+            && hash_equals((string) $pendingCost['message'], $messageContent);
+
+        if (! is_string($expectedToken) || $expectedToken === '' || ! hash_equals($expectedToken, $submittedToken) || ! $matchesMessage) {
+            return back()->with('error', 'Confirmation expirée ou invalide. Merci de relancer le message.');
+        }
+
+        // Le token est à usage unique : on le consomme maintenant pour qu'un
+        // second envoi (double-clic, rechargement) soit rejeté.
+        session()->forget('pending_cost');
 
         // --- 4. Quota IA mensuel (1 message IA = 1 unité) ---
         // Les abonnés payants consomment leur quota inclus ; les utilisateurs

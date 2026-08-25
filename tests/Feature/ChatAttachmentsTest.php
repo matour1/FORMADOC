@@ -51,6 +51,29 @@ class ChatAttachmentsTest extends TestCase
         });
     }
 
+    /**
+     * P2-6 : flux légitime = estimation (1er POST, pas de confirm_cost) puis
+     * confirmation avec le token d'idempotence reçu. Sans ce préambule, le
+     * POST confirm_cost=1 seul est rejeté (gate d'idempotence).
+     */
+    private function confirmChat(ChatSession $session, array $payload): \Illuminate\Testing\TestResponse
+    {
+        $this->actingAs($session->user)
+            ->post(route('chat.send', $session), [
+                'message' => $payload['message'],
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('info');
+
+        $pendingCost = session('pending_cost');
+        $token = is_array($pendingCost) ? ($pendingCost['token'] ?? null) : null;
+        $this->assertIsString($token, 'Un token d\'idempotence doit être généré à l\'estimation.');
+        $this->assertNotEmpty($token);
+
+        return $this->actingAs($session->user)
+            ->post(route('chat.send', $session), array_merge($payload, ['confirm_token' => $token]));
+    }
+
     public function test_une_piece_jointe_txt_est_stockee_et_passee_en_contexte(): void
     {
         Storage::fake('local');
@@ -64,13 +87,11 @@ class ChatAttachmentsTest extends TestCase
 
         $attachment = UploadedFile::fake()->createWithContent('notes.txt', 'Contenu du fichier joint.');
 
-        $this->actingAs($user)
-            ->post(route('chat.send', $session), [
-                'message' => 'Analyse ce fichier',
-                'confirm_cost' => '1',
-                'attachments' => [$attachment],
-            ])
-            ->assertRedirect(route('chat.show', $session));
+        $this->confirmChat($session, [
+            'message' => 'Analyse ce fichier',
+            'confirm_cost' => '1',
+            'attachments' => [$attachment],
+        ])->assertRedirect(route('chat.show', $session));
 
         // Le fichier est stocké sur le disque privé (nom UUID, chemin tracé)
         $userMessage = ChatMessage::where('chat_session_id', $session->id)->where('role', 'user')->first();
@@ -114,12 +135,11 @@ class ChatAttachmentsTest extends TestCase
 
         $bad = UploadedFile::fake()->createWithContent('virus.php', '<?php evil();');
 
-        $this->actingAs($user)
-            ->post(route('chat.send', $session), [
-                'message' => 'Fichier dangereux',
-                'confirm_cost' => '1',
-                'attachments' => [$bad],
-            ])
+        $this->confirmChat($session, [
+            'message' => 'Fichier dangereux',
+            'confirm_cost' => '1',
+            'attachments' => [$bad],
+        ])
             ->assertRedirect()
             ->assertSessionHas('error', fn (string $value) => str_contains($value, 'extension .php non autorisée'));
 
@@ -142,12 +162,11 @@ class ChatAttachmentsTest extends TestCase
         // 6 Mo > 5 Mo max
         $big = UploadedFile::fake()->create('gros.pdf', 6 * 1024);
 
-        $this->actingAs($user)
-            ->post(route('chat.send', $session), [
-                'message' => 'Fichier trop gros',
-                'confirm_cost' => '1',
-                'attachments' => [$big],
-            ])
+        $this->confirmChat($session, [
+            'message' => 'Fichier trop gros',
+            'confirm_cost' => '1',
+            'attachments' => [$big],
+        ])
             ->assertRedirect()
             ->assertSessionHas('error', fn (string $value) => str_contains($value, 'dépasse la limite de 5120 Ko'));
 
@@ -167,12 +186,11 @@ class ChatAttachmentsTest extends TestCase
 
         $attachment = UploadedFile::fake()->createWithContent('notes.txt', 'Contenu du fichier joint.');
 
-        $this->actingAs($user)
-            ->post(route('chat.send', $session), [
-                'message' => 'Analyse ce fichier',
-                'confirm_cost' => '1',
-                'attachments' => [$attachment],
-            ]);
+        $this->confirmChat($session, [
+            'message' => 'Analyse ce fichier',
+            'confirm_cost' => '1',
+            'attachments' => [$attachment],
+        ]);
 
         $userMessage = ChatMessage::where('chat_session_id', $session->id)->where('role', 'user')->first();
         $path = $userMessage->metadata['attachments'][0]['path'];
@@ -197,12 +215,11 @@ class ChatAttachmentsTest extends TestCase
 
         $attachment = UploadedFile::fake()->createWithContent('notes.txt', 'Contenu du fichier joint.');
 
-        $this->actingAs($owner)
-            ->post(route('chat.send', $session), [
-                'message' => 'Analyse ce fichier',
-                'confirm_cost' => '1',
-                'attachments' => [$attachment],
-            ]);
+        $this->confirmChat($session, [
+            'message' => 'Analyse ce fichier',
+            'confirm_cost' => '1',
+            'attachments' => [$attachment],
+        ]);
 
         $userMessage = ChatMessage::where('chat_session_id', $session->id)->where('role', 'user')->first();
         $path = $userMessage->metadata['attachments'][0]['path'];
