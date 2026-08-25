@@ -31,7 +31,7 @@
 | P2-1 | Quota consommé avant traitement (perdu si échec) | `DocumentController::upload` | ✅ (remboursement catch + nettoyage fichier/document) |
 | P2-2 | Statut `processing` document pendant `LongFormattingJob` | `LongFormattingJob` + Dashboard + vues | ✅ (processing → ready, retour detected sur échec) |
 | P2-3 | Honeypot feedback | `FeedbackController` | ✅ (déjà couvert par P1-1 : champ `website` + test `RateLimitingTest`) |
-| P2-4 | Purge fichiers temporaires (`preview-*`, `test_scripts`) | commande | ⬜ |
+| P2-4 | Purge fichiers temporaires (`preview-*`, `test_scripts`) | commande | ✅ (gen_*.docx orphelins purgés, scripts conservés) |
 | P2-5 | `InvoiceService::nextNumber` atomique (séquence dédiée) | `InvoiceService` | ⬜ |
 | P2-6 | Idempotence gate `confirm_cost` (token) | `ChatController` | ⬜ |
 | P2-7 | Harmoniser `cost_infrastructure` (défaut code 0.25 vs config 0.15) | `OpenRouterService` | ⬜ |
@@ -39,7 +39,7 @@
 
 ## 🧪 Validation finale (avant commit)
 
-- [x] `php artisan test` — **346 tests / 1297 assertions verts** (341 + 5 nouveaux P2-2 : statut processing pendant LongFormattingJob) 
+- [x] `php artisan test` — **347 tests / 1302 assertions verts** (346 + 1 nouveau P2-4 : purge gen_*.docx orphelins) 
 - [x] Vérifier qu'un document d'un autre utilisateur renvoie 404 (tests `DocumentOwnershipSecurityTest` : 4/4)
 - [x] Vérifier que le webhook KPay ne double jamais le crédit (tests `KPayWebhookIdempotenceTest` : 4/4)
 - [x] Vérifier la suppression complète du compte (fichiers inclus) — `AccountDeletionPurgeTest` : 1/1
@@ -151,6 +151,14 @@
 - **Vérification** : le champ invisible `website` est déjà implémenté dans `FeedbackController::store()` (rempli → feedback ignoré silencieusement avec réponse « merci » + log `Feedback honeypot triggered`).
 - Test déjà présent : `RateLimitingTest::test_le_honeypot_feedback_ignore_le_robot` (feedback non stocké).
 - Conclusion : P2-3 est un doublon de P1-1 → marqué ✅ sans modification.
+
+### P2-4 — Purge fichiers temporaires `preview-*` + `test_scripts` (implémenté)
+- **Gap** : la commande `files:purge-temp` (P1-6) purgeait les previews cover et les pièces jointes orphelines, mais PAS les DOCX reconstruits `storage/test_scripts/gen_*.docx` (générés à la volée par `DocumentController::generateOutputPath()`). Ces fichiers s'accumulaient quand l'export n'était jamais téléchargé (111 orphelins constatés en prod locale).
+- Correctif :
+  - `PurgeTempFiles::handle()` : nouvelle passe sur `storage/test_scripts/gen_*.docx` — purge si plus vieux que le TTL (défaut 24 h, option `--ttl-hours`)
+  - Les scripts utilitaires (`.php`, `reports/`) sont CONSERVÉS : ils sont versionnés et utilisés par les tests unitaires DocAnalyzer (fixture `rapport_test_structure.docx`)
+- Tests : `ChatSessionPurgeTest::test_files_purge_temp_supprime_les_docx_generes_orphelins_et_conserve_les_scripts` (1 test) — gen_*.docx expiré purgé, récent conservé, scripts `.php` + fixtures `reports/` conservés
+- ⚠️ Leçon : le test écrase la fixture versionnée `reports/rapport_test_structure.docx` au premier jet → tests unitaires DocAnalyzer en échec (archive corrompue). Corrigé : fixture isolée `fixture_purge_tmp.docx` + restauration `git checkout` des fichiers versionnés.
 
 ### P1-5 — Session mismatch chat (403 explicite)
 - `ChatController::send()` : si une session est fournie dans l'URL mais `user_id !== auth()->id()` → `abort(403)`

@@ -141,6 +141,41 @@ class ChatSessionPurgeTest extends TestCase
         $this->assertFalse(Storage::disk('local')->exists('chat/attachments/'.$deleted->id), 'Dossier orphelin doit être supprimé.');
     }
 
+    public function test_files_purge_temp_supprime_les_docx_generes_orphelins_et_conserve_les_scripts(): void
+    {
+        // P2-4 : les gen_*.docx de storage/test_scripts s'accumulent quand
+        // l'export n'est jamais téléchargé → purge TTL, mais les scripts
+        // utilitaires (.php, reports/) sont conservés (utilisés par les
+        // tests unitaires DocAnalyzer).
+        $oldGen = storage_path('test_scripts/gen_999_20260101_120000.docx');
+        $recentGen = storage_path('test_scripts/gen_998_20260101_120000.docx');
+        $script = storage_path('test_scripts/generate_test_report.php');
+        $reportsDir = storage_path('test_scripts/reports');
+
+        File::put($oldGen, 'docx orphelin');
+        File::put($recentGen, 'docx récent');
+        File::put($script, '<?php // utilitaire');
+        // Fixture isolée : ne PAS écraser reports/rapport_test_structure.docx
+        // (versionné, utilisé par les tests unitaires DocAnalyzer).
+        $fixture = $reportsDir.'/fixture_purge_tmp.docx';
+        File::put($fixture, 'fixture');
+
+        touch($oldGen, now()->subHours(30)->getTimestamp());
+        touch($recentGen, now()->subHours(2)->getTimestamp());
+
+        $this->artisan('files:purge-temp')->assertSuccessful();
+
+        $this->assertFileDoesNotExist($oldGen, 'gen_*.docx expiré (> TTL) doit être purgé.');
+        $this->assertFileExists($recentGen, 'gen_*.docx récent (< TTL) doit être conservé.');
+        $this->assertFileExists($script, 'Script utilitaire .php doit être conservé.');
+        $this->assertFileExists($fixture, 'Fixture reports/ doit être conservée.');
+
+        // Nettoyage des fichiers temporaires créés par ce test (jamais les
+        // fichiers versionnés : generate_test_report.php, reports/).
+        File::delete($fixture);
+        File::delete($recentGen);
+    }
+
     public function test_files_purge_temp_respecte_ttl_personnalise(): void
     {
         $preview = storage_path('app/preview-custom-'.str_repeat('c', 10).'.docx');
