@@ -149,7 +149,9 @@ class ChatSessionPurgeTest extends TestCase
         // tests unitaires DocAnalyzer).
         $oldGen = storage_path('test_scripts/gen_999_20260101_120000.docx');
         $recentGen = storage_path('test_scripts/gen_998_20260101_120000.docx');
-        $script = storage_path('test_scripts/generate_test_report.php');
+        // Script isolé (ne JAMAIS toucher au fichier versionné
+        // generate_test_report.php utilisé par les tests DocAnalyzer).
+        $script = storage_path('test_scripts/purge_tmp_script.php');
         $reportsDir = storage_path('test_scripts/reports');
 
         File::put($oldGen, 'docx orphelin');
@@ -173,6 +175,7 @@ class ChatSessionPurgeTest extends TestCase
         // Nettoyage des fichiers temporaires créés par ce test (jamais les
         // fichiers versionnés : generate_test_report.php, reports/).
         File::delete($fixture);
+        File::delete($script);
         File::delete($recentGen);
     }
 
