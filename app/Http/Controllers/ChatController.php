@@ -103,13 +103,53 @@ class ChatController extends Controller
 
     /**
      * Supprime une session de chat (avec ses messages).
+     *
+     * P1-6 : suppression cascade RGPD — purge aussi les fichiers de la
+     * session avant suppression des messages : pièces jointes
+     * (chat/attachments/{sessionId}/**) et fichiers générés/claude-skills
+     * tracés dans metadata.generated_files des messages assistant.
      */
     public function destroy(Request $request, ChatSession $chatSession): RedirectResponse
     {
         abort_unless($chatSession->user_id === $request->user()->id, 403);
 
+        $chatStorage = \Illuminate\Support\Facades\Storage::disk('local');
+
+        // Fichiers générés / claude-skills tracés dans les messages (P1-6)
+        $generatedPaths = [];
+        foreach ($chatSession->messages as $message) {
+            $files = $message->metadata['generated_files'] ?? null;
+            if (is_array($files)) {
+                foreach ($files as $path) {
+                    if (is_string($path) && $path !== '') {
+                        $generatedPaths[] = $path;
+                    }
+                }
+            }
+        }
+
+        // Purge récursive des pièces jointes de la session (P1-6)
+        try {
+            if ($chatStorage->exists('chat/attachments/'.$chatSession->id)) {
+                $chatStorage->deleteDirectory('chat/attachments/'.$chatSession->id);
+            }
+        } catch (\Throwable) {
+            // Best-effort
+        }
+
         $chatSession->messages()->delete();
         $chatSession->delete();
+
+        // Suppression physique des fichiers générés (best-effort)
+        foreach (array_unique($generatedPaths) as $path) {
+            try {
+                if ($chatStorage->exists($path)) {
+                    $chatStorage->delete($path);
+                }
+            } catch (\Throwable) {
+                // Fichier déjà absent ou erreur de stockage — on continue
+            }
+        }
 
         return redirect()->route('chat.index')
             ->with('success', 'Conversation supprimée.');

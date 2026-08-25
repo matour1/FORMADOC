@@ -137,9 +137,12 @@ class AccountController extends Controller
         // Nettoyage manuel des documents (pas de FK user_id sur documents)
         $documents = $user->documents ?? collect();
 
-        // --- Purge des fichiers générés par le chat (P0-3) ---
-        // Les chemins sont tracés dans metadata.generated_files des messages
-        // assistant ; on les collecte AVANT de supprimer les messages.
+        // --- Purge des fichiers générés par le chat (P0-3 + P1-6) ---
+        // Les chemins sont tracés dans metadata.generated_files (messages
+        // assistant) et metadata.attachments (messages user) ; on les
+        // collecte AVANT de supprimer les messages. En complément, on purge
+        // récursivement le dossier chat/attachments/{sessionId} (P1-6 :
+        // suppression cascade RGPD) pour couvrir les fichiers non tracés.
         $chatStorage = \Illuminate\Support\Facades\Storage::disk('local');
         $generatedPaths = [];
 
@@ -153,14 +156,34 @@ class AccountController extends Controller
                         }
                     }
                 }
+
+                $attachments = $message->metadata['attachments'] ?? null;
+                if (is_array($attachments)) {
+                    foreach ($attachments as $attachment) {
+                        $path = $attachment['path'] ?? null;
+                        if (is_string($path) && $path !== '') {
+                            $generatedPaths[] = $path;
+                        }
+                    }
+                }
             }
+
+            // Purge récursive des pièces jointes de la session (P1-6).
+            try {
+                if ($chatStorage->exists('chat/attachments/'.$session->id)) {
+                    $chatStorage->deleteDirectory('chat/attachments/'.$session->id);
+                }
+            } catch (\Throwable) {
+                // Best-effort
+            }
+
             $session->messages()->delete();
             $session->delete();
         }
 
-        // Suppression physique des fichiers générés (best-effort, une fois
-        // seulement par chemin — le même fichier peut être référencé par
-        // plusieurs messages/sessions).
+        // Suppression physique des fichiers générés et pièces jointes tracés
+        // (best-effort, une fois seulement par chemin — le même fichier peut
+        // être référencé par plusieurs messages/sessions).
         foreach (array_unique($generatedPaths) as $path) {
             try {
                 if ($chatStorage->exists($path)) {

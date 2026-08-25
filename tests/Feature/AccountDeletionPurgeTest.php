@@ -75,6 +75,16 @@ class AccountDeletionPurgeTest extends TestCase
             'metadata' => ['generated_files' => [$chatPath]],
         ]);
 
+        // --- Pièces jointes de chat (P1-6, disk 'local') ---
+        $attachmentPath = 'chat/attachments/'.$session->id.'/'.$user->id.'-note.txt';
+        Storage::disk('local')->put($attachmentPath, 'contenu pièce jointe');
+        ChatMessage::create([
+            'chat_session_id' => $session->id,
+            'role' => 'user',
+            'content' => 'Voici ma pièce jointe',
+            'metadata' => ['attachments' => [['name' => 'note.txt', 'path' => $attachmentPath]]],
+        ]);
+
         // --- Données SaaS ---
         $plan = \App\Models\Plan::factory()->create();
         CreditTransaction::create([
@@ -120,6 +130,7 @@ class AccountDeletionPurgeTest extends TestCase
         // --- Assertions : fichiers physiques supprimés ---
         $this->assertFalse(Storage::disk('storage')->exists($document->path), 'Fichier document uploadé doit être supprimé (disk storage).');
         $this->assertFalse(Storage::disk('local')->exists($chatPath), 'Fichier chat généré doit être supprimé (disk local).');
+        $this->assertFalse(Storage::disk('local')->exists($attachmentPath), 'Pièce jointe chat doit être supprimée (P1-6, disk local).');
         $this->assertFileDoesNotExist(storage_path('test_scripts/gen_'.$document->id.'.docx'), 'DOCX généré doit être supprimé.');
 
         // --- Assertions : base purgée ---

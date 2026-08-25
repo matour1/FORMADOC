@@ -22,3 +22,9 @@ Schedule::command('subscriptions:remind-renewal')
 Schedule::command('kpay:sync')
     ->everyFiveMinutes()
     ->withoutOverlapping();
+
+// RGPD P1-6 — Purge des fichiers temporaires (previews cover expirées,
+// pièces jointes de sessions chat supprimées) — cron quotidien
+Schedule::command('files:purge-temp')
+    ->dailyAt('02:30')
+    ->withoutOverlapping();

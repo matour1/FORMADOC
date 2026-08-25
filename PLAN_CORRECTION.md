@@ -22,7 +22,7 @@
 | P1-3 | Durcir `CoverPageTemplateController::previewFile` (token signé, retirer `X-Preview-Path`) | `CoverPageTemplateController` | ✅ (URL signée + expirable, préfixe `preview-`, header supprimé) |
 | P1-4 | Attachments chat : implémenter ou retirer l'UI | `ChatController`, `chat/show.blade.php` | ✅ (implémentés : upload privé, extraction txt/md/docx, contexte IA, téléchargement sécurisé) |
 | P1-5 | Session mismatch : 403 explicite au lieu d'une création silencieuse | `ChatController::send()` | ✅ |
-| P1-6 | RGPD : purge TTL sessions/files + suppression cascade | commande + `AccountController` | ⬜ |
+| P1-6 | RGPD : purge TTL sessions/files + suppression cascade | commande + `AccountController` | ✅ (cascade attachments + commande `files:purge-temp` cron quotidien) |
 
 ## 🟡 P2 — Prochain sprint
 
@@ -39,7 +39,7 @@
 
 ## 🧪 Validation finale (avant commit)
 
-- [x] `php artisan test` — **333 tests / 1246 assertions verts** (327 + 6 nouveaux P1-4 : pièces jointes chat)
+- [x] `php artisan test` — **338 tests / 1271 assertions verts** (333 + 5 nouveaux P1-6 : purge TTL + suppression cascade) 
 - [x] Vérifier qu'un document d'un autre utilisateur renvoie 404 (tests `DocumentOwnershipSecurityTest` : 4/4)
 - [x] Vérifier que le webhook KPay ne double jamais le crédit (tests `KPayWebhookIdempotenceTest` : 4/4)
 - [x] Vérifier la suppression complète du compte (fichiers inclus) — `AccountDeletionPurgeTest` : 1/1
@@ -121,8 +121,15 @@
   - UI `chat/show.blade.php` : affichage des pièces jointes avec lien de téléchargement sécurisé sous le message
 - Tests : `ChatAttachmentsTest` (6 tests) — stockage + contexte, extension interdite, taille max, téléchargement propriétaire, refus intrus, traversée refusée
 
-### P1-6 — à venir
-- RGPD — purge TTL sessions/files + suppression cascade
+### P1-6 — RGPD : purge TTL + suppression cascade (implémenté)
+- **Gap RGPD** : les pièces jointes `chat/attachments/*` (ajoutées en P1-4) n'étaient supprimées ni à la suppression d'une session de chat, ni à la suppression du compte ; les previews de couverture (`storage/app/preview-*.docx`) restaient sur le disque si l'URL signée (15 min) expirait sans téléchargement ; des pièces jointes orphelines pouvaient subsister après une purge interrompue.
+- Correctif — suppression cascade :
+  - `ChatController::destroy()` : purge récursive `chat/attachments/{sessionId}/**` (fichiers tracés ET non tracés) + fichiers `chat/generated/**`/`claude-skills/**` tracés dans `metadata.generated_files`, AVANT suppression des messages (P1-6)
+  - `AccountController::destroy()` : collecte des chemins `metadata.attachments` (en plus de `metadata.generated_files`) et purge récursive `chat/attachments/{sessionId}/**` pour chaque session, avant suppression des messages
+- Correctif — purge TTL :
+  - Nouvelle commande `files:purge-temp` (`app/Console/Commands/PurgeTempFiles.php`) : supprime les previews `storage/app/preview-*.docx` plus vieux que le TTL (défaut 24 h, option `--ttl-hours`) et les dossiers `chat/attachments/{sessionId}` dont la session n'existe plus (orphelins)
+  - Planifiée dans `routes/console.php` : quotidien à 02:30, `withoutOverlapping`
+- Tests : `ChatSessionPurgeTest` (5 tests) — suppression de session purge pièces jointes + fichiers générés, intrus 403 sans toucher aux fichiers, TTL previews (expiré supprimé / récent conservé / hors préfixe intact), purge des attachments de session supprimée, TTL personnalisé ; `AccountDeletionPurgeTest` étendu (pièce jointe supprimée à la suppression du compte)
 
 ### P1-5 — Session mismatch chat (403 explicite)
 - `ChatController::send()` : si une session est fournie dans l'URL mais `user_id !== auth()->id()` → `abort(403)`
