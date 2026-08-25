@@ -196,6 +196,12 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
 .avatar-nav { width: 44px; height: 44px; border-radius: 50%; background: var(--color-primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; cursor: pointer; }
 
 .page-container { padding: 2rem 2.25rem; flex: 1; max-width: 1320px; margin: 0 auto; width: 100%; }
+/* Pied de page de l'appli : plaqué en bas (flex-shrink:0, PAS de flex:1
+   comme .page-container qui le ferait remonter collé au contenu) */
+.app-footer {
+    flex-shrink: 0; width: 100%; max-width: 1320px; margin: 0 auto;
+    padding: 0 2.25rem 1.5rem;
+}
 .page { display: none; animation: fadeSlide .3s ease; }
 .page.active { display: block; }
 @keyframes fadeSlide { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
@@ -775,6 +781,7 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
     .navbar-search span.search-label { display: none; }
     .chat-layout { grid-template-columns: 1fr; height: auto; gap: 1rem; }
     .page-container { padding: 1.5rem 1rem; }
+    .app-footer { padding: 0 1rem 1.25rem; }
     .stat-grid { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 560px) {

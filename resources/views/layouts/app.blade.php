@@ -217,7 +217,7 @@
         </main>
 
         {{-- Pied de page --}}
-        <footer class="page-container" style="padding-top:0">
+        <footer class="app-footer">
             <div style="border-top:1px solid var(--color-border);padding-top:1.25rem;display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap">
                 <p class="mono" style="font-size:.72rem;color:var(--color-text-muted)">
                     © {{ date('Y') }} FORMADOC — Mise en forme automatique de rapports académiques
