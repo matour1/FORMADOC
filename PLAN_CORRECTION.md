@@ -30,7 +30,7 @@
 |---|---|---|---|
 | P2-1 | Quota consommé avant traitement (perdu si échec) | `DocumentController::upload` | ✅ (remboursement catch + nettoyage fichier/document) |
 | P2-2 | Statut `processing` document pendant `LongFormattingJob` | `LongFormattingJob` + Dashboard + vues | ✅ (processing → ready, retour detected sur échec) |
-| P2-3 | Honeypot feedback | `FeedbackController` | ⬜ |
+| P2-3 | Honeypot feedback | `FeedbackController` | ✅ (déjà couvert par P1-1 : champ `website` + test `RateLimitingTest`) |
 | P2-4 | Purge fichiers temporaires (`preview-*`, `test_scripts`) | commande | ⬜ |
 | P2-5 | `InvoiceService::nextNumber` atomique (séquence dédiée) | `InvoiceService` | ⬜ |
 | P2-6 | Idempotence gate `confirm_cost` (token) | `ChatController` | ⬜ |
@@ -146,6 +146,11 @@
   - `DashboardController::documents()` : filtre `processing` et compteur `$statusCounts['processing']` incluent désormais `processing` (dans les `whereIn`)
   - Vues : badge distinct « ⏳ IA en cours » pour `processing` dans `documents/index.blade.php` et `dashboard.blade.php` (reste dans la catégorie « En cours » mais visiblement en traitement)
 - Tests : `LongFormattingJobStatusTest` (5 tests) — job réussi → `ready` + ajustement coût réel, échec LLM → retour `detected` + remboursement, solde insuffisant → statut inchangé, filtre dashboard inclut `processing`, compteur dashboard inclut `processing`
+
+### P2-3 — Honeypot feedback (déjà couvert par P1-1 — aucun code nécessaire)
+- **Vérification** : le champ invisible `website` est déjà implémenté dans `FeedbackController::store()` (rempli → feedback ignoré silencieusement avec réponse « merci » + log `Feedback honeypot triggered`).
+- Test déjà présent : `RateLimitingTest::test_le_honeypot_feedback_ignore_le_robot` (feedback non stocké).
+- Conclusion : P2-3 est un doublon de P1-1 → marqué ✅ sans modification.
 
 ### P1-5 — Session mismatch chat (403 explicite)
 - `ChatController::send()` : si une session est fournie dans l'URL mais `user_id !== auth()->id()` → `abort(403)`
