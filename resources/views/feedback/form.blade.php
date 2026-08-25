@@ -21,6 +21,12 @@
             <form method="POST" action="{{ route('feedback.store') }}">
                 @csrf
 
+                {{-- Honeypot anti-spam (P2-3) : champ invisible, les robots le remplissent --}}
+                <div class="honeypot" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden" aria-hidden="true">
+                    <label for="website">Ne pas remplir ce champ</label>
+                    <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+                </div>
+
                 {{-- Note (étoiles) --}}
                 <div class="form-group">
                     <label style="display:block">Note</label>

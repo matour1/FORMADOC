@@ -11,18 +11,18 @@
 | P0-2 | **Idempotence webhook KPay atomique** (race condition check-then-insert → double crédit) | `KPayController`, `SyncKpayPayments`, `SubscriptionService`, `CreditService::creditIfNotProcessed()` | ✅ |
 | P0-3 | **Corriger `AccountController::destroy()`** : `Storage::delete` sans disk → fichiers jamais supprimés ; purge complète (documents, chat, skills, factures) | `AccountController` | ✅ |
 | P0-4 | **Route de téléchargement sécurisée** pour les fichiers générés chat (`chat/generated`, `claude-skills`) | `routes/saas.php`, `ChatController` (nouvelle méthode `downloadFile`) | ✅ |
-| P0-5 | **Confirmation + backup avant outils destructifs chat** (`document.reconstruct`), interdire `allow_any_template` venant du LLM | `ChatToolsService`, `ChatController` | 🔄 (allow_any_template ✅ ; confirmation reconstruct à évaluer) |
+| P0-5 | **Confirmation + backup avant outils destructifs chat** (`document.reconstruct`), interdire `allow_any_template` venant du LLM | `ChatToolsService`, `ChatController` | ✅ (allow_any_template ignoré ; reconstruct documenté : crée toujours un nouveau fichier — aucune confirmation bloquante nécessaire) |
 
 ## 🟠 P1 — Semaine suivante
 
-| # | Correctif | Fichiers |
-|---|---|---|
-| P1-1 | Throttles : `POST /chat`, login/register, purchase, feedback (honeypot) | `routes/saas.php`, `routes/auth.php`, `FeedbackController` |
-| P1-2 | Cumul de coût multi-tours OpenRouter (cost gap) + test unitaire | `OpenRouterService` |
-| P1-3 | Durcir `CoverPageTemplateController::previewFile` (token signé, retirer `X-Preview-Path`) | `CoverPageTemplateController` |
-| P1-4 | Attachments chat : implémenter ou retirer l'UI | `ChatController`, `chat/show.blade.php` |
-| P1-5 | Session mismatch : 403 explicite au lieu d'une création silencieuse | `ChatController::send()` |
-| P1-6 | RGPD : purge TTL sessions/files + suppression cascade | commande + `AccountController` |
+| # | Correctif | Fichiers | Statut |
+|---|---|---|---|
+| P1-1 | Throttles : `POST /chat`, login/register, purchase, feedback (honeypot) | `routes/saas.php`, `routes/auth.php`, `FeedbackController` | ✅ (limiters dans `AppServiceProvider`, honeypot feedback) |
+| P1-2 | Cumul de coût multi-tours OpenRouter (cost gap) + test unitaire | `OpenRouterService` | ⬜ |
+| P1-3 | Durcir `CoverPageTemplateController::previewFile` (token signé, retirer `X-Preview-Path`) | `CoverPageTemplateController` | ⬜ |
+| P1-4 | Attachments chat : implémenter ou retirer l'UI | `ChatController`, `chat/show.blade.php` | ⬜ |
+| P1-5 | Session mismatch : 403 explicite au lieu d'une création silencieuse | `ChatController::send()` | ✅ |
+| P1-6 | RGPD : purge TTL sessions/files + suppression cascade | commande + `AccountController` | ⬜ |
 
 ## 🟡 P2 — Prochain sprint
 
@@ -39,11 +39,13 @@
 
 ## 🧪 Validation finale (avant commit)
 
-- [x] `php artisan test` — 306 tests / 1121 assertions verts (291 baseline + 15 nouveaux P0)
+- [x] `php artisan test` — **317 tests / 1197 assertions verts** (306 baseline + 11 nouveaux P1 : 7 throttles + 4 session mismatch)
 - [x] Vérifier qu'un document d'un autre utilisateur renvoie 404 (tests `DocumentOwnershipSecurityTest` : 4/4)
 - [x] Vérifier que le webhook KPay ne double jamais le crédit (tests `KPayWebhookIdempotenceTest` : 4/4)
 - [x] Vérifier la suppression complète du compte (fichiers inclus) — `AccountDeletionPurgeTest` : 1/1
 - [x] Vérifier le téléchargement des fichiers générés chat (propriétaire uniquement) — `ChatFileDownloadSecurityTest` : 6/6
+- [x] Vérifier les throttles (login/register/chat/purchase/feedback) — `RateLimitingTest` : 7/7
+- [x] Vérifier le 403 sur session chat d'autrui — `ChatSessionMismatchTest` : 4/4
 
 ## 📝 Détails d'implémentation P0
 
@@ -71,6 +73,32 @@
 - `GET /chat/files/download?file=` : normalisation du chemin, rejet `..` / chemins absolus, préfixes autorisés (`chat/generated/`, `claude-skills/`), ownership via `metadata->generated_files` (ou fallback `content LIKE`) sur les sessions de l'utilisateur
 - Les fichiers générés sont tracés dans `metadata.generated_files` du message assistant (`ChatController::send()`)
 
-### P0-5 — Outils destructifs chat (partiel)
+### P0-5 — Outils destructifs chat
 - `allow_any_template` venant du LLM est désormais IGNORÉ : la requête force `is_public = true` (ou appartenance user) dans `ChatToolsService::generateCoverPage()`
-- ⏳ Confirmation avant `document.reconstruct` : analyse — l'outil crée un NOUVEAU fichier dans `chat/generated/` (risque modéré, rien n'est écrasé). Décision documentée : pas de confirmation bloquante nécessaire pour l'instant, à reconsidérer si l'outil évolue vers de l'écriture sur des fichiers existants.
+- Confirmation avant `document.reconstruct` : analyse — l'outil crée un NOUVEAU fichier dans `chat/generated/` (risque modéré, rien n'est écrasé). **Décision** : aucune confirmation bloquante nécessaire pour l'instant ; à reconsidérer si l'outil évolue vers de l'écriture sur des fichiers existants.
+
+## 📝 Détails d'implémentation P1
+
+### P1-1 — Throttles (bruteforce / spam / abus)
+- Limiters définis dans `AppServiceProvider::configureRateLimiters()` :
+  - `chat` : 20/min par `user_id` (ou IP si non connecté) — protège les appels IA payants
+  - `login` : 5/min par `email|IP` — les tentatives distributives (multi-comptes) restent limitées par IP
+  - `register` : 3/min par `email|IP`
+  - `purchase` : 5/min par `user_id` (ou IP) — anti-spam paiement
+  - `feedback` : 3/h par IP — anti-spam formulaire public
+  - `password_email` : 3/min par `email|IP` (appliqué à `password.email` et `password.update`)
+- Middlewares `throttle:` posés sur : `POST /chat` (`saas.php`), `login.attempt`, `register.attempt`, `password.email`, `password.update` (`auth.php`), `feedback.store` (`web.php`), `credits.purchase` (`saas.php`)
+- **Honeypot feedback** : champ invisible `website` ajouté au formulaire ; s'il est rempli → le feedback est ignoré silencieusement (log `Feedback honeypot triggered`)
+- Tests : `RateLimitingTest` (7 tests) — throttle login (5→6e), register (3→4e), feedback (3→4e), chat (20→21e), purchase (5→6e), honeypot (feedback non stocké), isolation par utilisateur
+
+### P1-2 à P1-6 — à venir
+- P1-2 : cumul de coût multi-tours OpenRouter (cost gap) + test unitaire
+- P1-3 : durcir `CoverPageTemplateController::previewFile` (token signé, retirer `X-Preview-Path`)
+- P1-4 : attachments chat — implémenter ou retirer l'UI
+- P1-6 : RGPD — purge TTL sessions/files + suppression cascade
+
+### P1-5 — Session mismatch chat (403 explicite)
+- `ChatController::send()` : si une session est fournie dans l'URL mais `user_id !== auth()->id()` → `abort(403)`
+- Vérification déplacée en ÉTAPE 0 (avant estimation du coût, solde, quota, débit) : aucune consommation de crédits/quota en cas de tentative d'accès croisé
+- Avant : création SILENCIEUSE d'une nouvelle session (l'utilisateur croyait écrire dans la sienne, et les tentatives d'accès croisé étaient masquées)
+- Tests : `ChatSessionMismatchTest` (4 tests) — 403 cross-user, aucune session créée pour l'intrus, aucun message écrit dans la session d'autrui, flux normal préservé (propriétaire + confirmation coût)

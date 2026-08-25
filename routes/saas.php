@@ -22,8 +22,10 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::post('/account/settings/preferences', [AccountController::class, 'updatePreferences'])->name('account.settings.preferences');
     Route::delete('/account', [AccountController::class, 'destroy'])->name('account.destroy');
 
-    // Achat de crédits
-    Route::post('/credits/purchase', [KPayController::class, 'initPurchase'])->name('credits.purchase');
+    // Achat de crédits (P1-1 : throttle anti-spam paiement)
+    Route::post('/credits/purchase', [KPayController::class, 'initPurchase'])
+        ->name('credits.purchase')
+        ->middleware('throttle:purchase');
     Route::get('/credits/return', [KPayController::class, 'return'])->name('kpay.return');
     Route::get('/credits/cancel', [KPayController::class, 'cancel'])->name('kpay.cancel');
 
@@ -37,10 +39,12 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::get('/invoices', [SubscriptionController::class, 'invoices'])->name('invoices.index');
     Route::get('/invoices/{invoice}/pdf', [SubscriptionController::class, 'downloadInvoice'])->name('invoices.download');
 
-    // Chat IA
+    // Chat IA (P1-1 : throttle 20/min contre le spam d'appels IA payants)
     Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');
     Route::get('/chat/{chatSession}', [ChatController::class, 'show'])->name('chat.show');
-    Route::post('/chat/{chatSession?}', [ChatController::class, 'send'])->name('chat.send');
+    Route::post('/chat/{chatSession?}', [ChatController::class, 'send'])
+        ->name('chat.send')
+        ->middleware('throttle:chat');
     Route::delete('/chat/{chatSession}', [ChatController::class, 'destroy'])->name('chat.destroy');
     // Téléchargement sécurisé des fichiers générés par le chat (P0-4)
     Route::get('/chat/files/download', [ChatController::class, 'downloadFile'])->name('chat.files.download');

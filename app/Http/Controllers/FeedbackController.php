@@ -23,6 +23,15 @@ class FeedbackController extends Controller
     public function store(Request $request)
     {
         try {
+            // Honeypot anti-spam (P1-1) : si le champ caché "website" est
+            // rempli, c'est un robot → on ignore silencieusement (200-like).
+            if (! empty($request->input('website'))) {
+                Log::info('Feedback honeypot triggered', ['ip' => $request->ip()]);
+
+                return redirect()->back()
+                    ->with('success', 'Merci pour votre avis ! Nous l\'avons bien reçu.');
+            }
+
             // Validation
             $validated = $request->validate([
                 'email' => 'required|email|max:255',

@@ -190,6 +190,13 @@ class ChatController extends Controller
         $user = $request->user();
         $messageContent = $validated['message'];
 
+        // --- 0. P1-5 : 403 explicite si la session URL appartient à un autre
+        // utilisateur. Vérifié AVANT toute estimation/consommation (quota,
+        // crédits) pour ne rien gaspiller en cas de tentative d'accès croisé.
+        if ($chatSession && $chatSession->user_id !== $user->id) {
+            abort(403, 'Cette conversation ne vous appartient pas.');
+        }
+
         // --- 1. Estimation du coût avant appel ---
         $plan = $user->currentPlanSlug();
         $estimate = $this->openRouter->estimateCost('chat_text', 200, 500, $plan);
@@ -227,7 +234,9 @@ class ChatController extends Controller
         }
 
         // --- 5. Session (création si nouvelle) ---
-        if (! $chatSession || $chatSession->user_id !== $user->id) {
+        // (Le mismatch est déjà bloqué en étape 0 : ici on crée seulement
+        // si aucune session n'est fournie.)
+        if (! $chatSession) {
             $chatSession = ChatSession::create([
                 'user_id' => $user->id,
                 'title' => Str::limit($messageContent, 60),

@@ -62,9 +62,12 @@ Route::middleware(['auth'])->group(function () {
     });
 });
 
-// Routes Feedback (collecte d'avis sans compte utilisateur)
+// Routes Feedback (collecte d'avis sans compte utilisateur).
+// P1-1 : throttle 3/h + honeypot anti-spam (P2-3).
 Route::get('/feedback', [FeedbackController::class, 'showForm'])->name('feedback.form');
-Route::post('/feedback', [FeedbackController::class, 'store'])->name('feedback.store');
+Route::post('/feedback', [FeedbackController::class, 'store'])
+    ->name('feedback.store')
+    ->middleware('throttle:feedback');
 
 // Routes modèles de page de garde (builder visuel)
 Route::post('/cover-templates/check', [CoverPageTemplateController::class, 'exists'])
