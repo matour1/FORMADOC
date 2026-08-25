@@ -94,6 +94,8 @@
                 </div>
                 @if ($doc->status === 'ready')
                     <span class="proof-stamp">✓ Terminé</span>
+                @elseif ($doc->status === 'processing')
+                    <span class="proof-stamp pending">⏳ IA en cours</span>
                 @elseif (in_array($doc->status, ['pending', 'detected', 'validated', 'generated']))
                     <span class="proof-stamp pending">⏳ En cours</span>
                 @else

@@ -29,17 +29,17 @@
 | # | Correctif | Fichiers | Statut |
 |---|---|---|---|
 | P2-1 | Quota consommé avant traitement (perdu si échec) | `DocumentController::upload` | ✅ (remboursement catch + nettoyage fichier/document) |
-| P2-2 | Statut `processing` document pendant `LongFormattingJob` | `LongFormattingJob` | ⬜ |
-| P2-3 | Honeypot feedback | `FeedbackController` |
-| P2-4 | Purge fichiers temporaires (`preview-*`, `test_scripts`) | commande |
-| P2-5 | `InvoiceService::nextNumber` atomique (séquence dédiée) | `InvoiceService` |
-| P2-6 | Idempotence gate `confirm_cost` (token) | `ChatController` |
-| P2-7 | Harmoniser `cost_infrastructure` (défaut code 0.25 vs config 0.15) | `OpenRouterService` |
-| P2-8 | Créer un test Feature de sécurité : 403 si cross-user, auth requise | `tests/Feature/` |
+| P2-2 | Statut `processing` document pendant `LongFormattingJob` | `LongFormattingJob` + Dashboard + vues | ✅ (processing → ready, retour detected sur échec) |
+| P2-3 | Honeypot feedback | `FeedbackController` | ⬜ |
+| P2-4 | Purge fichiers temporaires (`preview-*`, `test_scripts`) | commande | ⬜ |
+| P2-5 | `InvoiceService::nextNumber` atomique (séquence dédiée) | `InvoiceService` | ⬜ |
+| P2-6 | Idempotence gate `confirm_cost` (token) | `ChatController` | ⬜ |
+| P2-7 | Harmoniser `cost_infrastructure` (défaut code 0.25 vs config 0.15) | `OpenRouterService` | ⬜ |
+| P2-8 | Créer un test Feature de sécurité : 403 si cross-user, auth requise | `tests/Feature/` | ⬜ |
 
 ## 🧪 Validation finale (avant commit)
 
-- [x] `php artisan test` — **341 tests / 1284 assertions verts** (338 + 3 nouveaux P2-1 : remboursement quota sur échec) 
+- [x] `php artisan test` — **346 tests / 1297 assertions verts** (341 + 5 nouveaux P2-2 : statut processing pendant LongFormattingJob) 
 - [x] Vérifier qu'un document d'un autre utilisateur renvoie 404 (tests `DocumentOwnershipSecurityTest` : 4/4)
 - [x] Vérifier que le webhook KPay ne double jamais le crédit (tests `KPayWebhookIdempotenceTest` : 4/4)
 - [x] Vérifier la suppression complète du compte (fichiers inclus) — `AccountDeletionPurgeTest` : 1/1
@@ -138,6 +138,14 @@
   - Catch global : remboursement en bloc via `QuotaService::refund()` (même pattern que le chat, échec LLM) — aucune perte en cas d'échec
   - Échec d'analyse : nettoyage du fichier stocké (disk 'storage') et suppression de la ligne `Document` avant de relancer l'exception vers le catch global
 - Tests : `UploadQuotaRefundTest` (3 tests) — échec d'analyse rembourse le quota déterministe et nettoie le fichier, upload réussi consomme normalement, échec stockage (mock façade Storage) rembourse les quotas déterministe + IA
+
+### P2-2 — Statut `processing` document pendant `LongFormattingJob` (implémenté)
+- **Gap** : pendant la mise en forme IA asynchrone, le document restait en `detected` — aucun indicateur « traitement IA en cours » pour l'utilisateur, impossible de distinguer un document en attente d'un document en cours de traitement.
+- Correctif :
+  - `LongFormattingJob::handle()` : passe le document en `processing` au début (après vérification utilisateur + solde, avant débit). Succès → `ready` (déjà en place). Échec récupérable (débit KO, structure vide, échec LLM) → retour à `detected` (l'utilisateur peut relancer) + remboursement intégral
+  - `DashboardController::documents()` : filtre `processing` et compteur `$statusCounts['processing']` incluent désormais `processing` (dans les `whereIn`)
+  - Vues : badge distinct « ⏳ IA en cours » pour `processing` dans `documents/index.blade.php` et `dashboard.blade.php` (reste dans la catégorie « En cours » mais visiblement en traitement)
+- Tests : `LongFormattingJobStatusTest` (5 tests) — job réussi → `ready` + ajustement coût réel, échec LLM → retour `detected` + remboursement, solde insuffisant → statut inchangé, filtre dashboard inclut `processing`, compteur dashboard inclut `processing`
 
 ### P1-5 — Session mismatch chat (403 explicite)
 - `ChatController::send()` : si une session est fournie dans l'URL mais `user_id !== auth()->id()` → `abort(403)`

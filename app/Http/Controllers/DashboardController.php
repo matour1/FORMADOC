@@ -55,7 +55,7 @@ class DashboardController extends Controller
         // Filtre par statut (all / processing / done / failed)
         $filter = $request->query('filter', 'all');
         if ($filter === 'processing') {
-            $query->whereIn('status', ['pending', 'detected', 'validated', 'generated']);
+            $query->whereIn('status', ['pending', 'processing', 'detected', 'validated', 'generated']);
         } elseif ($filter === 'done') {
             $query->where('status', 'ready');
         } elseif ($filter === 'failed') {
@@ -70,7 +70,7 @@ class DashboardController extends Controller
         // Compteurs par statut pour les filtres (P2 audit UI/UX)
         $statusCounts = [
             'all' => $user->documents()->count(),
-            'processing' => $user->documents()->whereIn('status', ['pending', 'detected', 'validated', 'generated'])->count(),
+            'processing' => $user->documents()->whereIn('status', ['pending', 'processing', 'detected', 'validated', 'generated'])->count(),
             'done' => $user->documents()->where('status', 'ready')->count(),
             'failed' => $user->documents()->where('status', 'failed')->count(),
         ];

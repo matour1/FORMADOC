@@ -64,6 +64,11 @@ class LongFormattingJob implements ShouldQueue
             return;
         }
 
+        // 1bis. P2-2 : marque le document comme « en cours de traitement »
+        // (statut processing) pour l'affichage — l'utilisateur sait que la
+        // mise en forme IA est en cours, et les vues/filtres le reflètent.
+        $this->document->update(['status' => 'processing']);
+
         // 2. Débit des crédits estimés
         $debit = $credits->debit(
             $user,
@@ -75,6 +80,8 @@ class LongFormattingJob implements ShouldQueue
         );
 
         if (! $debit['ok']) {
+            // P2-2 : retour au statut détecté (l'utilisateur peut relancer)
+            $this->document->update(['status' => 'detected']);
             $this->fail(new \RuntimeException('Impossible de débiter les crédits ('.$debit['reason'].').'));
             return;
         }
@@ -83,6 +90,8 @@ class LongFormattingJob implements ShouldQueue
         $structure = $this->document->structure?->structure;
         if (empty($structure)) {
             $this->refund($credits, $user, 'structure_vide');
+            // P2-2 : retour au statut détecté (l'utilisateur peut relancer)
+            $this->document->update(['status' => 'detected']);
             $this->fail(new \RuntimeException('Aucune structure détectée pour le document.'));
             return;
         }
@@ -110,6 +119,8 @@ class LongFormattingJob implements ShouldQueue
             ]);
         } catch (\Throwable $e) {
             $this->refund($credits, $user, 'llm_failure');
+            // P2-2 : retour au statut détecté (l'utilisateur peut relancer)
+            $this->document->update(['status' => 'detected']);
             Log::error('LongFormattingJob : échec execution', [
                 'document_id' => $this->document->id,
                 'error' => $e->getMessage(),
