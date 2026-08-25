@@ -22,6 +22,15 @@ class ParcoursCompletFlowTest extends TestCase
 {
     use \Illuminate\Foundation\Testing\RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Les routes documents sont protégées par auth (P0-1)
+        $user = \App\Models\User::factory()->create();
+        $this->actingAs($user);
+    }
+
     /**
      * Rapport sans ambiguïté : numérotation cohérente avec les niveaux.
      */

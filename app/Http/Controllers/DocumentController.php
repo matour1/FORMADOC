@@ -52,6 +52,23 @@ class DocumentController extends Controller
     }
 
     /**
+     * Vérifie l'appartenance du document à l'utilisateur connecté (P0-1).
+     *
+     * Correctif IDOR : les routes documents sont désormais derrière 'auth'
+     * ET chaque méthode vérifie que metadata.user_id === auth()->id().
+     * En cas d'échec → 404 (on ne révèle pas l'existence du document).
+     */
+    private function authorizeDocument(Document $document): void
+    {
+        $userId = (int) ($document->metadata['user_id'] ?? 0);
+        $currentUserId = (int) \Illuminate\Support\Facades\Auth::id();
+
+        if ($userId === 0 || $userId !== $currentUserId) {
+            abort(404, 'Document introuvable.');
+        }
+    }
+
+    /**
      * Affiche le formulaire d'upload.
      */
     public function create(): View
@@ -209,6 +226,8 @@ class DocumentController extends Controller
      */
     public function show(Document $document): View
     {
+        $this->authorizeDocument($document);
+
         return view('documents.show', [
             'document' => $document,
             'structure' => $document->structure,
@@ -223,6 +242,8 @@ class DocumentController extends Controller
      */
     public function preview(Document $document): Response|BinaryFileResponse
     {
+        $this->authorizeDocument($document);
+
         $path = storage_path('uploads/' . $document->path);
 
         if (!is_file($path)) {
@@ -255,6 +276,8 @@ class DocumentController extends Controller
      */
     public function processing(Document $document): View
     {
+        $this->authorizeDocument($document);
+
         return view('documents.processing', [
             'document' => $document,
         ]);
@@ -269,6 +292,8 @@ class DocumentController extends Controller
      */
     public function export(Document $document): View
     {
+        $this->authorizeDocument($document);
+
         $coverTemplates = \App\Models\CoverPageTemplate::query()
             ->where('is_public', true)
             ->orderBy('name')
@@ -297,6 +322,8 @@ class DocumentController extends Controller
      */
     public function generateWithCoverPageTemplate(Request $request, Document $document): Response|RedirectResponse|BinaryFileResponse
     {
+        $this->authorizeDocument($document);
+
         $template = \App\Models\CoverPageTemplate::find($request->integer('cover_page_template_id'));
 
         if (!$template) {
@@ -320,6 +347,8 @@ class DocumentController extends Controller
      */
     public function generate(Request $request, Document $document): Response|RedirectResponse|BinaryFileResponse
     {
+        $this->authorizeDocument($document);
+
         $template = $this->resolveTemplate($request);
 
         return $this->generateAndDownload($document, null, $template);
@@ -333,6 +362,8 @@ class DocumentController extends Controller
      */
     public function previewPdf(Request $request, Document $document): RedirectResponse
     {
+        $this->authorizeDocument($document);
+
         try {
             $template = $this->resolveTemplate($request);
 
@@ -407,6 +438,8 @@ class DocumentController extends Controller
      */
     public function previewPdfFile(Document $document): BinaryFileResponse
     {
+        $this->authorizeDocument($document);
+
         $pdfPath = $document->metadata['pdf_preview_path'] ?? null;
 
         if (!is_string($pdfPath) || $pdfPath === '') {
@@ -452,6 +485,8 @@ class DocumentController extends Controller
      */
     public function generateWithCover(GenerateCoverRequest $request, Document $document): Response|RedirectResponse|BinaryFileResponse
     {
+        $this->authorizeDocument($document);
+
         $cover = $this->prepareCover($request);
 
         return $this->generateAndDownload($document, $cover);
@@ -853,6 +888,8 @@ class DocumentController extends Controller
      */
     public function validate(ValidateStructureRequest $request, Document $document): RedirectResponse
     {
+        $this->authorizeDocument($document);
+
         $structure = $document->structure;
 
         if ($structure === null) {

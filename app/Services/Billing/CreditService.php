@@ -122,6 +122,84 @@ class CreditService
     }
 
     /**
+     * Crédite $amount crédits UNE SEULE FOIS pour une référence donnée
+     * (idempotence des webhooks de paiement type KPay).
+     *
+     * La vérification « déjà crédité » se fait DANS la transaction, après
+     * verrouillage de la ligne utilisateur (SELECT ... FOR UPDATE) : deux
+     * webhooks concurrents pour le même payment_id ne peuvent pas passer
+     * tous les deux — le second voit la transaction du premier.
+     *
+     * @return array{ok: bool, already_processed?: bool, balance?: int}
+     */
+    public function creditIfNotProcessed(User $user, int $amount, string $reference, string $description = '', array $metadata = []): array
+    {
+        if ($amount <= 0 || $reference === '' || $reference === null) {
+            return ['ok' => false, 'balance' => $user->credits_balance, 'already_processed' => false];
+        }
+
+        try {
+            $result = DB::transaction(function () use ($user, $amount, $reference, $description, $metadata) {
+                // Verrouillage de la ligne utilisateur : sérialise tous les crédits
+                // de ce user, donc la vérification + l'insertion sont atomiques.
+                $locked = User::query()
+                    ->whereKey($user->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $locked) {
+                    return ['ok' => false, 'balance' => 0, 'already_processed' => false];
+                }
+
+                $already = CreditTransaction::query()
+                    ->where('user_id', $user->id)
+                    ->where('type', 'purchase')
+                    ->where('reference', $reference)
+                    ->exists();
+
+                if ($already) {
+                    return [
+                        'ok' => true,
+                        'already_processed' => true,
+                        'balance' => $locked->credits_balance,
+                    ];
+                }
+
+                $locked->increment('credits_balance', $amount);
+                $locked->refresh();
+
+                CreditTransaction::create([
+                    'user_id' => $user->id,
+                    'type' => 'purchase',
+                    'amount' => $amount,
+                    'balance_after' => $locked->credits_balance,
+                    'currency' => 'XAF',
+                    'reference' => $reference,
+                    'description' => $description,
+                    'metadata' => $metadata,
+                ]);
+
+                return [
+                    'ok' => true,
+                    'already_processed' => false,
+                    'balance' => $locked->credits_balance,
+                ];
+            });
+
+            return $result;
+        } catch (\Throwable $e) {
+            Log::error('CreditService::creditIfNotProcessed — échec', [
+                'user_id' => $user->id,
+                'amount' => $amount,
+                'reference' => $reference,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['ok' => false, 'balance' => $user->credits_balance, 'already_processed' => false];
+        }
+    }
+
+    /**
      * Solde actuel (fraîchement rechargé).
      */
     public function balance(User $user): int

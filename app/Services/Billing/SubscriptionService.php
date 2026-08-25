@@ -192,16 +192,27 @@ class SubscriptionService
             return false;
         }
 
-        // Idempotence : un même paiement ne doit activer qu'une fois
+        // Idempotence : un même paiement ne doit activer qu'une fois.
+        // Vérification + création DANS la transaction (lockForUpdate) pour
+        // éviter la course entre deux webhooks concurrents : le check-then-act
+        // hors transaction laissait une fenêtre où cancelCurrent() annulait
+        // l'ancien abonnement alors qu'un doublon allait le remplacer 2 fois.
         $externalId = (string) ($metadata['external_id'] ?? $payload['externalId'] ?? '');
-        if ($externalId !== '') {
-            $already = Subscription::where('external_id', $externalId)->first();
-            if ($already) {
-                return true; // déjà traité
-            }
-        }
 
-        DB::transaction(function () use ($user, $plan, $payload, $metadata, $externalId) {
+        $already = false;
+        DB::transaction(function () use ($user, $plan, $payload, $metadata, $externalId, &$already) {
+            // Sérialise les activations pour ce user (évite la course)
+            User::query()->whereKey($user->id)->lockForUpdate()->first();
+
+            if ($externalId !== '') {
+                $existing = Subscription::where('external_id', $externalId)->first();
+                if ($existing) {
+                    $already = true;
+
+                    return;
+                }
+            }
+
             // Annuler tout abonnement actif précédent (sans prorata ici :
             // le nouveau paiement couvre la nouvelle période)
             $this->cancelCurrent($user, refundProrata: false);
@@ -230,6 +241,16 @@ class SubscriptionService
                 reference: (string) ($payload['paymentId'] ?? $payload['reference'] ?? $externalId),
             );
         });
+
+        if ($already) {
+            Log::info('SubscriptionService : paiement déjà traité (idempotence)', [
+                'user_id' => $user->id,
+                'plan_slug' => $plan->slug,
+                'external_id' => $externalId,
+            ]);
+
+            return true;
+        }
 
         Log::info('SubscriptionService : abonnement activé via webhook', [
             'user_id' => $user->id,

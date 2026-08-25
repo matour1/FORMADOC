@@ -23,6 +23,15 @@ class StructureValidationFlowTest extends TestCase
 {
     use \Illuminate\Foundation\Testing\RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Les routes documents sont protégées par auth (P0-1)
+        $user = \App\Models\User::factory()->create();
+        $this->actingAs($user);
+    }
+
     /**
      * Rapport avec une ambiguïté : « 1.1 Institution » est stylé Heading1
      * (niveau 1) alors que sa numérotation « 1.1 » suggère un niveau 2.

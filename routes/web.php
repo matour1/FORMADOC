@@ -39,6 +39,27 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/demo/empty', [StateController::class, 'empty'])->name('demo.empty');
     Route::get('/demo/preview-fallback', [StateController::class, 'previewFallback'])->name('demo.preview-fallback');
     Route::get('/demo/maintenance', [StateController::class, 'maintenance'])->name('demo.maintenance');
+
+    // Routes documents (upload + analyse de structure + génération DOCX).
+    // P0-1 (audit sécurité) : ces routes étaient HORS du groupe auth → IDOR
+    // total (n'importe quel visiteur pouvait lire les documents d'autrui en
+    // devinant l'ID). Elles sont désormais protégées ET vérifient
+    // l'appartenance via DocumentPolicy (owns) dans le contrôleur.
+    Route::group(['prefix' => 'documents'], function () {
+        Route::get('/upload', [DocumentController::class, 'create'])->name('documents.create');
+        Route::post('/upload', [DocumentController::class, 'upload'])->name('documents.upload');
+        Route::get('/{document}/preview', [DocumentController::class, 'preview'])->name('documents.preview');
+        Route::get('/{document}', [DocumentController::class, 'show'])->name('documents.show');
+        Route::get('/{document}/processing', [DocumentController::class, 'processing'])->name('documents.processing');
+        Route::get('/{document}/export', [DocumentController::class, 'export'])->name('documents.export');
+        Route::post('/{document}/preview-pdf', [DocumentController::class, 'previewPdf'])->name('documents.preview-pdf');
+        Route::get('/{document}/preview-pdf/file', [DocumentController::class, 'previewPdfFile'])->name('documents.preview-pdf.file');
+        Route::post('/{document}/validate', [DocumentController::class, 'validate'])->name('documents.validate');
+        Route::post('/{document}/generate', [DocumentController::class, 'generate'])->name('documents.generate');
+        Route::post('/{document}/generate-cover', [DocumentController::class, 'generateWithCover'])->name('documents.generate-cover');
+        Route::post('/{document}/generate-cover-page', [DocumentController::class, 'generateWithCoverPageTemplate'])
+            ->name('documents.generate-cover-page');
+    });
 });
 
 // Routes Feedback (collecte d'avis sans compte utilisateur)
@@ -63,20 +84,3 @@ Route::post('/cover-templates/from-example/store', [CoverPageTemplateController:
     ->name('cover-templates.store-from-example');
 Route::resource('cover-templates', CoverPageTemplateController::class)
     ->parameters(['cover-templates' => 'coverTemplate']);
-
-// Routes documents (upload + analyse de structure + génération DOCX)
-Route::group(['prefix' => 'documents'], function () {
-    Route::get('/upload', [DocumentController::class, 'create'])->name('documents.create');
-    Route::post('/upload', [DocumentController::class, 'upload'])->name('documents.upload');
-    Route::get('/{document}/preview', [DocumentController::class, 'preview'])->name('documents.preview');
-    Route::get('/{document}', [DocumentController::class, 'show'])->name('documents.show');
-    Route::get('/{document}/processing', [DocumentController::class, 'processing'])->name('documents.processing');
-    Route::get('/{document}/export', [DocumentController::class, 'export'])->name('documents.export');
-    Route::post('/{document}/preview-pdf', [DocumentController::class, 'previewPdf'])->name('documents.preview-pdf');
-    Route::get('/{document}/preview-pdf/file', [DocumentController::class, 'previewPdfFile'])->name('documents.preview-pdf.file');
-    Route::post('/{document}/validate', [DocumentController::class, 'validate'])->name('documents.validate');
-    Route::post('/{document}/generate', [DocumentController::class, 'generate'])->name('documents.generate');
-    Route::post('/{document}/generate-cover', [DocumentController::class, 'generateWithCover'])->name('documents.generate-cover');
-    Route::post('/{document}/generate-cover-page', [DocumentController::class, 'generateWithCoverPageTemplate'])
-        ->name('documents.generate-cover-page');
-});

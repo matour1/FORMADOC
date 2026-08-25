@@ -24,6 +24,15 @@ class CoverGenerationFlowTest extends TestCase
 {
     use \Illuminate\Foundation\Testing\RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Les routes documents sont protégées par auth (P0-1)
+        $user = \App\Models\User::factory()->create();
+        $this->actingAs($user);
+    }
+
     /**
      * Rapport d'exemple (HeadingN → règles déterministes, pas de LLM).
      */

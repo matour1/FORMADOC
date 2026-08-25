@@ -108,6 +108,77 @@ class ChatController extends Controller
     }
 
     /**
+     * Téléchargement sécurisé d'un fichier généré par le chat.
+     *
+     * P0-4 : sans cette route, les fichiers `chat/generated/**` et
+     * `claude-skills/**` étaient stockés sur le disk 'local' SANS aucun
+     * moyen de les récupérer (ni accès public, ni route de téléchargement).
+     * Cette route vérifie que le fichier demandé a bien été généré pour
+     * l'utilisateur courant (traçé dans metadata.generated_files d'un de
+     * ses messages), et refuse tout chemin hors de ces répertoires.
+     */
+    public function downloadFile(Request $request): \Symfony\Component\HttpFoundation\BinaryFileResponse|RedirectResponse
+    {
+        $user = $request->user();
+        $requestedPath = (string) $request->query('file', '');
+
+        // Normalisation : interdit tout chemin absolu ou traversal (..)
+        $path = str_replace('\\', '/', $requestedPath);
+        $path = ltrim($path, '/');
+
+        if ($path === '' || str_contains($path, '..') || str_starts_with($path, '/')) {
+            abort(404, 'Fichier introuvable.');
+        }
+
+        // Seuls les répertoires de fichiers générés sont autorisés
+        $allowedPrefixes = ['chat/generated/', 'claude-skills/'];
+        $inAllowed = false;
+        foreach ($allowedPrefixes as $prefix) {
+            if (str_starts_with($path, $prefix)) {
+                $inAllowed = true;
+                break;
+            }
+        }
+
+        if (! $inAllowed) {
+            abort(404, 'Fichier introuvable.');
+        }
+
+        // Ownership : le fichier doit être référencé dans les métadonnées
+        // d'un message assistant d'une session appartenant à l'utilisateur.
+        $owned = $user->chatSessions()
+            ->whereHas('messages', function ($q) use ($path) {
+                $q->where('role', 'assistant')
+                    ->whereJsonContains('metadata->generated_files', $path);
+            })
+            ->exists();
+
+        // Fallback : la référence peut aussi être dans le contenu du message
+        // (messages générés avant le traçage metadata). On vérifie alors que
+        // le chemin correspond à un message de l'utilisateur.
+        if (! $owned) {
+            $owned = $user->chatSessions()
+                ->whereHas('messages', function ($q) use ($path) {
+                    $q->where('role', 'assistant')
+                        ->where('content', 'like', '%'.$path.'%');
+                })
+                ->exists();
+        }
+
+        if (! $owned) {
+            abort(404, 'Fichier introuvable.');
+        }
+
+        // Le fichier doit exister sur le disk local
+        $storage = \Illuminate\Support\Facades\Storage::disk('local');
+        if (! $storage->exists($path)) {
+            abort(404, 'Fichier introuvable.');
+        }
+
+        return response()->download($storage->path($path), basename($path));
+    }
+
+    /**
      * Envoie un message et obtient la réponse IA (débit crédits).
      */
     public function send(Request $request, ?ChatSession $chatSession = null): RedirectResponse
@@ -203,8 +274,22 @@ class ChatController extends Controller
             $tools[] = $this->skillSchema();
         }
 
-        $executor = function (array $toolCall, int $turn) use ($user, $plan): array {
-            return $this->executeTool($toolCall, $user, $plan);
+        // Collecte des fichiers générés pendant les appels d'outils
+        // (P0-4) : ils sont tracés dans les métadonnées du message assistant
+        // pour permettre un téléchargement sécurisé (ownership vérifié).
+        $generatedFiles = [];
+
+        $executor = function (array $toolCall, int $turn) use ($user, $plan, &$generatedFiles): array {
+            $result = $this->executeTool($toolCall, $user, $plan);
+
+            // Le résultat d'un outil peut contenir un chemin de fichier généré
+            // (chat/generated/... ou claude-skills/...) → on le trace.
+            $content = (string) ($result['result'] ?? '');
+            if (preg_match('#(chat/generated/[A-Za-z0-9._/-]+|claude-skills/[A-Za-z0-9._/-]+)#', $content, $m)) {
+                $generatedFiles[] = $m[1];
+            }
+
+            return $result;
         };
 
         // --- 10. Appel OpenRouter (avec outils) ---
@@ -276,6 +361,8 @@ class ChatController extends Controller
                 'usage' => $response['usage'],
                 'estimated_credits' => $estimatedCredits,
                 'tool_turns' => $response['tool_turns'] ?? 0,
+                // P0-4 : fichiers générés pendant ce message (téléchargement sécurisé)
+                'generated_files' => array_values(array_unique($generatedFiles)),
             ],
         ]);
 

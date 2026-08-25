@@ -187,17 +187,12 @@ class KPayController extends Controller
             return response()->json(['status' => 'user_not_found'], 200);
         }
 
-        // 4. Idempotence : si ce paymentId a déjà été traité → ignorer
-        $alreadyProcessed = \App\Models\CreditTransaction::query()
-            ->where('reference', $paymentId)
-            ->where('type', 'purchase')
-            ->exists();
-
-        if ($alreadyProcessed) {
-            return response()->json(['status' => 'already_processed'], 200);
-        }
-
-        // 5. Décision métier
+        // 4. Décision métier
+        // (L'idempotence des achats de crédits est garantie ATOMIQUEMENT par
+        // CreditService::creditIfNotProcessed — vérification + crédit dans la
+        // même transaction, sérialisée par lockForUpdate sur la ligne user.
+        // Le check-then-act historique (exists() puis credit()) laissait une
+        // fenêtre de course où deux webhooks concurrents pouvaient doubler.)
         $purpose = (string) ($metadata['purpose'] ?? 'credit_purchase');
 
         if ($status === 'completed') {
@@ -219,10 +214,9 @@ class KPayController extends Controller
             // --- Achat de crédits (comportement historique) ---
             $credits = (int) ($metadata['credits'] ?? $amount);
 
-            $this->credits->credit(
+            $result = $this->credits->creditIfNotProcessed(
                 $user,
                 $credits,
-                type: 'purchase',
                 reference: $paymentId,
                 description: 'Achat de '.$credits.' crédits via KPay',
                 metadata: [
@@ -233,6 +227,36 @@ class KPayController extends Controller
                     'amount_fcfa' => $amount,
                 ],
             );
+
+            // Déjà crédité (webhook dupliqué / retry KPay) → réponse idempotente
+            if (($result['already_processed'] ?? false)) {
+                Log::info('KPay webhook : paiement déjà traité (idempotence)', [
+                    'user_id' => $user->id,
+                    'paymentId' => $paymentId,
+                    'credits' => $credits,
+                ]);
+
+                // On met quand même à jour le registre local de fallback
+                \App\Models\KpayPayment::query()
+                    ->where('external_id', $externalId)
+                    ->update([
+                        'status' => strtoupper($status),
+                        'paid_at' => $status === 'completed' ? now() : null,
+                        'last_synced_at' => now(),
+                    ]);
+
+                return response()->json(['status' => 'already_processed'], 200);
+            }
+
+            if (! ($result['ok'] ?? false)) {
+                Log::error('KPay webhook : crédit impossible', [
+                    'user_id' => $user->id,
+                    'paymentId' => $paymentId,
+                    'credits' => $credits,
+                ]);
+
+                return response()->json(['status' => 'credit_failed'], 500);
+            }
 
             // Facture PDF + email de confirmation
             $invoiceService = app(InvoiceService::class);

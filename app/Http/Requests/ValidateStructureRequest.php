@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Document;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 
 /**
@@ -14,13 +16,32 @@ use Illuminate\Validation\Rule;
  *   - « 2 » : rétrograder en sous-titre (niveau 2)
  *   - « 3 » : rétrograder en sous-titre de niveau 3
  *   - « remove » : retirer du plan
+ *
+ * P0-1 (anti-IDOR) : l'appartenance du document est vérifiée AVANT les
+ * règles de validation, pour une réponse 404 uniforme (on ne révèle pas
+ * l'existence de documents tiers).
  */
 class ValidateStructureRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        // Pas de système de comptes en V1 — accès ouvert
-        return true;
+        $document = $this->route('document');
+
+        if (! $document instanceof Document) {
+            return false;
+        }
+
+        $userId = (int) ($document->metadata['user_id'] ?? 0);
+
+        return $userId !== 0 && $userId === (int) Auth::id();
+    }
+
+    /**
+     * 404 plutôt que 403 : on ne révèle pas l'existence du document.
+     */
+    protected function failedAuthorization(): void
+    {
+        abort(404, 'Document introuvable.');
     }
 
     public function rules(): array

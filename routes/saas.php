@@ -42,6 +42,8 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::get('/chat/{chatSession}', [ChatController::class, 'show'])->name('chat.show');
     Route::post('/chat/{chatSession?}', [ChatController::class, 'send'])->name('chat.send');
     Route::delete('/chat/{chatSession}', [ChatController::class, 'destroy'])->name('chat.destroy');
+    // Téléchargement sécurisé des fichiers générés par le chat (P0-4)
+    Route::get('/chat/files/download', [ChatController::class, 'downloadFile'])->name('chat.files.download');
 });
 
 // Webhook KPay — PAS de middleware CSRF (requête externe signée HMAC)

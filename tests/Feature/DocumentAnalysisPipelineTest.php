@@ -21,6 +21,15 @@ class DocumentAnalysisPipelineTest extends TestCase
 {
     use \Illuminate\Foundation\Testing\RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Les routes documents sont protégées par auth (P0-1)
+        $user = \App\Models\User::factory()->create();
+        $this->actingAs($user);
+    }
+
     private function createTestDocx(string $filename = 'rapport_test.docx'): string
     {
         $phpWord = new PhpWord();
@@ -230,6 +239,23 @@ class DocumentAnalysisPipelineTest extends TestCase
         // post-processeur AiCorrectionService (corrections ciblées).
         // title_method=regex → DocAnalyzer n'appelle PAS l'IA ; seul le
         // correcteur envoie une requête (payload réduit aux éléments ambigus).
+        // NB : un quota IA > 0 est requis → l'utilisateur doit avoir un
+        // abonnement payant (P0-1 : les routes sont désormais authentifiées,
+        // un plan default aurait quota IA = 0 et forcerait use_ai=false).
+        $plan = \App\Models\Plan::factory()->create([
+            'slug' => 'standard',
+            'is_active' => true,
+            'quota_deterministic' => 10,
+            'quota_ai' => 5,
+        ]);
+        $subscriber = \App\Models\User::factory()->create();
+        \App\Models\Subscription::factory()->create([
+            'user_id' => $subscriber->id,
+            'plan_id' => $plan->id,
+            'status' => 'active',
+        ]);
+        $this->actingAs($subscriber);
+
         $iaJson = json_encode(['corrections' => []], JSON_UNESCAPED_UNICODE);
 
         Http::fake([

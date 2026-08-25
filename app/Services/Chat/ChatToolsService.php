@@ -223,11 +223,17 @@ class ChatToolsService
         );
 
         $query = CoverPageTemplate::query();
-        if (! ($arguments['allow_any_template'] ?? false) && $user) {
-            $query->where(function ($q) use ($user) {
-                $q->where('is_public', true)->orWhere('user_id', $user->id);
-            });
-        }
+
+        // SÉCURITÉ (P0-5) : l'argument `allow_any_template` envoyé par le LLM
+        // est IGNORÉ — le serveur décide. Sans cette garde, un prompt injecté
+        // pouvait faire générer une couverture à partir d'un gabarit privé
+        // appartenant à un autre utilisateur (ou un gabarit système réservé).
+        $query->where(function ($q) use ($user) {
+            $q->where('is_public', true);
+            if ($user) {
+                $q->orWhere('user_id', $user->id);
+            }
+        });
         $template = $query->find($templateId);
 
         if (! $template) {

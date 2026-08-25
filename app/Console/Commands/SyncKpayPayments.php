@@ -98,11 +98,10 @@ class SyncKpayPayments extends Command
                     $subscriptions->activateFromWebhook($detail, $metadata);
                     $this->info(sprintf('[OK] #%d %s — abonnement activé (fallback)', $payment->id, $payment->external_id));
                 } else {
-                    // Achat de crédits
-                    $credits->credit(
+                    // Achat de crédits — idempotent via creditIfNotProcessed()
+                    $result = $credits->creditIfNotProcessed(
                         $user,
                         (int) ($metadata['credits'] ?? $payment->amount_fcfa),
-                        type: 'purchase',
                         reference: $paymentId,
                         description: 'Achat de crédits via KPay (synchronisation)',
                         metadata: [
@@ -115,36 +114,46 @@ class SyncKpayPayments extends Command
                         ],
                     );
 
-                    // Facture + email
-                    $invoice = $invoiceService->createForCreditPurchase(
-                        $user,
-                        amount: $payment->amount_fcfa,
-                        currency: $payment->currency ?: 'XAF',
-                        reference: $paymentId,
-                        status: 'paid',
-                    );
-
-                    try {
-                        $pdfStoragePath = $invoiceService->downloadPath($invoice);
-                        $pdfPath = $pdfStoragePath
-                            ? Storage::disk((string) config('billing.invoice_storage_disk', 'local'))->path($pdfStoragePath)
-                            : null;
-
-                        Mail::to($user->email)->send(new PaymentReceipt(
-                            user: $user,
-                            invoice: $invoice,
-                            label: 'Achat de '.$payment->amount_fcfa.' crédits',
-                            pdfPath: $pdfPath,
-                        ));
-                    } catch (\Throwable $e) {
-                        Log::error('kpay:sync — échec email de reçu', [
-                            'user_id' => $user->id,
-                            'invoice_id' => $invoice->id,
-                            'error' => $e->getMessage(),
-                        ]);
+                    if (! ($result['ok'] ?? false)) {
+                        $failed++;
+                        $this->warn(sprintf('[ÉCHEC CRÉDIT] #%d %s — %s', $payment->id, $payment->external_id, $result['reason'] ?? 'unknown'));
+                        continue;
                     }
 
-                    $this->info(sprintf('[OK] #%d %s — %d crédits ajoutés (fallback)', $payment->id, $payment->external_id, $payment->amount_fcfa));
+                    if (($result['already_processed'] ?? false)) {
+                        $this->line(sprintf('[DÉJÀ TRAITÉ] #%d %s — crédit déjà appliqué', $payment->id, $payment->external_id));
+                    } else {
+                        // Facture + email (uniquement si on vient de créditer)
+                        $invoice = $invoiceService->createForCreditPurchase(
+                            $user,
+                            amount: $payment->amount_fcfa,
+                            currency: $payment->currency ?: 'XAF',
+                            reference: $paymentId,
+                            status: 'paid',
+                        );
+
+                        try {
+                            $pdfStoragePath = $invoiceService->downloadPath($invoice);
+                            $pdfPath = $pdfStoragePath
+                                ? Storage::disk((string) config('billing.invoice_storage_disk', 'local'))->path($pdfStoragePath)
+                                : null;
+
+                            Mail::to($user->email)->send(new PaymentReceipt(
+                                user: $user,
+                                invoice: $invoice,
+                                label: 'Achat de '.$payment->amount_fcfa.' crédits',
+                                pdfPath: $pdfPath,
+                            ));
+                        } catch (\Throwable $e) {
+                            Log::error('kpay:sync — échec email de reçu', [
+                                'user_id' => $user->id,
+                                'invoice_id' => $invoice->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+
+                        $this->info(sprintf('[OK] #%d %s — %d crédits ajoutés (fallback)', $payment->id, $payment->external_id, $payment->amount_fcfa));
+                    }
                 }
 
                 $payment->update([
