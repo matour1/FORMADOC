@@ -42,6 +42,27 @@ class UsageCostCalculatorTest extends TestCase
         $this->assertLessThanOrEqual(2.30, $coefficient);
     }
 
+    public function test_le_fallback_infrastructure_est_aligne_sur_la_config_015(): void
+    {
+        // P2-7 : le fallback en dur du code était 0.25 alors que la config
+        // (config/openrouter.php) définit 0.15. Si la clé disparaît, le
+        // coefficient devait rester 1.84 (et non grimper à 2.0).
+        // NB : Config::offsetUnset met la clé à null (Repository::set) → on
+        // retire réellement la clé du tableau via Arr::except.
+        $fullConfig = config('openrouter');
+
+        \Illuminate\Support\Facades\Config::set(
+            'openrouter',
+            \Illuminate\Support\Arr::except((array) $fullConfig, 'cost_infrastructure')
+        );
+
+        try {
+            $this->assertEqualsWithDelta(1.84, $this->calculator->profitabilityCoefficient(), 1e-9);
+        } finally {
+            \Illuminate\Support\Facades\Config::set('openrouter', $fullConfig);
+        }
+    }
+
     public function test_usd_to_credits_arrondit_au_superieur(): void
     {
         // 0,5 USD × 1.84 × 620 = 570,4 → 571 crédits

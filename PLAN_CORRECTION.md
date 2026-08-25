@@ -34,12 +34,12 @@
 | P2-4 | Purge fichiers temporaires (`preview-*`, `test_scripts`) | commande | ✅ (gen_*.docx orphelins purgés, scripts conservés) |
 | P2-5 | `InvoiceService::nextNumber` atomique (séquence dédiée) | `InvoiceService` | ✅ (table invoice_sequences + lockForUpdate + backfill) |
 | P2-6 | Idempotence gate `confirm_cost` (token) | `ChatController` | ✅ (token one-time + hash du message + tests) |
-| P2-7 | Harmoniser `cost_infrastructure` (défaut code 0.25 vs config 0.15) | `OpenRouterService` | ⬜ |
+| P2-7 | Harmoniser `cost_infrastructure` (défaut code 0.25 vs config 0.15) | `OpenRouterService` | ✅ (fallbacks ramenés à 0.15 + test verrou) |
 | P2-8 | Créer un test Feature de sécurité : 403 si cross-user, auth requise | `tests/Feature/` | ⬜ |
 
 ## 🧪 Validation finale (avant commit)
 
-- [x] `php artisan test` — **354 tests / 1353 assertions verts** (350 + 4 nouveaux P2-6 : gate idempotence confirm_cost)
+- [x] `php artisan test` — **355 tests / 1354 assertions verts** (354 + 1 nouveau P2-7 : fallback infra verrouillé à 0.15)
 - [x] Vérifier qu'un document d'un autre utilisateur renvoie 404 (tests `DocumentOwnershipSecurityTest` : 4/4)
 - [x] Vérifier que le webhook KPay ne double jamais le crédit (tests `KPayWebhookIdempotenceTest` : 4/4)
 - [x] Vérifier la suppression complète du compte (fichiers inclus) — `AccountDeletionPurgeTest` : 1/1
@@ -178,6 +178,12 @@
   - `chat/show.blade.php` : champ caché `confirm_token` ajouté au formulaire de confirmation
 - Tests : `ChatConfirmationTokenTest` (4 tests) — confirmation sans token refusée (aucun message), mauvais token refusé (solde intact), token à usage unique (double POST → 1 seul message, 1 seul débit), message différent avec le bon token refusé
 - ⚠️ Tests adaptés : `ChatAttachmentsTest` (5 POSTs) passent désormais par le flux complet via le helper `confirmChat()` (estimation → lecture du token en session → confirmation)
+
+### P2-7 — Harmoniser `cost_infrastructure` (fallback code 0.25 vs config 0.15) (implémenté)
+- **Gap** : `config('openrouter.cost_infrastructure', 0.25)` dans `UsageCostCalculator::profitabilityCoefficient()` et `OpenRouterService::usdToCredits()` — fallback en dur à 0.25 alors que `config/openrouter.php` définit 0.15. Incohérence silencieuse : si la clé config disparaissait, le coefficient passerait de 1.84× à 2.0× (facturation plus chère) sans aucun avertissement.
+- Correctif : les deux fallbacks ramenés à `0.15` (alignés sur la config et sur la doc des commentaires « infra +15 % »).
+- Tests : `UsageCostCalculatorTest::test_le_fallback_infrastructure_est_aligne_sur_la_config_015` — retire réellement la clé du tableau de config (`Arr::except`) et vérifie que le coefficient reste 1.84.
+- ⚠️ Piège Laravel : `Config::offsetUnset('openrouter.cost_infrastructure')` met la clé à `null` (Repository::set) → `config()` retourne `null` → `(float) null = 0` → coefficient 1.6. Pour simuler une clé ABSENTE, retirer la clé du tableau parent (`Arr::except((array) config('openrouter'), 'cost_infrastructure')`) puis `Config::set('openrouter', $tableau)`.
 
 ### P1-5 — Session mismatch chat (403 explicite)
 - `ChatController::send()` : si une session est fournie dans l'URL mais `user_id !== auth()->id()` → `abort(403)`

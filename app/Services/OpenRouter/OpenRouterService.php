@@ -218,7 +218,7 @@ class OpenRouterService
      */
     private function usdToCredits(float $usd): int
     {
-        $infra = (float) config('openrouter.cost_infrastructure', 0.25);
+        $infra = (float) config('openrouter.cost_infrastructure', 0.15);
         $margin = (float) config('openrouter.cost_margin', 0.60);
         $rate = (float) config('openrouter.rate_fcfa_per_usd', 620);
 

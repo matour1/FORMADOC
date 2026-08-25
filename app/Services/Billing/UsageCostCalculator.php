@@ -39,7 +39,7 @@ class UsageCostCalculator
      */
     public function profitabilityCoefficient(): float
     {
-        $infra = (float) config('openrouter.cost_infrastructure', 0.25);
+        $infra = (float) config('openrouter.cost_infrastructure', 0.15);
         $margin = (float) config('openrouter.cost_margin', 0.60);
 
         return (1 + $infra) * (1 + $margin);
