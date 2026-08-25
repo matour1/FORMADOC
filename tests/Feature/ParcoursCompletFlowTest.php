@@ -80,14 +80,14 @@ class ParcoursCompletFlowTest extends TestCase
         $this->assertSame('detected', $document->status);
 
         // 2. Page de validation (étape 2)
-        $validation = $this->get("/documents/{$document->id}");
+        $validation = $this->get("/documents/{$document->hash_id}");
         $validation->assertOk();
         $validation->assertSee('Étape 2 / 4');
         $validation->assertSee('Validation des ambiguïtés');
         $validation->assertSee('Valider et lancer le traitement');
 
         // 3. Validation → redirection vers le traitement (étape 3)
-        $this->post("/documents/{$document->id}/validate", [])
+        $this->post("/documents/{$document->hash_id}/validate", [])
             ->assertRedirect(route('documents.processing', $document));
 
         $document->refresh();

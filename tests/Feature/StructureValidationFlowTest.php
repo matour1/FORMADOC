@@ -91,14 +91,14 @@ class StructureValidationFlowTest extends TestCase
         Http::assertNothingSent();
 
         // L'interface de validation affiche l'ambiguïté
-        $page = $this->get("/documents/{$document->id}");
+        $page = $this->get("/documents/{$document->hash_id}");
         $page->assertOk();
         $page->assertSee('Validation des ambiguïtés');
         $page->assertSee('1.1 Institution');
 
         // L'utilisateur valide : rétrograder « 1.1 Institution » en niveau 2
         $id = $ambiguities[0]['id'];
-        $this->post("/documents/{$document->id}/validate", [
+        $this->post("/documents/{$document->hash_id}/validate", [
             'corrections' => [$id => '2'],
         ])->assertRedirect();
 
@@ -118,7 +118,7 @@ class StructureValidationFlowTest extends TestCase
     {
         $document = $this->uploadReport();
 
-        $this->post("/documents/{$document->id}/validate", [])->assertRedirect();
+        $this->post("/documents/{$document->hash_id}/validate", [])->assertRedirect();
 
         $document->refresh();
         $this->assertSame('validated', $document->status);
@@ -134,7 +134,7 @@ class StructureValidationFlowTest extends TestCase
         $structure = DocumentStructure::where('document_id', $document->id)->firstOrFail();
         $id = $structure->ambiguities[0]['id'];
 
-        $response = $this->post("/documents/{$document->id}/validate", [
+        $response = $this->post("/documents/{$document->hash_id}/validate", [
             'corrections' => [$id => '99'],
         ]);
 

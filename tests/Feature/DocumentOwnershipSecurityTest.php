@@ -45,17 +45,19 @@ class DocumentOwnershipSecurityTest extends TestCase
         $this->actingAs($attacker);
 
         // Toutes les routes sensibles doivent répondre 404 (et non 403,
-        // pour ne pas révéler l'existence du document)
+        // pour ne pas révéler l'existence du document). L'URL utilise le
+        // hash obfusqué (jamais l'id brut) : l'attaquant peut connaître le
+        // hash (ex. partagé), mais pas accéder au document d'autrui.
         $routes = [
-            fn () => $this->get("/documents/{$document->id}"),
-            fn () => $this->get("/documents/{$document->id}/preview"),
-            fn () => $this->get("/documents/{$document->id}/processing"),
-            fn () => $this->get("/documents/{$document->id}/export"),
-            fn () => $this->post("/documents/{$document->id}/preview-pdf"),
-            fn () => $this->post("/documents/{$document->id}/validate"),
-            fn () => $this->post("/documents/{$document->id}/generate"),
-            fn () => $this->post("/documents/{$document->id}/generate-cover"),
-            fn () => $this->post("/documents/{$document->id}/generate-cover-page"),
+            fn () => $this->get("/documents/{$document->hash_id}"),
+            fn () => $this->get("/documents/{$document->hash_id}/preview"),
+            fn () => $this->get("/documents/{$document->hash_id}/processing"),
+            fn () => $this->get("/documents/{$document->hash_id}/export"),
+            fn () => $this->post("/documents/{$document->hash_id}/preview-pdf"),
+            fn () => $this->post("/documents/{$document->hash_id}/validate"),
+            fn () => $this->post("/documents/{$document->hash_id}/generate"),
+            fn () => $this->post("/documents/{$document->hash_id}/generate-cover"),
+            fn () => $this->post("/documents/{$document->hash_id}/generate-cover-page"),
         ];
 
         foreach ($routes as $i => $makeResponse) {
@@ -83,8 +85,8 @@ class DocumentOwnershipSecurityTest extends TestCase
 
         $this->actingAs($owner);
 
-        $this->get("/documents/{$document->id}")->assertOk();
-        $this->get("/documents/{$document->id}/preview")->assertOk();
+        $this->get("/documents/{$document->hash_id}")->assertOk();
+        $this->get("/documents/{$document->hash_id}/preview")->assertOk();
     }
 
     public function test_non_authentifie_est_redirige_vers_login(): void
@@ -93,7 +95,7 @@ class DocumentOwnershipSecurityTest extends TestCase
         $document = $this->makeDocument($owner);
 
         // Pas d'actingAs → invité
-        $this->get("/documents/{$document->id}")
+        $this->get("/documents/{$document->hash_id}")
             ->assertRedirect(route('login'));
     }
 
@@ -114,6 +116,6 @@ class DocumentOwnershipSecurityTest extends TestCase
         $this->actingAs($user);
 
         // Un document sans propriétaire ne doit être accessible à personne
-        $this->get("/documents/{$orphan->id}")->assertNotFound();
+        $this->get("/documents/{$orphan->hash_id}")->assertNotFound();
     }
 }

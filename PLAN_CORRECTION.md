@@ -35,11 +35,12 @@
 | P2-5 | `InvoiceService::nextNumber` atomique (séquence dédiée) | `InvoiceService` | ✅ (table invoice_sequences + lockForUpdate + backfill) |
 | P2-6 | Idempotence gate `confirm_cost` (token) | `ChatController` | ✅ (token one-time + hash du message + tests) |
 | P2-7 | Harmoniser `cost_infrastructure` (défaut code 0.25 vs config 0.15) | `OpenRouterService` | ✅ (fallbacks ramenés à 0.15 + test verrou) |
-| P2-8 | Créer un test Feature de sécurité : 403 si cross-user, auth requise | `tests/Feature/` | ⬜ |
+| P2-8 | Créer un test Feature de sécurité : 403 si cross-user, auth requise | `tests/Feature/` | ✅ (`InvoiceDownloadSecurityTest` : 4/4 — facture d'autrui 403, invité → login, propriétaire OK, hash invalide 404) |
+| P2-9 | **Obfusquer les IDs de base de données dans les URLs** (Document, ChatSession, Invoice, CoverPageTemplate) | trait `HasHashId` + 4 modèles | ✅ (hashids 5.0, sel par modèle dérivé de APP_KEY, `hash_id` comme clé de route, décodage dans le binding, tests dédiés) |
 
 ## 🧪 Validation finale (avant commit)
 
-- [x] `php artisan test` — **355 tests / 1354 assertions verts** (354 + 1 nouveau P2-7 : fallback infra verrouillé à 0.15)
+- [x] `php artisan test` — **363 tests / 1377 assertions verts** (355 + 4 `HasHashIdObfuscationTest` + 4 `InvoiceDownloadSecurityTest`)
 - [x] Vérifier qu'un document d'un autre utilisateur renvoie 404 (tests `DocumentOwnershipSecurityTest` : 4/4)
 - [x] Vérifier que le webhook KPay ne double jamais le crédit (tests `KPayWebhookIdempotenceTest` : 4/4)
 - [x] Vérifier la suppression complète du compte (fichiers inclus) — `AccountDeletionPurgeTest` : 1/1
@@ -184,6 +185,21 @@
 - Correctif : les deux fallbacks ramenés à `0.15` (alignés sur la config et sur la doc des commentaires « infra +15 % »).
 - Tests : `UsageCostCalculatorTest::test_le_fallback_infrastructure_est_aligne_sur_la_config_015` — retire réellement la clé du tableau de config (`Arr::except`) et vérifie que le coefficient reste 1.84.
 - ⚠️ Piège Laravel : `Config::offsetUnset('openrouter.cost_infrastructure')` met la clé à `null` (Repository::set) → `config()` retourne `null` → `(float) null = 0` → coefficient 1.6. Pour simuler une clé ABSENTE, retirer la clé du tableau parent (`Arr::except((array) config('openrouter'), 'cost_infrastructure')`) puis `Config::set('openrouter', $tableau)`.
+
+### P2-8 — Test Feature sécurité factures (implémenté)
+- Le check d'ownership existait déjà dans `SubscriptionController::downloadInvoice` (`if ($invoice->user_id !== $request->user()->id) abort(403)`) mais n'était PAS testé.
+- Tests : `InvoiceDownloadSecurityTest` (4 tests) — facture d'un autre utilisateur → 403 ; invité → redirect login ; propriétaire → téléchargement PDF OK ; hash invalide dans l'URL → 404 (binding ne résout rien).
+
+### P2-9 — Obfuscation des IDs de base de données dans les URLs (implémenté)
+- **Problème** : les clés de route des modèles exposés dans les URLs (documents, chat, factures, cover-templates) étaient les IDs auto-incrémentés bruts → énumération triviale (IDOR latéral), fuite du volume d'activité.
+- **Solution** : trait `app/Models/Concerns/HasHashId.php` + lib `hashids/hashids` 5.0, appliqué à `Document`, `ChatSession`, `Invoice`, `CoverPageTemplate` :
+  - `getRouteKeyName()` → `'hash_id'` : `route('...', $model)` génère l'URL avec le hash.
+  - Accessor `getHashIdAttribute()` → `Hashids::encode($this->id)` à la volée (AUCUNE colonne/migration, aucune donnée en base).
+  - `resolveRouteBinding()` → `decode()` le hash puis résout par l'id réel ; hash invalide → `null` → 404.
+  - **Sel par modèle** : `'formadoc-'.class_basename($this).'-'.config('app.key')` + longueur minimale 12 → hashs non corrélables entre modèles ni entre environnements.
+- **Transparent pour les vues/contrôleurs** : aucune modification (tout passe par `route()` / le binding implicite).
+- Tests : `HasHashIdObfuscationTest` (4 tests) — clé de route hash pour les 4 modèles, hash déterministe et propre à chaque modèle, hash invalide → 404 (y compris id brut en clair → 404), `route()` ne contient jamais l'id brut.
+- ⚠️ Tests adaptés : `DocumentOwnershipSecurityTest`, `CoverGenerationFlowTest`, `DocumentAnalysisPipelineTest`, `ParcoursCompletFlowTest`, `StructureValidationFlowTest` utilisaient `/documents/{$document->id}` en dur → remplacés par `$document->hash_id`.
 
 ### P1-5 — Session mismatch chat (403 explicite)
 - `ChatController::send()` : si une session est fournie dans l'URL mais `user_id !== auth()->id()` → `abort(403)`

@@ -104,7 +104,7 @@ class DocumentAnalysisPipelineTest extends TestCase
         Http::assertNothingSent();
 
         // La page d'affichage est accessible et montre le résultat
-        $page = $this->get("/documents/{$document->id}");
+        $page = $this->get("/documents/{$document->hash_id}");
         $page->assertOk();
         $page->assertSee('Introduction');
         $page->assertSee('Figure');
@@ -387,7 +387,7 @@ class DocumentAnalysisPipelineTest extends TestCase
         $this->assertNotNull($document);
 
         // 2. Génération du DOCX reconstruit
-        $response = $this->post("/documents/{$document->id}/generate");
+        $response = $this->post("/documents/{$document->hash_id}/generate");
         $response->assertOk();
 
         // 3. Le fichier généré est un DOCX valide et rechargable

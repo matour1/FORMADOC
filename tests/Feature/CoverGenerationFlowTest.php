@@ -125,7 +125,7 @@ class CoverGenerationFlowTest extends TestCase
         $this->assertSame('detected', $document->status);
 
         // 2) Génération AVEC couverture
-        $response = $this->post("/documents/{$document->id}/generate-cover", [
+        $response = $this->post("/documents/{$document->hash_id}/generate-cover", [
             'cover' => new UploadedFile(
                 $this->createCoverDocx(),
                 'couverture.docx',
@@ -189,7 +189,7 @@ class CoverGenerationFlowTest extends TestCase
 
         $document = \App\Models\Document::firstOrFail();
 
-        $response = $this->post("/documents/{$document->id}/generate-cover", []);
+        $response = $this->post("/documents/{$document->hash_id}/generate-cover", []);
 
         $response->assertSessionHasErrors('cover');
     }
