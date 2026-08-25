@@ -92,6 +92,10 @@ class DocumentController extends Controller
      */
     public function upload(StoreDocumentRequest $request): RedirectResponse
     {
+        // P2-1 : quotas consommés pendant ce traitement — remboursés en bloc
+        // dans le catch si une exception survient (aucune perte en cas d'échec).
+        $consumed = ['deterministic' => false, 'ai' => false];
+
         try {
             // Option « Utiliser l'assistance IA » (case à cocher explicite).
             // Le mode par défaut est SANS IA : aucun appel externe n'est émis
@@ -114,6 +118,7 @@ class DocumentController extends Controller
                                 .'Passez à un plan supérieur ou attendez la prochaine période.',
                         ]);
                 }
+                $consumed['deterministic'] = true;
             }
 
             // --- Quota IA (uniquement si l'IA est demandée) ---
@@ -132,6 +137,8 @@ class DocumentController extends Controller
                         .$aiQuota['used'].'/'.$aiQuota['quota'].'). '
                         .'Le document a été traité en mode déterministe. '
                         .'Passez à un plan supérieur ou achetez des crédits pour réactiver l\'IA.');
+                } else {
+                    $consumed['ai'] = true;
                 }
             }
 
@@ -173,7 +180,20 @@ class DocumentController extends Controller
                 ],
             ]);
 
-            $this->runDetection($document, $titleMethod, $useAi);
+            try {
+                $this->runDetection($document, $titleMethod, $useAi);
+            } catch (\Throwable $e) {
+                // P2-1 : échec de l'analyse → on nettoie le document créé et
+                // son fichier, puis on rembourse les quotas consommés. L'exception
+                // est relancée pour être loggée par le catch global.
+                try {
+                    \Illuminate\Support\Facades\Storage::disk('storage')->delete($document->path);
+                    $document->delete();
+                } catch (\Throwable) {
+                    // Best-effort : le catch global rembourse déjà les quotas
+                }
+                throw $e;
+            }
 
             // --- Mise en forme complète asynchrone (LongFormattingJob) ---
             // Le job exige un utilisateur (débit de crédits). Il est dispatché
@@ -210,6 +230,18 @@ class DocumentController extends Controller
                 ->route('documents.show', $document)
                 ->with('success', 'Document analysé avec succès.');
         } catch (Exception $e) {
+            // P2-1 : une exception (stockage, analyse, IO...) ne doit jamais
+            // faire perdre un quota à l'utilisateur. On rembourse les unités
+            // consommées pendant ce traitement.
+            if ($user = $request->user()) {
+                if ($consumed['deterministic']) {
+                    $this->quotas->refund($user, 'deterministic');
+                }
+                if ($consumed['ai']) {
+                    $this->quotas->refund($user, 'ai');
+                }
+            }
+
             Log::error('Erreur lors de l\'upload du document', [
                 'error' => $e->getMessage(),
                 'line' => $e->getLine(),

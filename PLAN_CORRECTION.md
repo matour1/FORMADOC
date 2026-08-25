@@ -26,10 +26,10 @@
 
 ## 🟡 P2 — Prochain sprint
 
-| # | Correctif | Fichiers |
-|---|---|---|
-| P2-1 | Quota consommé avant traitement (perdu si échec) | `DocumentController::upload` |
-| P2-2 | Statut `processing` document pendant `LongFormattingJob` | `LongFormattingJob` |
+| # | Correctif | Fichiers | Statut |
+|---|---|---|---|
+| P2-1 | Quota consommé avant traitement (perdu si échec) | `DocumentController::upload` | ✅ (remboursement catch + nettoyage fichier/document) |
+| P2-2 | Statut `processing` document pendant `LongFormattingJob` | `LongFormattingJob` | ⬜ |
 | P2-3 | Honeypot feedback | `FeedbackController` |
 | P2-4 | Purge fichiers temporaires (`preview-*`, `test_scripts`) | commande |
 | P2-5 | `InvoiceService::nextNumber` atomique (séquence dédiée) | `InvoiceService` |
@@ -39,7 +39,7 @@
 
 ## 🧪 Validation finale (avant commit)
 
-- [x] `php artisan test` — **338 tests / 1271 assertions verts** (333 + 5 nouveaux P1-6 : purge TTL + suppression cascade) 
+- [x] `php artisan test` — **341 tests / 1284 assertions verts** (338 + 3 nouveaux P2-1 : remboursement quota sur échec) 
 - [x] Vérifier qu'un document d'un autre utilisateur renvoie 404 (tests `DocumentOwnershipSecurityTest` : 4/4)
 - [x] Vérifier que le webhook KPay ne double jamais le crédit (tests `KPayWebhookIdempotenceTest` : 4/4)
 - [x] Vérifier la suppression complète du compte (fichiers inclus) — `AccountDeletionPurgeTest` : 1/1
@@ -130,6 +130,14 @@
   - Nouvelle commande `files:purge-temp` (`app/Console/Commands/PurgeTempFiles.php`) : supprime les previews `storage/app/preview-*.docx` plus vieux que le TTL (défaut 24 h, option `--ttl-hours`) et les dossiers `chat/attachments/{sessionId}` dont la session n'existe plus (orphelins)
   - Planifiée dans `routes/console.php` : quotidien à 02:30, `withoutOverlapping`
 - Tests : `ChatSessionPurgeTest` (5 tests) — suppression de session purge pièces jointes + fichiers générés, intrus 403 sans toucher aux fichiers, TTL previews (expiré supprimé / récent conservé / hors préfixe intact), purge des attachments de session supprimée, TTL personnalisé ; `AccountDeletionPurgeTest` étendu (pièce jointe supprimée à la suppression du compte)
+
+### P2-1 — Quota consommé avant traitement (perdu si échec) (implémenté)
+- **Gap** : le quota déterministe (et IA) était consommé au DÉBUT de l'upload, AVANT le stockage du fichier et l'analyse. Une exception (stockage KO, fichier corrompu, analyse en échec) faisait perdre le quota à l'utilisateur SANS document créé.
+- Correctif :
+  - Suivi des quotas consommés dans `$consumed['deterministic'|'ai']` pendant le traitement
+  - Catch global : remboursement en bloc via `QuotaService::refund()` (même pattern que le chat, échec LLM) — aucune perte en cas d'échec
+  - Échec d'analyse : nettoyage du fichier stocké (disk 'storage') et suppression de la ligne `Document` avant de relancer l'exception vers le catch global
+- Tests : `UploadQuotaRefundTest` (3 tests) — échec d'analyse rembourse le quota déterministe et nettoie le fichier, upload réussi consomme normalement, échec stockage (mock façade Storage) rembourse les quotas déterministe + IA
 
 ### P1-5 — Session mismatch chat (403 explicite)
 - `ChatController::send()` : si une session est fournie dans l'URL mais `user_id !== auth()->id()` → `abort(403)`
