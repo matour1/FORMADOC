@@ -19,7 +19,7 @@
 |---|---|---|---|
 | P1-1 | Throttles : `POST /chat`, login/register, purchase, feedback (honeypot) | `routes/saas.php`, `routes/auth.php`, `FeedbackController` | ✅ (limiters dans `AppServiceProvider`, honeypot feedback) |
 | P1-2 | Cumul de coût multi-tours OpenRouter (cost gap) + test unitaire | `OpenRouterService` | ✅ (cumul `cost_usd`/`cost_credits` sur tous les tours, détail `cost_usd_per_turn`) |
-| P1-3 | Durcir `CoverPageTemplateController::previewFile` (token signé, retirer `X-Preview-Path`) | `CoverPageTemplateController` | ⬜ |
+| P1-3 | Durcir `CoverPageTemplateController::previewFile` (token signé, retirer `X-Preview-Path`) | `CoverPageTemplateController` | ✅ (URL signée + expirable, préfixe `preview-`, header supprimé) |
 | P1-4 | Attachments chat : implémenter ou retirer l'UI | `ChatController`, `chat/show.blade.php` | ⬜ |
 | P1-5 | Session mismatch : 403 explicite au lieu d'une création silencieuse | `ChatController::send()` | ✅ |
 | P1-6 | RGPD : purge TTL sessions/files + suppression cascade | commande + `AccountController` | ⬜ |
@@ -39,7 +39,7 @@
 
 ## 🧪 Validation finale (avant commit)
 
-- [x] `php artisan test` — **321 tests / 1215 assertions verts** (317 + 4 nouveaux P1-2 : cumul coût multi-tours)
+- [x] `php artisan test` — **327 tests / 1225 assertions verts** (321 + 6 nouveaux P1-3 : preview signé)
 - [x] Vérifier qu'un document d'un autre utilisateur renvoie 404 (tests `DocumentOwnershipSecurityTest` : 4/4)
 - [x] Vérifier que le webhook KPay ne double jamais le crédit (tests `KPayWebhookIdempotenceTest` : 4/4)
 - [x] Vérifier la suppression complète du compte (fichiers inclus) — `AccountDeletionPurgeTest` : 1/1
@@ -47,6 +47,7 @@
 - [x] Vérifier les throttles (login/register/chat/purchase/feedback) — `RateLimitingTest` : 7/7
 - [x] Vérifier le 403 sur session chat d'autrui — `ChatSessionMismatchTest` : 4/4
 - [x] Vérifier le cumul de coût multi-tours OpenRouter — `OpenRouterMultiTurnCostTest` : 4/4
+- [x] Vérifier le durcissement de l'aperçu cover (URL signée, pas de fuite de chemin) — `CoverTemplatePreviewSecurityTest` : 6/6
 
 ## 📝 Détails d'implémentation P0
 
@@ -100,8 +101,17 @@
 - Le contrôleur `ChatController::send()` (étape 11) utilise déjà `$response['cost_credits']` → l'ajustement estimation/réel est désormais correct
 - Tests : `OpenRouterMultiTurnCostTest` (4 tests) — cumul 2 tours, tour unique, 3 tours avec exécuteur, reset entre appels successifs
 
-### P1-3 à P1-6 — à venir
-- P1-3 : durcir `CoverPageTemplateController::previewFile` (token signé, retirer `X-Preview-Path`)
+### P1-3 — Durcir l'aperçu serveur des pages de garde
+- **Faille** : `preview()` écrivait `storage/app/preview-XXXXXXXXXX.docx` et retournait une URL où le token ÉTAIT le nom de fichier brut ; `previewFile()` ne contrôlait que `.docx` + existence → n'importe quel `.docx` de `storage/app` (chat/generated, invoices…) était téléchargeable en connaissant son nom ; le header `X-Preview-Path` exposait le chemin serveur complet.
+- Correctif :
+  - `URL::temporarySignedRoute(..., now()->addMinutes(15), ['token' => basename($tmp)])` → URL signée + expirable
+  - middleware `signed` sur la route + garde `$request->hasValidSignature()` (403 si invalide/expirée)
+  - préfixe `preview-` obligatoire + `.docx` + existence (404 sinon) → un fichier ordinaire de `storage/app` n'est plus téléchargeable
+  - suppression du header `X-Preview-Path`
+  - route simplifiée : `cover-templates/preview/{token}` (le paramètre superflu `{coverTemplate}` retiré)
+- Tests : `CoverTemplatePreviewSecurityTest` (6 tests) — pas de fuite du chemin, refus sans signature, téléchargement OK signé, signature falsifiée refusée, `.docx` ordinaire refusé, traversée de répertoire refusée
+
+### P1-4 à P1-6 — à venir
 - P1-4 : attachments chat — implémenter ou retirer l'UI
 - P1-6 : RGPD — purge TTL sessions/files + suppression cascade
 

@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use PhpOffice\PhpWord\PhpWord;
 
@@ -307,22 +308,37 @@ class CoverPageTemplateController extends Controller
         // Applique le même post-traitement gridSpan que la génération finale
         app(DocumentReconstructor::class)->applyGridSpan($tmp);
 
+        // P1-3 : URL signée et expirable. Le token n'est plus un nom de
+        // fichier brut : c'est un jeton signé (app_key) qui référence le
+        // fichier. Le chemin n'est plus exposé au client (header supprimé).
         return response()->json([
-            'url' => route('cover-templates.preview.file', [
-                'cover_template' => $coverTemplate->id,
-                'token' => basename($tmp),
-            ]),
+            'url' => URL::temporarySignedRoute(
+                'cover-templates.preview.file',
+                now()->addMinutes(15),
+                ['token' => basename($tmp)],
+            ),
             'size' => File::exists($tmp) ? File::size($tmp) : 0,
-        ])->header('X-Preview-Path', $tmp);
+        ]);
     }
 
     /**
      * Sert le fichier de preview puis le supprime.
+     * P1-3 : fichier accessible uniquement via URL signée et expirable,
+     * et le nom doit correspondre à un preview généré (préfixe obligatoire).
      */
-    public function previewFile(string $token)
+    public function previewFile(Request $request, string $token)
     {
+        // Signature invalide ou expirée => 403 (et non 404, pour ne pas
+        // révéler l'existence d'un fichier).
+        abort_unless($request->hasValidSignature(), 403);
+
         $path = storage_path('app/' . $token);
-        abort_unless(File::exists($path) && Str::endsWith($path, '.docx'), 404);
+        abort_unless(
+            Str::startsWith($token, 'preview-')
+                && Str::endsWith($path, '.docx')
+                && File::exists($path),
+            404,
+        );
 
         return response()->download($path, 'apercu.docx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

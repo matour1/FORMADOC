@@ -74,8 +74,11 @@ Route::post('/cover-templates/check', [CoverPageTemplateController::class, 'exis
     ->name('cover-templates.check');
 Route::post('/cover-templates/{coverTemplate}/preview', [CoverPageTemplateController::class, 'preview'])
     ->name('cover-templates.preview');
+// P1-3 : fichier d'aperçu servi via URL signée (temporarySignedRoute).
+// Le middleware `signed` bloque toute tentative sans signature valide.
 Route::get('/cover-templates/preview/{token}', [CoverPageTemplateController::class, 'previewFile'])
-    ->name('cover-templates.preview.file');
+    ->name('cover-templates.preview.file')
+    ->middleware('signed');
 Route::post('/cover-templates/{coverTemplate}/duplicate', [CoverPageTemplateController::class, 'duplicate'])
     ->name('cover-templates.duplicate');
 // Création d'une page de garde à partir d'un exemple (détection de zones)
