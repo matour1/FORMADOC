@@ -20,6 +20,14 @@ use Illuminate\Support\Str;
  */
 class OpenRouterService
 {
+    /**
+     * P1-2 : coûts USD de chaque tour de la boucle multi-tours en cours
+     * (cumulés dans chat(), rempli par parseResponse()).
+     *
+     * @var array<int, float>
+     */
+    private array $turnCosts = [];
+
     public function __construct(
         private readonly ModelRouter $router,
     ) {
@@ -58,7 +66,18 @@ class OpenRouterService
         $maxTurns = (int) ($options['tool_loop_max_turns'] ?? 5);
         $turns = 0;
 
+        // P1-2 : cumul du coût réel sur TOUS les tours (appel initial +
+        // appels d'outils). Avant, seul le coût du dernier tour était
+        // retourné → les tours intermédiaires étaient facturés à perte.
+        $this->turnCosts = [];
+
         foreach ($selection['all_candidates'] as $model) {
+            // P1-2 : on repart de zéro pour chaque candidat (un échec sur un
+            // modèle ne doit pas polluer le cumul du candidat suivant).
+            $totalUsd = 0.0;
+            $totalCredits = 0;
+            $this->turnCosts = [];
+
             try {
                 $payload = $this->buildPayload($model, $messages, $options);
 
@@ -76,6 +95,10 @@ class OpenRouterService
                 }
 
                 $parsed = $this->parseResponse($response, $model, $selection['plan']);
+
+                // P1-2 : on cumule le coût de chaque tour
+                $totalUsd += $parsed['cost_usd'];
+                $totalCredits += $parsed['cost_credits'];
 
                 // Boucle d'exécution des outils (function calling multi-tours)
                 while (! empty($parsed['tool_calls']) && is_callable($executor) && $turns < $maxTurns) {
@@ -112,11 +135,25 @@ class OpenRouterService
                     }
 
                     $parsed = $this->parseResponse($response, $model, $selection['plan']);
+
+                    // P1-2 : cumul du coût de ce tour d'outil
+                    $totalUsd += $parsed['cost_usd'];
+                    $totalCredits += $parsed['cost_credits'];
                 }
 
                 if ($turns > 0) {
                     $parsed['tool_turns'] = $turns;
                 }
+
+                // P1-2 : on écrase les champs coût avec le cumul multi-tours
+                // (les champs unitaires restent disponibles dans 'raw'/usage).
+                $parsed['cost_usd'] = round($totalUsd, 6);
+                $parsed['cost_credits'] = $totalCredits;
+                // Coût cumulé par tour (pour debug / métriques)
+                $parsed['cost_usd_per_turn'] = array_map(
+                    fn ($v) => round($v, 6),
+                    $this->turnCosts
+                );
 
                 return $parsed;
             } catch (\Throwable $e) {
@@ -263,6 +300,9 @@ class OpenRouterService
         }
 
         $credits = $this->usdToCredits($usd);
+
+        // P1-2 : mémoriser le coût de ce tour (cumulé dans chat())
+        $this->turnCosts[] = $usd;
 
         return [
             'model' => $model,

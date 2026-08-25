@@ -18,7 +18,7 @@
 | # | Correctif | Fichiers | Statut |
 |---|---|---|---|
 | P1-1 | Throttles : `POST /chat`, login/register, purchase, feedback (honeypot) | `routes/saas.php`, `routes/auth.php`, `FeedbackController` | ✅ (limiters dans `AppServiceProvider`, honeypot feedback) |
-| P1-2 | Cumul de coût multi-tours OpenRouter (cost gap) + test unitaire | `OpenRouterService` | ⬜ |
+| P1-2 | Cumul de coût multi-tours OpenRouter (cost gap) + test unitaire | `OpenRouterService` | ✅ (cumul `cost_usd`/`cost_credits` sur tous les tours, détail `cost_usd_per_turn`) |
 | P1-3 | Durcir `CoverPageTemplateController::previewFile` (token signé, retirer `X-Preview-Path`) | `CoverPageTemplateController` | ⬜ |
 | P1-4 | Attachments chat : implémenter ou retirer l'UI | `ChatController`, `chat/show.blade.php` | ⬜ |
 | P1-5 | Session mismatch : 403 explicite au lieu d'une création silencieuse | `ChatController::send()` | ✅ |
@@ -39,13 +39,14 @@
 
 ## 🧪 Validation finale (avant commit)
 
-- [x] `php artisan test` — **317 tests / 1197 assertions verts** (306 baseline + 11 nouveaux P1 : 7 throttles + 4 session mismatch)
+- [x] `php artisan test` — **321 tests / 1215 assertions verts** (317 + 4 nouveaux P1-2 : cumul coût multi-tours)
 - [x] Vérifier qu'un document d'un autre utilisateur renvoie 404 (tests `DocumentOwnershipSecurityTest` : 4/4)
 - [x] Vérifier que le webhook KPay ne double jamais le crédit (tests `KPayWebhookIdempotenceTest` : 4/4)
 - [x] Vérifier la suppression complète du compte (fichiers inclus) — `AccountDeletionPurgeTest` : 1/1
 - [x] Vérifier le téléchargement des fichiers générés chat (propriétaire uniquement) — `ChatFileDownloadSecurityTest` : 6/6
 - [x] Vérifier les throttles (login/register/chat/purchase/feedback) — `RateLimitingTest` : 7/7
 - [x] Vérifier le 403 sur session chat d'autrui — `ChatSessionMismatchTest` : 4/4
+- [x] Vérifier le cumul de coût multi-tours OpenRouter — `OpenRouterMultiTurnCostTest` : 4/4
 
 ## 📝 Détails d'implémentation P0
 
@@ -91,8 +92,15 @@
 - **Honeypot feedback** : champ invisible `website` ajouté au formulaire ; s'il est rempli → le feedback est ignoré silencieusement (log `Feedback honeypot triggered`)
 - Tests : `RateLimitingTest` (7 tests) — throttle login (5→6e), register (3→4e), feedback (3→4e), chat (20→21e), purchase (5→6e), honeypot (feedback non stocké), isolation par utilisateur
 
-### P1-2 à P1-6 — à venir
-- P1-2 : cumul de coût multi-tours OpenRouter (cost gap) + test unitaire
+### P1-2 — Cumul du coût multi-tours OpenRouter
+- **Bug (cost gap)** : la boucle de function calling effectue plusieurs appels HTTP (1 initial + N tours d'outils), chaque appel consommant des tokens facturés. Avant, seul le coût du DERNIER tour était retourné → les tours intermédiaires étaient facturés à perte (le contrôleur remboursait la différence estimation/réel avec un réel sous-estimé).
+- Correctif dans `OpenRouterService::chat()` : cumul de `cost_usd` et `cost_credits` sur TOUS les tours (variables `$totalUsd`/`$totalCredits`), reset à chaque candidat (un échec sur un modèle ne pollue pas le fallback)
+- Nouveau champ `cost_usd_per_turn` (array) exposé pour le debug/métriques
+- `parseResponse()` mémorise le coût de chaque tour dans `$this->turnCosts`
+- Le contrôleur `ChatController::send()` (étape 11) utilise déjà `$response['cost_credits']` → l'ajustement estimation/réel est désormais correct
+- Tests : `OpenRouterMultiTurnCostTest` (4 tests) — cumul 2 tours, tour unique, 3 tours avec exécuteur, reset entre appels successifs
+
+### P1-3 à P1-6 — à venir
 - P1-3 : durcir `CoverPageTemplateController::previewFile` (token signé, retirer `X-Preview-Path`)
 - P1-4 : attachments chat — implémenter ou retirer l'UI
 - P1-6 : RGPD — purge TTL sessions/files + suppression cascade
