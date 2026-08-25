@@ -32,14 +32,14 @@
 | P2-2 | Statut `processing` document pendant `LongFormattingJob` | `LongFormattingJob` + Dashboard + vues | ✅ (processing → ready, retour detected sur échec) |
 | P2-3 | Honeypot feedback | `FeedbackController` | ✅ (déjà couvert par P1-1 : champ `website` + test `RateLimitingTest`) |
 | P2-4 | Purge fichiers temporaires (`preview-*`, `test_scripts`) | commande | ✅ (gen_*.docx orphelins purgés, scripts conservés) |
-| P2-5 | `InvoiceService::nextNumber` atomique (séquence dédiée) | `InvoiceService` | ⬜ |
+| P2-5 | `InvoiceService::nextNumber` atomique (séquence dédiée) | `InvoiceService` | ✅ (table invoice_sequences + lockForUpdate + backfill) |
 | P2-6 | Idempotence gate `confirm_cost` (token) | `ChatController` | ⬜ |
 | P2-7 | Harmoniser `cost_infrastructure` (défaut code 0.25 vs config 0.15) | `OpenRouterService` | ⬜ |
 | P2-8 | Créer un test Feature de sécurité : 403 si cross-user, auth requise | `tests/Feature/` | ⬜ |
 
 ## 🧪 Validation finale (avant commit)
 
-- [x] `php artisan test` — **347 tests / 1302 assertions verts** (346 + 1 nouveau P2-4 : purge gen_*.docx orphelins) 
+- [x] `php artisan test` — **350 tests / 1309 assertions verts** (347 + 3 nouveaux P2-5 : numérotation atomique) 
 - [x] Vérifier qu'un document d'un autre utilisateur renvoie 404 (tests `DocumentOwnershipSecurityTest` : 4/4)
 - [x] Vérifier que le webhook KPay ne double jamais le crédit (tests `KPayWebhookIdempotenceTest` : 4/4)
 - [x] Vérifier la suppression complète du compte (fichiers inclus) — `AccountDeletionPurgeTest` : 1/1
@@ -159,6 +159,15 @@
   - Les scripts utilitaires (`.php`, `reports/`) sont CONSERVÉS : ils sont versionnés et utilisés par les tests unitaires DocAnalyzer (fixture `rapport_test_structure.docx`)
 - Tests : `ChatSessionPurgeTest::test_files_purge_temp_supprime_les_docx_generes_orphelins_et_conserve_les_scripts` (1 test) — gen_*.docx expiré purgé, récent conservé, scripts `.php` + fixtures `reports/` conservés
 - ⚠️ Leçon : le test écrase la fixture versionnée `reports/rapport_test_structure.docx` au premier jet → tests unitaires DocAnalyzer en échec (archive corrompue). Corrigé : fixture isolée `fixture_purge_tmp.docx` + restauration `git checkout` des fichiers versionnés.
+
+### P2-5 — `InvoiceService::nextNumber` atomique (implémenté)
+- **Gap** : `nextNumber()` faisait `Invoice::whereYear()->count() + 1` → NON atomique : deux requêtes concurrentes (webhook KPay + renouvellement + achat) pouvaient lire le même count et générer le même numéro → violation contrainte unique `invoices.number`. De plus, l'appel sans création de facture entre deux retournait toujours le même numéro.
+- Correctif :
+  - Nouvelle table `invoice_sequences` (migration `2026_08_25_000002_create_invoice_sequences_table.php`) : une ligne par année, `last_number` incrémenté sous `lockForUpdate` (InnoDB) dans une transaction → numérotation atomique
+  - `insertOrIgnore` pour le premier appel de l'année (robuste à la course à l'insertion)
+  - Backfill : ligne de l'année courante initialisée au max des suffixes existants (jamais de réutilisation de numéro émis)
+- Tests : `InvoiceServiceTest` (3 nouveaux) — deux appels sans création donnent des numéros distincts, séquence continue après factures existantes (backfill à 42 → 43), séparation par année (2025 et 2026 repartent de 1)
+- ⚠️ Test existant adapté : `test_next_number_sequence_croissante` créait la facture via `Invoice::factory()` (hors séquence) → le `count()+1` donnait 000002 mais la séquence restait à 0. Désormais il passe par `createForCreditPurchase()` (flux réel).
 
 ### P1-5 — Session mismatch chat (403 explicite)
 - `ChatController::send()` : si une session est fournie dans l'URL mais `user_id !== auth()->id()` → `abort(403)`

@@ -10,6 +10,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Billing\InvoiceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -55,14 +56,64 @@ class InvoiceServiceTest extends TestCase
     {
         $user = User::factory()->create();
 
-        Invoice::factory()->create([
-            'user_id' => $user->id,
-            'number' => 'INV-'.now()->year.'-000001',
-        ]);
+        // Première facture via le service (consomme le numéro 000001) —
+        // le flux réel passe par la séquence (P2-5).
+        $this->service->createForCreditPurchase(
+            user: $user,
+            amount: 3000,
+            currency: 'XAF',
+            reference: 'pay_1',
+        );
 
         $number = $this->service->nextNumber();
 
         $this->assertSame('INV-'.now()->year.'-000002', $number);
+    }
+
+    public function test_next_number_est_atomique_meme_sans_creation_de_facture(): void
+    {
+        // P2-5 : deux appels successifs SANS créer de facture entre eux
+        // doivent produire des numéros distincts (avant : count()+1 donnait
+        // toujours le même numéro tant qu'aucune facture n'était créée).
+        $a = $this->service->nextNumber();
+        $b = $this->service->nextNumber();
+
+        $this->assertNotSame($a, $b, 'Deux appels successifs doivent produire des numéros distincts.');
+        $this->assertSame('INV-'.now()->year.'-000001', $a);
+        $this->assertSame('INV-'.now()->year.'-000002', $b);
+    }
+
+    public function test_next_number_continue_apres_les_factures_existantes(): void
+    {
+        // Le backfill (migration) initialise la séquence au max existant :
+        // nextNumber() ne doit JAMAIS réutiliser un numéro déjà émis.
+        $user = User::factory()->create();
+
+        Invoice::factory()->create([
+            'user_id' => $user->id,
+            'number' => 'INV-'.now()->year.'-000042',
+        ]);
+
+        // Simule la séquence déjà backfillée à 42
+        DB::table('invoice_sequences')->updateOrInsert(
+            ['year' => (int) now()->format('Y')],
+            ['last_number' => 42, 'updated_at' => now()]
+        );
+
+        $this->assertSame('INV-'.now()->year.'-000043', $this->service->nextNumber());
+    }
+
+    public function test_next_number_se_quence_separement_par_annee(): void
+    {
+        // Chaque année a sa propre séquence (INV-2025-XXXXXX et INV-2026-XXXXXX
+        // repartent de 1) — pas de collision entre années.
+        $number2025 = $this->service->nextNumber(new \DateTimeImmutable('2025-06-01'));
+        $this->assertSame('INV-2025-000001', $number2025);
+
+        $number2026a = $this->service->nextNumber(new \DateTimeImmutable('2026-06-01'));
+        $number2026b = $this->service->nextNumber(new \DateTimeImmutable('2026-06-02'));
+        $this->assertSame('INV-2026-000001', $number2026a);
+        $this->assertSame('INV-2026-000002', $number2026b);
     }
 
     /* ------------------------------------------------------------------

@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -29,16 +30,42 @@ use PhpOffice\PhpWord\Settings;
 class InvoiceService
 {
     /**
-     * Génère le prochain numéro de facture.
+     * Génère le prochain numéro de facture (P2-5 : atomique).
+     *
+     * Incrémente la séquence de l'année sous `lockForUpdate` (InnoDB) : deux
+     * appels concurrents (webhook KPay, renouvellement, achat de crédits)
+     * obtiennent TOUJOURS des numéros distincts — plus de doublon possible
+     * sur la contrainte unique `invoices.number`.
      */
     public function nextNumber(\DateTimeInterface $at = null): string
     {
         $at ??= now();
-        $year = $at->format('Y');
+        $year = (int) $at->format('Y');
 
-        $count = Invoice::whereYear('created_at', $year)->count();
+        $last = DB::transaction(function () use ($year) {
+            // Première facture de l'année : crée la ligne si absente
+            // (insertOrIgnore : si deux appels concurrents, un seul insère).
+            DB::table('invoice_sequences')->insertOrIgnore([
+                'year' => $year,
+                'last_number' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
 
-        return 'INV-'.$year.'-'.str_pad((string) ($count + 1), 6, '0', STR_PAD_LEFT);
+            $sequence = DB::table('invoice_sequences')
+                ->where('year', $year)
+                ->lockForUpdate()
+                ->first();
+
+            $next = ((int) ($sequence->last_number ?? 0)) + 1;
+            DB::table('invoice_sequences')
+                ->where('year', $year)
+                ->update(['last_number' => $next, 'updated_at' => now()]);
+
+            return $next;
+        });
+
+        return 'INV-'.$year.'-'.str_pad((string) $last, 6, '0', STR_PAD_LEFT);
     }
 
     /**
