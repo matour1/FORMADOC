@@ -7,6 +7,7 @@ use App\Models\ChatSession;
 use App\Services\Anthropic\ClaudeSkillsService;
 use App\Services\Billing\CreditService;
 use App\Services\Billing\QuotaService;
+use App\Services\Chat\ChatAttachmentService;
 use App\Services\Chat\ChatToolsService;
 use App\Services\OpenRouter\OpenRouterService;
 use Illuminate\Http\RedirectResponse;
@@ -29,6 +30,12 @@ use Illuminate\View\View;
  *      (plans payants ≥ standard inclus, sinon pay-per-use ×1,5 en crédits)
  *   6. ajustement : si coût réel < estimé → remboursement de la différence
  *   7. en cas d'échec → remboursement intégral + restitution du quota IA
+ *
+ * P1-4 (pièces jointes) : l'UI envoie `attachments[]` en multipart. Elles
+ * sont validées (whitelist extensions, 5 Mo, 5 max), stockées sur le disque
+ * privé `chat/attachments/{session}/*`, extraites en texte (txt/md/docx)
+ * pour enrichir le contexte IA, et tracées dans `metadata.attachments` du
+ * message utilisateur (téléchargement sécurisé ownership-vérifié).
  */
 class ChatController extends Controller
 {
@@ -38,6 +45,7 @@ class ChatController extends Controller
         private readonly QuotaService $quotas,
         private readonly ChatToolsService $tools,
         private readonly ClaudeSkillsService $claudeSkills,
+        private readonly ChatAttachmentService $attachments,
     ) {
     }
 
@@ -130,8 +138,8 @@ class ChatController extends Controller
             abort(404, 'Fichier introuvable.');
         }
 
-        // Seuls les répertoires de fichiers générés sont autorisés
-        $allowedPrefixes = ['chat/generated/', 'claude-skills/'];
+        // Seuls les répertoires de fichiers générés / pièces jointes sont autorisés
+        $allowedPrefixes = ['chat/generated/', 'claude-skills/', 'chat/attachments/'];
         $inAllowed = false;
         foreach ($allowedPrefixes as $prefix) {
             if (str_starts_with($path, $prefix)) {
@@ -144,25 +152,42 @@ class ChatController extends Controller
             abort(404, 'Fichier introuvable.');
         }
 
-        // Ownership : le fichier doit être référencé dans les métadonnées
-        // d'un message assistant d'une session appartenant à l'utilisateur.
-        $owned = $user->chatSessions()
-            ->whereHas('messages', function ($q) use ($path) {
-                $q->where('role', 'assistant')
-                    ->whereJsonContains('metadata->generated_files', $path);
-            })
-            ->exists();
+        // --- Ownership ---
+        // Pièces jointes (P1-4) : le chemin contient l'ID de session
+        // (chat/attachments/{sessionId}/...). La session doit appartenir
+        // à l'utilisateur courant → ownership vérifié, on saute le check
+        // `generated_files` (réservé aux fichiers générés par les outils).
+        if (str_starts_with($path, 'chat/attachments/')) {
+            $segments = explode('/', $path);
+            $sessionId = (int) ($segments[2] ?? 0);
 
-        // Fallback : la référence peut aussi être dans le contenu du message
-        // (messages générés avant le traçage metadata). On vérifie alors que
-        // le chemin correspond à un message de l'utilisateur.
-        if (! $owned) {
+            if ($sessionId <= 0 || ! $user->chatSessions()->whereKey($sessionId)->exists()) {
+                abort(404, 'Fichier introuvable.');
+            }
+
+            $owned = true;
+        } else {
+            // Fichiers générés : le fichier doit être référencé dans les
+            // métadonnées d'un message assistant d'une session appartenant à
+            // l'utilisateur.
             $owned = $user->chatSessions()
                 ->whereHas('messages', function ($q) use ($path) {
                     $q->where('role', 'assistant')
-                        ->where('content', 'like', '%'.$path.'%');
+                        ->whereJsonContains('metadata->generated_files', $path);
                 })
                 ->exists();
+
+            // Fallback : la référence peut aussi être dans le contenu du message
+            // (messages générés avant le traçage metadata). On vérifie alors que
+            // le chemin correspond à un message de l'utilisateur.
+            if (! $owned) {
+                $owned = $user->chatSessions()
+                    ->whereHas('messages', function ($q) use ($path) {
+                        $q->where('role', 'assistant')
+                            ->where('content', 'like', '%'.$path.'%');
+                    })
+                    ->exists();
+            }
         }
 
         if (! $owned) {
@@ -185,6 +210,10 @@ class ChatController extends Controller
     {
         $validated = $request->validate([
             'message' => ['required', 'string', 'max:12000'],
+            // P1-4 : pièces jointes (multipart). Validation stricte dans
+            // ChatAttachmentService (whitelist extensions, 5 Mo, 5 max).
+            'attachments' => ['nullable', 'array', 'max:5'],
+            'attachments.*' => ['nullable', 'file'],
         ]);
 
         $user = $request->user();
@@ -244,11 +273,33 @@ class ChatController extends Controller
             ]);
         }
 
+        // --- 5b. P1-4 : pièces jointes ---
+        // Validation + stockage privé + extraction texte. En cas d'erreur
+        // bloquante (aucune pièce acceptée), on annule avant débit.
+        $uploaded = $request->file('attachments', []);
+        $attachmentResult = $this->attachments->handle($uploaded, $chatSession->id);
+
+        if (! $attachmentResult['ok']) {
+            return back()->with('error', implode(' ', $attachmentResult['errors']));
+        }
+
+        $storedAttachments = $attachmentResult['files'];
+
         // --- 6. Enregistrer le message utilisateur ---
         ChatMessage::create([
             'chat_session_id' => $chatSession->id,
             'role' => 'user',
             'content' => $messageContent,
+            // P1-4 : trace des pièces jointes (nom, chemin, taille, ext)
+            // pour l'affichage et le téléchargement sécurisé.
+            'metadata' => $storedAttachments === [] ? null : [
+                'attachments' => array_map(fn ($att) => [
+                    'name' => $att['name'],
+                    'path' => $att['path'],
+                    'size' => $att['size'],
+                    'ext' => $att['ext'],
+                ], $storedAttachments),
+            ],
         ]);
 
         // --- 7. Débit immédiat (estimation) ---
@@ -274,6 +325,16 @@ class ChatController extends Controller
             ->map(fn (ChatMessage $m) => ['role' => $m->role, 'content' => $m->content])
             ->values()
             ->all();
+
+        // --- 8b. P1-4 : injection du contenu des pièces jointes ---
+        // Le bloc est préfixé au dernier message utilisateur pour que le
+        // modèle dispose du contenu (txt/md/docx) ou au moins de la mention.
+        if ($storedAttachments !== []) {
+            $block = $this->attachments->contextBlock($storedAttachments);
+            if ($block !== '') {
+                $history[count($history) - 1]['content'] = $block . "\n\n" . $history[count($history) - 1]['content'];
+            }
+        }
 
         // --- 9. Outils actionnables (function calling) ---
         // Skills Claude : injectés si éligible (plans payants ≥ standard

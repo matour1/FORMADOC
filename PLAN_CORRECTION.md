@@ -20,7 +20,7 @@
 | P1-1 | Throttles : `POST /chat`, login/register, purchase, feedback (honeypot) | `routes/saas.php`, `routes/auth.php`, `FeedbackController` | ✅ (limiters dans `AppServiceProvider`, honeypot feedback) |
 | P1-2 | Cumul de coût multi-tours OpenRouter (cost gap) + test unitaire | `OpenRouterService` | ✅ (cumul `cost_usd`/`cost_credits` sur tous les tours, détail `cost_usd_per_turn`) |
 | P1-3 | Durcir `CoverPageTemplateController::previewFile` (token signé, retirer `X-Preview-Path`) | `CoverPageTemplateController` | ✅ (URL signée + expirable, préfixe `preview-`, header supprimé) |
-| P1-4 | Attachments chat : implémenter ou retirer l'UI | `ChatController`, `chat/show.blade.php` | ⬜ |
+| P1-4 | Attachments chat : implémenter ou retirer l'UI | `ChatController`, `chat/show.blade.php` | ✅ (implémentés : upload privé, extraction txt/md/docx, contexte IA, téléchargement sécurisé) |
 | P1-5 | Session mismatch : 403 explicite au lieu d'une création silencieuse | `ChatController::send()` | ✅ |
 | P1-6 | RGPD : purge TTL sessions/files + suppression cascade | commande + `AccountController` | ⬜ |
 
@@ -39,7 +39,7 @@
 
 ## 🧪 Validation finale (avant commit)
 
-- [x] `php artisan test` — **327 tests / 1225 assertions verts** (321 + 6 nouveaux P1-3 : preview signé)
+- [x] `php artisan test` — **333 tests / 1246 assertions verts** (327 + 6 nouveaux P1-4 : pièces jointes chat)
 - [x] Vérifier qu'un document d'un autre utilisateur renvoie 404 (tests `DocumentOwnershipSecurityTest` : 4/4)
 - [x] Vérifier que le webhook KPay ne double jamais le crédit (tests `KPayWebhookIdempotenceTest` : 4/4)
 - [x] Vérifier la suppression complète du compte (fichiers inclus) — `AccountDeletionPurgeTest` : 1/1
@@ -48,6 +48,7 @@
 - [x] Vérifier le 403 sur session chat d'autrui — `ChatSessionMismatchTest` : 4/4
 - [x] Vérifier le cumul de coût multi-tours OpenRouter — `OpenRouterMultiTurnCostTest` : 4/4
 - [x] Vérifier le durcissement de l'aperçu cover (URL signée, pas de fuite de chemin) — `CoverTemplatePreviewSecurityTest` : 6/6
+- [x] Vérifier les pièces jointes chat (stockage, contexte IA, téléchargement sécurisé) — `ChatAttachmentsTest` : 6/6
 
 ## 📝 Détails d'implémentation P0
 
@@ -111,9 +112,17 @@
   - route simplifiée : `cover-templates/preview/{token}` (le paramètre superflu `{coverTemplate}` retiré)
 - Tests : `CoverTemplatePreviewSecurityTest` (6 tests) — pas de fuite du chemin, refus sans signature, téléchargement OK signé, signature falsifiée refusée, `.docx` ordinaire refusé, traversée de répertoire refusée
 
-### P1-4 à P1-6 — à venir
-- P1-4 : attachments chat — implémenter ou retirer l'UI
-- P1-6 : RGPD — purge TTL sessions/files + suppression cascade
+### P1-4 — Pièces jointes du chat (implémentées)
+- **Bug (fonctionnalité factice)** : l'UI envoyait `attachments[]` (multipart) mais le backend ne les validait/stockait/passait JAMAIS → fichiers joints silencieusement ignorés.
+- Correctif :
+  - `ChatAttachmentService` : whitelist extensions (docx, pdf, txt, md, xlsx, pptx), max 5 Mo/fichier, max 5 fichiers ; stockage disque privé `chat/attachments/{sessionId}/{uuid}.{ext}` ; extraction texte (txt/md brut, docx via PhpWord) ; pdf/xlsx/pptx = mention sans dump
+  - `ChatController::send()` : validation `attachments.*`, traitement après création de session, bloc contexte IA préfixé au message utilisateur (`[Pièce jointe N : nom]` + extrait), trace `metadata.attachments` (nom/chemin/taille/ext) sur le message utilisateur
+  - `ChatController::downloadFile()` : accepte `chat/attachments/{sessionId}/` avec ownership vérifié via la session (fix : le check `generated_files` était exécuté ensuite → 404 systématique)
+  - UI `chat/show.blade.php` : affichage des pièces jointes avec lien de téléchargement sécurisé sous le message
+- Tests : `ChatAttachmentsTest` (6 tests) — stockage + contexte, extension interdite, taille max, téléchargement propriétaire, refus intrus, traversée refusée
+
+### P1-6 — à venir
+- RGPD — purge TTL sessions/files + suppression cascade
 
 ### P1-5 — Session mismatch chat (403 explicite)
 - `ChatController::send()` : si une session est fournie dans l'URL mais `user_id !== auth()->id()` → `abort(403)`

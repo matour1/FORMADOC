@@ -215,6 +215,21 @@
                                         {{ $message->metadata['tool_turns'] }} action(s) exécutée(s)
                                     </p>
                                 @endif
+                                @if (! empty($message->metadata['attachments']))
+                                    <div class="msg-attachments" style="margin-top:.6rem;display:flex;flex-direction:column;gap:.35rem">
+                                        @foreach ($message->metadata['attachments'] as $att)
+                                            <a href="{{ route('chat.files.download', ['file' => $att['path']]) }}"
+                                               class="attach-chip" style="display:inline-flex;align-items:center;gap:.4rem;text-decoration:none"
+                                               download="{{ $att['name'] }}" title="Télécharger {{ $att['name'] }}">
+                                                <i data-lucide="paperclip" style="width:13px;height:13px"></i>
+                                                {{ $att['name'] }}
+                                                @if (! empty($att['size']))
+                                                    <span style="opacity:.75">({{ number_format($att['size'] / 1024, 0, ',', ' ') }} Ko)</span>
+                                                @endif
+                                            </a>
+                                        @endforeach
+                                    </div>
+                                @endif
                             </div>
                             <div class="meta">
                                 <span class="msg-time">{{ $message->created_at->format('H:i') }}</span>
