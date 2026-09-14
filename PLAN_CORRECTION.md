@@ -33,7 +33,7 @@
 | P2-3 | Honeypot feedback | `FeedbackController` | ✅ (déjà couvert par P1-1 : champ `website` + test `RateLimitingTest`) |
 | P2-4 | Purge fichiers temporaires (`preview-*`, `test_scripts`) | commande | ✅ (gen_*.docx orphelins purgés, scripts conservés) |
 | P2-5 | `InvoiceService::nextNumber` atomique (séquence dédiée) | `InvoiceService` | ✅ (table invoice_sequences + lockForUpdate + backfill) |
-| P2-6 | Idempotence gate `confirm_cost` (token) | `ChatController` | ✅ (token one-time + hash du message + tests) |
+| P2-6 | Idempotence gate `confirm_cost` (token) | `ChatController` | ✅ (dépassé — flux de confirmation SUPPRIMÉ : envoi direct, coût estimé affiché avant + ajusté après usage ; tests adaptés) |
 | P2-7 | Harmoniser `cost_infrastructure` (défaut code 0.25 vs config 0.15) | `OpenRouterService` | ✅ (fallbacks ramenés à 0.15 + test verrou) |
 | P2-8 | Créer un test Feature de sécurité : 403 si cross-user, auth requise | `tests/Feature/` | ✅ (`InvoiceDownloadSecurityTest` : 4/4 — facture d'autrui 403, invité → login, propriétaire OK, hash invalide 404) |
 | P2-9 | **Obfusquer les IDs de base de données dans les URLs** (Document, ChatSession, Invoice, CoverPageTemplate) | trait `HasHashId` + 4 modèles | ✅ (hashids 5.0, sel par modèle dérivé de APP_KEY, `hash_id` comme clé de route, décodage dans le binding, tests dédiés) |
@@ -170,15 +170,17 @@
 - Tests : `InvoiceServiceTest` (3 nouveaux) — deux appels sans création donnent des numéros distincts, séquence continue après factures existantes (backfill à 42 → 43), séparation par année (2025 et 2026 repartent de 1)
 - ⚠️ Test existant adapté : `test_next_number_sequence_croissante` créait la facture via `Invoice::factory()` (hors séquence) → le `count()+1` donnait 000002 mais la séquence restait à 0. Désormais il passe par `createForCreditPurchase()` (flux réel).
 
-### P2-6 — Idempotence gate `confirm_cost` (token one-time) (implémenté)
-- **Gap** : un POST direct `message + confirm_cost=1` (sans passer par l'estimation) exécutait le message ; un double-clic ou un rechargement du banner de confirmation ré-envoyait le même message 2 fois → double débit + messages dupliqués ; le message était stocké en clair dans le champ caché de la vue.
-- Correctif :
-  - `ChatController::send()` étape 3 : à la première soumission (estimation, sans `confirm_cost`), un token `Str::random(32)` est généré et inclus dans le flash `pending_cost`
-  - Étape confirmation : le POST doit fournir `confirm_token` EXACTEMENT égal au token en session (`hash_equals`, constant-time) ET le message confirmé doit être celui estimé (même logique `hash_equals` sur le message) → sinon `back()` avec « Confirmation expirée ou invalide », AUCUN message créé, AUCUN débit
-  - Le token est à usage unique : `session()->forget('pending_cost')` dès la confirmation consommée → un double-clic / rechargement / rejeu du même token est rejeté (pas de double débit, pas de doublon)
-  - `chat/show.blade.php` : champ caché `confirm_token` ajouté au formulaire de confirmation
-- Tests : `ChatConfirmationTokenTest` (4 tests) — confirmation sans token refusée (aucun message), mauvais token refusé (solde intact), token à usage unique (double POST → 1 seul message, 1 seul débit), message différent avec le bon token refusé
-- ⚠️ Tests adaptés : `ChatAttachmentsTest` (5 POSTs) passent désormais par le flux complet via le helper `confirmChat()` (estimation → lecture du token en session → confirmation)
+### P2-6 — Idempotence gate `confirm_cost` (token one-time) — SUPPRIMÉ (remplacé par l'envoi direct)
+- **Contexte** : un gate à token (estimation → confirmation → envoi) avait été implémenté pour éviter le double-clic / double débit.
+- **Problème en réel** : le flux était cassé — le flash `session('pending_cost')` (qui porte le token) était consommé par le `back()` de redirection, donc la confirmation échouait systématiquement avec « Confirmation expirée ou invalide ». De plus, la confirmation gâchait l'UX (demande utilisateur).
+- **Décision (remplacement)** : suppression complète de l'étape de confirmation. `ChatController::send()` envoie directement :
+  - Le coût estimé est affiché dans le composer avant l'envoi (« Coût estimé : N crédit(s) — ajusté après usage »)
+  - Le débit réel a lieu après le traitement IA (toujours unique par requête : idempotence garantie côté requête HTTP, pas de double POST involontaire)
+  - Anciens champs `confirm_cost` / `confirm_token` ignorés sans erreur (compatibilité)
+- Bannières/toasts `pending_cost` retirés des vues (`chat/index.blade.php`, `chat/show.blade.php`, `layouts/app.blade.php`)
+- ⚠️ **Bug de balise corrigé au passage** : le formulaire de `chat/index.blade.php` n'avait PAS `enctype="multipart/form-data"` → les pièces jointes ne pouvaient jamais partir depuis une nouvelle conversation. Ajout de l'`enctype` + UI complète (bouton paperclip, input `attachments[]`, chips nom/taille) pour permettre l'envoi de pièces jointes dès le début d'une conversation.
+- Tests : `ChatConfirmationTokenTest` réécrit (4 tests) — envoi direct crée le message et débite UNE fois, anciens champs `confirm_*` ignorés sans erreur, création de session sans session existante, message sans texte refusé. `ChatAttachmentsTest` et `ChatSessionMismatchTest` adaptés (envoi direct 1 POST, plus de `confirm_cost`).
+- ⚠️ **Fix tests** : les tests mockaient `App\Services\Ai\OpenRouterService` (chemin INEXISTANT) au lieu de `App\Services\OpenRouter\OpenRouterService` → vrais appels réseau (~5 s/requête). Imports corrigés dans `ChatConfirmationTokenTest`, `ChatSessionMismatchTest`, `RateLimitingTest`. Le test throttle passe désormais en ~5,6 s (vs 103 s).
 
 ### P2-7 — Harmoniser `cost_infrastructure` (fallback code 0.25 vs config 0.15) (implémenté)
 - **Gap** : `config('openrouter.cost_infrastructure', 0.25)` dans `UsageCostCalculator::profitabilityCoefficient()` et `OpenRouterService::usdToCredits()` — fallback en dur à 0.25 alors que `config/openrouter.php` définit 0.15. Incohérence silencieuse : si la clé config disparaissait, le coefficient passerait de 1.84× à 2.0× (facturation plus chère) sans aucun avertissement.
@@ -205,4 +207,152 @@
 - `ChatController::send()` : si une session est fournie dans l'URL mais `user_id !== auth()->id()` → `abort(403)`
 - Vérification déplacée en ÉTAPE 0 (avant estimation du coût, solde, quota, débit) : aucune consommation de crédits/quota en cas de tentative d'accès croisé
 - Avant : création SILENCIEUSE d'une nouvelle session (l'utilisateur croyait écrire dans la sienne, et les tentatives d'accès croisé étaient masquées)
-- Tests : `ChatSessionMismatchTest` (4 tests) — 403 cross-user, aucune session créée pour l'intrus, aucun message écrit dans la session d'autrui, flux normal préservé (propriétaire + confirmation coût)
+- Tests : `ChatSessionMismatchTest` (4 tests) — 403 cross-user, aucune session créée pour l'intrus, aucun message écrit dans la session d'autrui, flux normal préservé (propriétaire + envoi direct)
+
+## 🆕 Q-* — Chat IA : crédits, contexte et robustesse (implémenté)
+
+> Demande utilisateur : utilisateur sans abonnement utilise l'IA avec ses crédits ; les
+> messages d'appel d'outil ne doivent pas être vus ; chaque pièce jointe = contexte + coût
+> en crédits ; compression du contexte pour maîtriser les crédits ; affichage du temps de
+> traitement pour les actions longues ; fallback DeepSeek quand OpenRouter est indisponible.
+
+### Q-PAYPERUSE — Utilisateur sans abonnement : IA pay-per-use (vérifié, RAS)
+- Déjà en place (Q4) : le quota IA (`usage_ai_month`) n'est consommé QUE si
+  `hasPaidSubscription($user)`. Un plan Gratuit (quota = 0) passe en pay-per-use :
+  le chat est facturé en crédits à chaque message. Aucun changement nécessaire.
+
+### Q-MASQUAGE — Masquer les messages d'appel d'outil
+- Quand le modèle retourne UNIQUEMENT des appels d'outils (`content` vide +
+  `tool_turns > 0`), le message assistant affiché est désormais neutre :
+  « L'action demandée a bien été effectuée. » (au lieu du brut « Action(s) exécutée(s)… »).
+- Si `content` est vide sans tool_turns → « Je n'ai pas pu traiter votre demande. »
+- L'UI affiche un badge discret « Action effectuée » (icône clé à molette) au lieu du
+  détail technique. Le compteur `tool_turns` reste tracé dans `metadata` (non exposé).
+
+### Q-PJ — Pièces jointes : contexte + coût en crédits
+- `config/chat.php` : `attachments_cost_credits` (défaut 1 crédit / PJ, env
+  `CHAT_ATTACHMENT_COST_CREDITS`) — coût fixe par fichier (traitement, stockage, contexte).
+- `ChatController::send()` étape 1 : `$attachmentsCost = count($uploaded) × coût PJ` ;
+  `$estimatedCredits = max(1, estimate) + $attachmentsCost` ; message d'erreur
+  « Crédits insuffisants (N requis pour ce message, pièces jointes incluses) ».
+- Débit (étape 7) : `estimatedCredits` total, metadata `attachments_count` +
+  `attachments_cost_credits`. Session : `total_cost_credits += actualCredits + attachmentsCost`.
+- Ajustement (étape 11) : ne rembourse QUE la partie IA si coût réel < estimation ;
+  le coût PJ reste acquis (traitement déjà fait).
+- Composer : le coût estimé affiché inclut dynamiquement les PJ sélectionnées
+  (`+ count × attachments_cost_credits`) dans `chat/index.blade.php` et
+  `chat/show.blade.php`.
+
+### Q-COMPRESSION — Compresser le contexte de conversation
+- `app/Services/Chat/ChatContextCompressor.php` (nouveau) :
+  - `limitChars()` : borne l'historique en budget de caractères (défaut 12 000,
+    env `CHAT_HISTORY_MAX_CHARS`) en conservant les messages les plus récents
+    (toujours au moins le dernier).
+  - `limitAttachments()` : si le budget (défaut 8 000, env `CHAT_ATTACHMENT_MAX_CHARS`)
+    est épuisé, ne garde que `['name' => …, 'content' => null]` (mention seule).
+- `ChatController::send()` étape 8 : historique borné en nombre
+  (`history_messages`, défaut 10) PUIS en caractères → le modèle reçoit un fil
+  récent maîtrisé, moins de tokens → moins de crédits consommés.
+
+### Q-TEMPS — Afficher le temps de traitement (actions longues)
+- `ChatController::send()` : `microtime(true)` avant l'appel IA, `duration_ms` après.
+- `OpenRouterService::chat()` : `duration_ms` mesuré côté service (valeur prioritaire).
+- `chat/show.blade.php` : badge ⏱ « N s » sur les réponses ≥ 3 s (title « Temps de
+  traitement ») — analyse IA, génération de documents, traitement via le chat.
+
+### Q-FALLBACK — Bascule automatique sur l'API DeepSeek
+- `app/Services/OpenRouter/DeepSeekFallbackService.php` (nouveau) : appel direct
+  `POST {api_url}/chat/completions` (clé `config/deepseek.php`, modèle
+  `deepseek-v4-flash`, retry 1×/2 s, timeout croissant avec le nb de messages),
+  pricing depuis la config OpenRouter (deepseek-chat), conversion USD→crédits
+  identique à OpenRouterService.
+- `OpenRouterService::chat()` : si TOUS les modèles OpenRouter échouent ET
+  `config('openrouter.external_fallback_enabled', true)` (env
+  `OPENROUTER_EXTERNAL_FALLBACK`) → bascule DeepSeek, log « OpenRouter
+  indisponible — bascule sur DeepSeek direct », réponse taggée
+  `provider = deepseek_fallback` + `duration_ms`.
+- `chat/show.blade.php` : badge discret « secours » (icône serveur) quand
+  `metadata.provider !== 'openrouter'` (transparence).
+- Échec total (OpenRouter + DeepSeek) : remboursement intégral + restitution quota
+  (comportement inchangé).
+- Tests : inchangés (mocks remplacent le service complet ; `new OpenRouterService(new
+  ModelRouter())` des tests garde `deepSeek = null` → fallback sauté).
+
+## 🧪 Validation finale Q-*
+- [x] `php artisan test` — **363 tests / 1350 assertions verts** (suite complète)
+- [x] `ChatAttachmentsTest` 6/6, `ChatConfirmationTokenTest` 4/4, `ChatSessionMismatchTest` 4/4, `RateLimitingTest` 7/7
+
+## 🆕 Q-MODE — Mode d'exécution « agent » AUTOMATIQUE (implémenté)
+
+> Demande utilisateur : « paramètre la en deux mode (chat et argent) — comme avec
+> vscode — un mode qui oblige à utiliser les outils — qui se gère automatiquement ».
+> Interprétation : « argent » = « agent » (homophone) — l'utilisateur veut un mode AGENT
+> qui OBLIGE l'IA à utiliser les outils et exécute automatiquement les actions.
+> ⚠️ Suite : « la bannière ou option agent n'a pas forcément besoin d'être visible par
+> l'utilisateur, puisque c'est automatique → retirée de l'UI ».
+
+### Mode d'exécution (automatique, invisible dans l'UI)
+- **Agent** (DÉFAUT, `CHAT_MODE=agent`) : les outils sont OBLIGATOIRES — le payload
+  envoie `tool_choice: 'required'` pour forcer le modèle à appeler un outil dès que la
+  demande implique une action (modifier une pièce jointe, convertir en PDF, générer un
+  Word/PDF…). L'exécution est automatique (executor multi-tours existant) et bornée par
+  `tool_loop_max_turns` (anti boucle infinie).
+- **Chat** (`CHAT_MODE=chat`) : conversation pure — les outils ne sont PAS envoyés au
+  modèle (moins de tokens, aucun risque d'appel d'outil inattendu).
+- **Auto** (`CHAT_MODE=auto`) : les outils sont proposés au modèle, qui décide seul de
+  les utiliser — comportement historique, économique.
+- Le mode vient exclusivement de la configuration globale (variable d'environnement
+  `CHAT_MODE`) : **aucun sélecteur n'est exposé à l'utilisateur**, le comportement se
+  gère automatiquement.
+
+### Config structurée en deux volets (« chat » et « argent »)
+- `config/chat.php` est restructuré comme les réglages VS Code (groupés par catégorie) :
+  - **Volet « chat »** : `mode`, `history_messages`, `history_max_chars`,
+    `attachment_max_chars` (conversation, compression).
+  - **Volet « argent »** : `attachments_cost_credits`, `adjust_to_actual`,
+    `overshoot_absorbed` (coûts, facturation, ajustement du coût réel),
+    `tool_loop_max_turns`, `tool_choice_required`.
+- Les clés existantes (`chat.attachments_cost_credits`, `chat.history_*`,
+  `chat.attachment_max_chars`) restent aux mêmes chemins → rétrocompatible, les 6
+  usages du contrôleur sont inchangés.
+
+### Implémentation
+- `ChatController::chatMode()` (simplifié) : lit `config('chat.mode')` (défaut
+  `agent`), valide dans `auto|chat|agent`, repli sûr sur `agent`. Plus de lecture du
+  champ formulaire ni de session.
+- `ChatController::send()` :
+  - validation : le champ `mode` n'est plus accepté (plus de sélecteur).
+  - étape 9 : si `mode !== 'chat'` → outils envoyés ; si `mode === 'agent'` et outils
+    disponibles → `tool_choice: 'required'` + prompt système renforcé (« Tu es en mode
+    AGENT : utilise systématiquement un outil dès que la demande implique une action »).
+  - étape 10 : `tool_loop_max_turns` passé depuis la config.
+  - étape 12 : `mode` tracé dans `metadata` du message assistant (transparence).
+- `chat/show.blade.php` : **sélecteur de mode RETIRÉ** de l'en-tête (bouton, menu,
+  champ caché `mode` et JS supprimés) — l'utilisateur ne voit plus aucune option.
+- `resources/css/formadoc.css` : styles `.chat-mode-*` supprimés.
+- `.env.example` : `CHAT_MODE=agent` (défaut), `CHAT_ADJUST_TO_ACTUAL`,
+  `CHAT_OVERSHOOT_ABSORBED`, `CHAT_TOOL_LOOP_MAX_TURNS`, `CHAT_TOOL_CHOICE_REQUIRED`
+  documentés.
+
+### Tests (4 dans ChatAttachmentsTest)
+- `test_mode_agent_par_defaut_envoie_tool_choice_required` : sans champ `mode` →
+  `tool_choice=required` (agent par défaut) + outils non vides + prompt système
+  « mode AGENT » + `metadata.mode = agent`.
+- `test_mode_chat_desactive_les_outils` : `config(['chat.mode' => 'chat'])` → pas
+  d'outils, pas de `tool_choice`.
+- `test_mode_auto_laisse_le_modele_decider` : `config(['chat.mode' => 'auto'])` →
+  outils proposés, pas de `tool_choice` forcé.
+- `test_config_mode_invalide_repli_sur_agent` : `config(['chat.mode' => 'hacker'])` →
+  repli sûr sur `agent` (`tool_choice=required`, `metadata.mode = agent`).
+
+### Note : fallback DeepSeek
+- Le fallback externe DeepSeek ne supporte pas le function calling : en cas de bascule,
+  le modèle répond en texte (les outils ne peuvent pas être exécutés) — comportement
+  dégradé documenté, `tool_turns = 0` tracé.
+
+## 🧪 Validation Q-MODE
+- [x] `ChatAttachmentsTest` — 10/10 (dont 4 tests de mode, agent par défaut)
+- [x] `ChatConfirmationTokenTest`, `ChatSessionMismatchTest`, `ChatSessionPurgeTest`,
+      `ChatFileDownloadSecurityTest` — 30/30
+- [x] `ChatToolsServiceTest` + `DocumentEditServiceTest` — 28/28
+- [x] Suite complète — 384 tests / 1426 assertions verts

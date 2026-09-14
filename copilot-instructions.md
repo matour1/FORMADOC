@@ -1,6 +1,11 @@
-# Instructions pour GitHub Copilot — Projet de mise en forme automatique de rapports académics
+# Instructions pour GitHub Copilot — Projet de mise en forme automatique de rapports académiques
 
 Lis ce fichier avant toute suggestion de code sur ce projet. Le cahier des charges complet est dans `/CAHIER_DES_CHARGES.md` et le plan de développement dans `/PLAN_DEVELOPPEMENT.md` — consulte-les pour le contexte détaillé avant de concevoir une nouvelle fonctionnalité.
+
+> **Refonte en cours** : l'architecture cible (JSON structurel commun, tools `detect_blocks` /
+> `ask_user_clarification`, renumérotation, renvois croisés, ledger de facturation au coût réel)
+> est documentée dans **`/REFONTE_ARCHITECTURE.md`**. Lire ce document avant toute intervention
+> sur le pipeline d'ingestion ou de traitement des documents.
 
 ## Contexte en une phrase
 
@@ -23,6 +28,18 @@ Application web qui prend un rapport académique (stage/projet/mémoire), détec
 7. **Workflow Git : une fonctionnalité = une branche feature.** Chaque nouvelle fonctionnalité doit être développée sur sa propre branche `feature/<nom>` (créée depuis `main`), puis fusionnée dans `main` (merge ou PR). Ne jamais committer directement sur `main` pour une nouvelle fonctionnalité — seuls les correctifs et l'hygiène peuvent atterrir directement sur `main`.
 
 8. **Ne jamais modifier `routes/web.php`.** Les routes supplémentaires vivent dans `routes/saas.php` / `routes/auth.php` (chargés via `bootstrap/app.php`).
+
+9. **PHPWord ne lit JAMAIS un document source** (interdit par la refonte §14.2). Il sert **uniquement à écrire** le `.docx` de sortie. La lecture passe par un parseur OOXML natif (`ZipArchive` + `DOMDocument`) ou les API Google Docs / OCR pour les PDF scannés.
+
+10. **Le chat ne modifie jamais le document rendu** — uniquement les blocs du JSON structurel, puis re-génération complète. Sa liste blanche de tools est stricte (`rewrite_paragraph`, `insert_block`, `modify_table`, `delete_block`, `regenerate_section`, `ask_user_clarification`) — aucun autre tool autorisé.
+
+11. **Ordre de ré-export obligatoire** : gabarit → renumérotation → génération des listes. Jamais de TOC/listes avant la pagination finale.
+
+12. **Ledger de facturation au coût réel** : logger les tokens `usage` réels, compter les retries, appliquer la marge sur le coût calculé (jamais un forfait), prévoir le remboursement d'échec **partiel**.
+
+13. **Signalement discret, pas de blocage** : une résolution de renvoi croisé ambiguë (`resolution_confidence < 0.7`) est listée dans le rapport de fin de traitement — jamais de `ask_user_clarification` bloquant pour ce cas.
+
+14. **Lire `/REFONTE_ARCHITECTURE.md`** avant toute modification du pipeline d'ingestion, de classification, de numérotation ou de facturation.
 
 ## Stack
 

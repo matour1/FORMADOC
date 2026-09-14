@@ -284,12 +284,46 @@ Toutes les vues (landing, auth, chat, compte, parcours document, pages de garde,
 
 ## 📚 Documentation
 
-- `CAHIER_DES_CHARGES.md` — Cahier des charges complet (v3.0 — 6 évolutions Phase 3)
+- `PLAN_REFONTE.md` — **Plan de refonte détaillé** (7 phases R1–R7, décisions, risques, séquencement)
+- `REFONTE_ARCHITECTURE.md` — **Architecture cible de la refonte** (JSON structurel, tools, renumérotation, ledger)
+- `CAHIER_DES_CHARGES.md` — Cahier des charges complet (v3.1 — Phase 9)
 - `PLAN_DEVELOPPEMENT.md` — Plan de développement par phases
 - `guide-skills-documentaires-api-claude.md` — Guide technique des Skills documentaires Claude
 - `kpay-context-php.md` — Contexte d'intégration KPay
-- `PROMPTS_ET_TESTS.md` — Prompts validés et historique des tests
 - `copilot-instructions.md` — Instructions pour GitHub Copilot
+- `docs-generation-instructions/` — Directives de génération Word (page de garde, listes, styles)
+
+## 🛠️ Outils de développement
+
+### Laravel Boost (MCP + guidelines)
+
+Le projet est équipé de **[Laravel Boost](https://laravel.com/docs/boost)** pour l'assistance IA :
+
+- **Serveur MCP** : `.mcp.json` (Claude Code), `.cursor/mcp.json` (Cursor), `.vscode/mcp.json` (VS Code)
+- **Guidelines** : `.github/skills/` — 8 référentiels (Laravel core, PHP, PHPUnit, Pint, tests, déploiement)
+- **Skills** : `infer-conventions`, `laravel-best-practices`, `tailwindcss-development`, `testing-best-practices`
+
+Réinstallation / mise à jour :
+
+```bash
+php artisan boost:update                                    # MAJ guidelines + skills
+php artisan boost:install --mcp                             # serveur MCP
+php artisan boost:install --guidelines --skills             # guidelines + skills
+```
+
+> ⚠️ `boost:install` **sans option** échoue (timeout sur `artisan test --list-tests`).
+> Toujours préciser `--mcp`, `--guidelines` ou `--skills`.
+
+### Environnements
+
+| Fichier | Usage | Versionné |
+|---------|-------|-----------|
+| `.env.example` | Modèle documenté (à copier) | ✅ oui |
+| `.env` | Développement local | ❌ non (ignoré) |
+| `.env.production` | Production (secrets, `APP_DEBUG=false`) | ❌ non (ignoré) |
+
+`.gitignore` couvre `.env` **et** `.env.*` (sauf `.env.example`).
+
 
 ## ⚠️ Règles de développement
 
