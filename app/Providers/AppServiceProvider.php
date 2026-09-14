@@ -7,11 +7,14 @@ use App\Document\DocumentPipeline;
 use App\Document\Editing\DocumentEditingService;
 use App\Document\Structure\LegacyStructureBridge;
 use App\Services\Anthropic\ClaudeSkillsService;
+use App\Services\Billing\UsageLedger;
 use App\Services\Chat\ChatToolsService;
 use App\Services\Chat\DocumentEditService;
 use App\Services\Detection\TextExtractionService;
 use App\Services\DocumentGeneration\CoverGenerationService;
 use App\Services\DocumentGeneration\CoverPageRenderer;
+use App\Services\OpenRouter\DeepSeekFallbackService;
+use App\Services\OpenRouter\ModelRouter;
 use App\Services\OpenRouter\OpenRouterService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -40,6 +43,30 @@ class AppServiceProvider extends ServiceProvider
         // Éditeur structurel : il porte les snapshots et le verrou d'édition, et
         // doit donc être un singleton.
         $this->app->singleton(DocumentEditingService::class);
+
+        // OpenRouterService est lié explicitement pour la même raison que
+        // ChatToolsService ci-dessous : ses deux derniers paramètres sont
+        // optionnels. `$ledger` est optionnel **par nécessité** — le compilateur
+        // PHP interdit qu'un paramètre obligatoire suive un paramètre optionnel,
+        // donc `turnsCost` puis `ledger` ne peuvent qu'être optionnels. Or
+        // l'injection automatique renseigne les paramètres optionnels à `null`.
+        // Sans ce binding, le registre d'usage R7 ne recevait aucune ligne en
+        // production, sans qu'aucune erreur ne le signale : la facturation
+        // redevenait silencieusement approximative, et tous les tests unitaires
+        // continuaient de passer puisqu'ils injectent le registre à la main.
+        //
+        // `bind()` et non `singleton()` : cette classe porte un état d'appel
+        // (coûts cumulés par tour, compteur de tentatives, contexte de
+        // facturation). Conserver une instance par résolution préserve le
+        // comportement antérieur ; un singleton partagerait cet état d'un appel
+        // à l'autre.
+        $this->app->bind(OpenRouterService::class, function ($app): OpenRouterService {
+            return new OpenRouterService(
+                $app->make(ModelRouter::class),
+                $app->make(DeepSeekFallbackService::class),
+                $app->make(UsageLedger::class),
+            );
+        });
 
         // ChatToolsService est lié explicitement pour une raison précise : ses
         // derniers paramètres sont optionnels (édition structurelle, Skills

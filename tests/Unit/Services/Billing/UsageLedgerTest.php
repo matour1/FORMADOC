@@ -524,6 +524,56 @@ class UsageLedgerTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // Câblage réel par le container
+    // -------------------------------------------------------------------------
+
+    public function test_le_service_openrouter_recoit_le_registre_par_le_container(): void
+    {
+        // Point de câblage critique, sur le modèle du défaut trouvé en R6 :
+        // `UsageLedger` est le 3e paramètre du constructeur d'OpenRouterService,
+        // et le compilateur PHP interdit qu'un paramètre obligatoire suive un
+        // paramètre optionnel — donc le registre est OPTIONNEL par construction.
+        // Or l'injection automatique de Laravel renseigne les paramètres
+        // optionnels à `null` au lieu de les résoudre. Si c'était le cas ici,
+        // R7 serait intégralement inopérant en production — aucune ligne écrite,
+        // aucune erreur levée, et tous les tests unitaires continueraient de
+        // passer puisqu'ils injectent le registre à la main.
+        $service = $this->app->make(OpenRouterService::class);
+
+        $reflexion = new \ReflectionClass($service);
+        $propriete = $reflexion->getProperty('ledger');
+        $propriete->setAccessible(true);
+
+        $this->assertInstanceOf(
+            UsageLedger::class,
+            $propriete->getValue($service),
+            'Le container doit injecter UsageLedger dans OpenRouterService, sinon R7 est inopérant en production.'
+        );
+    }
+
+    public function test_un_appel_via_le_service_du_container_ecrit_dans_le_registre(): void
+    {
+        // Vérification de BOUT EN BOUT, volontairement redondante avec le test de
+        // réflexion ci-dessus : celui-ci inspecte une propriété, donc il passerait
+        // encore si le service était lié mais que le registre n'était jamais
+        // appelé. Ici on prouve la chaîne complète — container → appel → écriture.
+        Http::fake([
+            '*' => Http::response($this->reponse(['prompt_tokens' => 42, 'completion_tokens' => 58])),
+        ]);
+
+        $service = $this->app->make(OpenRouterService::class);
+        $service->chat('chat_text', [['role' => 'user', 'content' => 'x']], 'default', [
+            'billing_reference' => 'chat:99',
+        ]);
+
+        $ligne = AiUsageLedger::firstOrFail();
+
+        $this->assertSame('chat:99', $ligne->reference);
+        $this->assertSame(42, $ligne->input_tokens);
+        $this->assertSame(58, $ligne->output_tokens);
+    }
+
+    // -------------------------------------------------------------------------
     // Connexions : le repli réseau est aussi un échec facturé
     // -------------------------------------------------------------------------
 
