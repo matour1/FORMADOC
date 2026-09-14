@@ -2,22 +2,20 @@
 
 namespace Tests\Feature;
 
-use App\Models\ChatMessage;
 use App\Models\ChatSession;
 use App\Models\User;
-use App\Services\Ai\OpenRouterService;
+use App\Services\OpenRouter\OpenRouterService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Str;
 use Mockery;
 use Tests\TestCase;
 
 /**
- * P2-6 : gate d'idempotence sur la confirmation de coût du chat.
+ * Envoi direct du chat (la confirmation de coût a été supprimée — UX).
  *
- * Le flux légitime est : 1er POST (estimation, sans confirm_cost) → flash
- * pending_cost avec token → 2e POST (confirm_cost=1 + confirm_token) → envoi.
- * Un POST confirm_cost=1 sans token, avec un mauvais token, ou rejoué avec
- * le même token doit être rejeté sans créer de message ni débiter 2 fois.
+ * Le flux est désormais : POST /chat/{session?} avec `message` → l'estimation
+ * est faite, le solde vérifié, le message enregistré et la réponse IA générée.
+ * Les anciens champs (confirm_cost / confirm_token) sont ignorés sans erreur
+ * (rétrocompatibilité), et un message vide est refusé.
  */
 class ChatConfirmationTokenTest extends TestCase
 {
@@ -48,11 +46,11 @@ class ChatConfirmationTokenTest extends TestCase
 
         return ChatSession::create([
             'user_id' => $user->id,
-            'title' => 'Session idempotence',
+            'title' => 'Session envoi direct',
         ]);
     }
 
-    public function test_la_confirmation_sans_token_est_refusee_et_aucun_message_n_est_cree(): void
+    public function test_l_envoi_direct_cree_le_message_et_debite_une_fois(): void
     {
         $this->fakeChatResponse();
         $session = $this->makeSession();
@@ -60,99 +58,67 @@ class ChatConfirmationTokenTest extends TestCase
         $this->actingAs($session->user)
             ->post(route('chat.send', $session), [
                 'message' => 'Bonjour',
-                'confirm_cost' => '1',
-            ])
-            ->assertRedirect()
-            ->assertSessionHas('error', fn (string $value) => str_contains($value, 'Confirmation expirée ou invalide'));
-
-        $this->assertDatabaseCount('chat_messages', 0);
-    }
-
-    public function test_la_confirmation_avec_un_mauvais_token_est_refusee(): void
-    {
-        $this->fakeChatResponse();
-        $session = $this->makeSession();
-
-        // Étape 1 : estimation → token généré
-        $this->actingAs($session->user)
-            ->post(route('chat.send', $session), ['message' => 'Bonjour'])
-            ->assertSessionHas('pending_cost');
-
-        // Étape 2 : confirmation avec un token forgé → rejet
-        $this->actingAs($session->user)
-            ->post(route('chat.send', $session), [
-                'message' => 'Bonjour',
-                'confirm_cost' => '1',
-                'confirm_token' => Str::random(32),
-            ])
-            ->assertRedirect()
-            ->assertSessionHas('error', fn (string $value) => str_contains($value, 'Confirmation expirée ou invalide'));
-
-        $this->assertDatabaseCount('chat_messages', 0);
-        $this->assertSame(10000, $session->user->fresh()->credits_balance);
-    }
-
-    public function test_le_token_est_a_usage_unique_un_double_post_n_execute_qu_une_fois(): void
-    {
-        $this->fakeChatResponse();
-        $session = $this->makeSession();
-
-        // Étape 1 : estimation → récupération du token
-        $this->actingAs($session->user)
-            ->post(route('chat.send', $session), ['message' => 'Bonjour'])
-            ->assertSessionHas('pending_cost');
-
-        $token = session('pending_cost.token');
-        $this->assertIsString($token);
-        $this->assertNotEmpty($token);
-
-        // Étape 2a : confirmation légitime → 1 message, 1 débit
-        $this->actingAs($session->user)
-            ->post(route('chat.send', $session), [
-                'message' => 'Bonjour',
-                'confirm_cost' => '1',
-                'confirm_token' => $token,
             ])
             ->assertRedirect(route('chat.show', $session));
 
-        $this->assertDatabaseCount('chat_messages', 2); // user + assistant
-        $this->assertSame(9999, $session->user->fresh()->credits_balance);
-
-        // Étape 2b : rejeu du même token (double-clic / rechargement) → rejet
-        $this->actingAs($session->user)
-            ->post(route('chat.send', $session), [
-                'message' => 'Bonjour',
-                'confirm_cost' => '1',
-                'confirm_token' => $token,
-            ])
-            ->assertRedirect()
-            ->assertSessionHas('error', fn (string $value) => str_contains($value, 'Confirmation expirée ou invalide'));
-
-        // Toujours 2 messages, aucun double débit
+        // 1 message utilisateur + 1 réponse assistant, 1 débit
         $this->assertDatabaseCount('chat_messages', 2);
         $this->assertSame(9999, $session->user->fresh()->credits_balance);
     }
 
-    public function test_un_message_different_avec_le_meme_token_est_refuse(): void
+    public function test_les_anciens_champs_confirm_sont_ignores_sans_erreur(): void
+    {
+        $this->fakeChatResponse();
+        $session = $this->makeSession();
+
+        // Un client qui enverrait encore confirm_cost/confirm_token (ancien flux)
+        // ne doit PAS être bloqué : l'envoi direct prime.
+        $this->actingAs($session->user)
+            ->post(route('chat.send', $session), [
+                'message' => 'Bonjour',
+                'confirm_cost' => '1',
+                'confirm_token' => 'ancien-token',
+            ])
+            ->assertRedirect(route('chat.show', $session));
+
+        $this->assertDatabaseCount('chat_messages', 2);
+        $this->assertSame(9999, $session->user->fresh()->credits_balance);
+    }
+
+    public function test_la_creation_de_session_se_fait_sans_session_existante(): void
+    {
+        $this->fakeChatResponse();
+        $user = User::factory()->create(['credits_balance' => 10000]);
+
+        $countBefore = ChatSession::count();
+
+        // Sans session dans l'URL → une nouvelle session est créée
+        // (nouvelle conversation depuis la page index).
+        $this->actingAs($user)
+            ->post(route('chat.send'), [
+                'message' => 'Nouvelle conversation',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame($countBefore + 1, ChatSession::count());
+        $this->assertDatabaseHas('chat_sessions', [
+            'user_id' => $user->id,
+            'title' => 'Nouvelle conversation',
+        ]);
+        $this->assertDatabaseCount('chat_messages', 2); // user + assistant
+        $this->assertSame(9999, $user->fresh()->credits_balance);
+    }
+
+    public function test_un_message_sans_texte_est_refuse(): void
     {
         $this->fakeChatResponse();
         $session = $this->makeSession();
 
         $this->actingAs($session->user)
-            ->post(route('chat.send', $session), ['message' => 'Bonjour'])
-            ->assertSessionHas('pending_cost');
-
-        $token = session('pending_cost.token');
-
-        // Confirmation avec un message DIFFÉRENT de celui estimé → rejet
-        $this->actingAs($session->user)
             ->post(route('chat.send', $session), [
-                'message' => 'Message pirate',
-                'confirm_cost' => '1',
-                'confirm_token' => $token,
+                'message' => '',
             ])
-            ->assertRedirect()
-            ->assertSessionHas('error');
+            ->assertSessionHasErrors('message');
 
         $this->assertDatabaseCount('chat_messages', 0);
         $this->assertSame(10000, $session->user->fresh()->credits_balance);

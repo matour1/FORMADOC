@@ -2,9 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Models\ChatSession;
 use App\Models\User;
+use App\Services\OpenRouter\OpenRouterService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Mockery;
 use Tests\TestCase;
 
 /**
@@ -85,10 +86,26 @@ class RateLimitingTest extends TestCase
 
     public function test_le_throttle_chat_limite_apres_20_envois(): void
     {
+        $this->mock(OpenRouterService::class, function (Mockery\MockInterface $mock) {
+            $mock->shouldReceive('estimateCost')->andReturn([
+                'usd' => 0.001,
+                'credits' => 1,
+                'model' => 'deepseek/deepseek-chat',
+            ]);
+            $mock->shouldReceive('chat')->andReturn([
+                'content' => 'Réponse.',
+                'model' => 'deepseek/deepseek-chat',
+                'cost_usd' => 0.0005,
+                'cost_credits' => 1,
+                'usage' => ['prompt_tokens' => 100, 'completion_tokens' => 50],
+                'tool_turns' => 0,
+            ]);
+        });
+
         $user = User::factory()->create(['credits_balance' => 10000]);
 
-        // La première requête affiche le coût (confirm_cost absent) → redirect
-        // back, mais elle compte quand même dans le throttle (middleware).
+        // L'envoi est désormais direct (plus d'étape de confirmation) :
+        // chaque POST exécute le message et compte dans le throttle.
         for ($i = 0; $i < 20; $i++) {
             $this->actingAs($user)
                 ->post(route('chat.send'), ['message' => 'Message test '.$i])
@@ -118,6 +135,22 @@ class RateLimitingTest extends TestCase
 
     public function test_le_throttle_est_bien_isole_par_utilisateur(): void
     {
+        $this->mock(OpenRouterService::class, function (Mockery\MockInterface $mock) {
+            $mock->shouldReceive('estimateCost')->andReturn([
+                'usd' => 0.001,
+                'credits' => 1,
+                'model' => 'deepseek/deepseek-chat',
+            ]);
+            $mock->shouldReceive('chat')->andReturn([
+                'content' => 'Réponse.',
+                'model' => 'deepseek/deepseek-chat',
+                'cost_usd' => 0.0005,
+                'cost_credits' => 1,
+                'usage' => ['prompt_tokens' => 100, 'completion_tokens' => 50],
+                'tool_turns' => 0,
+            ]);
+        });
+
         // Deux utilisateurs différents ne partagent pas le même compteur chat
         $userA = User::factory()->create(['credits_balance' => 10000]);
         $userB = User::factory()->create(['credits_balance' => 10000]);

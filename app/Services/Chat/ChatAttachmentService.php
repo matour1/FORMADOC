@@ -6,6 +6,13 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use PhpOffice\PhpWord\Element\Image;
+use PhpOffice\PhpWord\Element\ListItem;
+use PhpOffice\PhpWord\Element\PreserveText;
+use PhpOffice\PhpWord\Element\Table;
+use PhpOffice\PhpWord\Element\Text;
+use PhpOffice\PhpWord\Element\TextRun;
+use PhpOffice\PhpWord\Element\Title;
 use PhpOffice\PhpWord\IOFactory;
 
 /**
@@ -38,7 +45,7 @@ class ChatAttachmentService
     /**
      * Valide et stocke une liste de fichiers uploadés.
      *
-     * @param UploadedFile[] $files
+     * @param  UploadedFile[]  $files
      * @return array{ok: bool, files: array<int, array{name: string, path: string, size: int, ext: string, content: ?string}>, errors: string[]}
      */
     public function handle(array $files, int $sessionId): array
@@ -67,27 +74,30 @@ class ChatAttachmentService
             // Whitelist stricte (P0/1 : rejette .php, .phar, doubles extensions…)
             if (! in_array($ext, self::ALLOWED_EXTENSIONS, true)) {
                 $errors[] = "« {$original} » : extension .{$ext} non autorisée (docx, pdf, txt, md, xlsx, pptx uniquement).";
+
                 continue;
             }
 
             if ($file->getSize() > self::MAX_SIZE_KB * 1024) {
                 $errors[] = "« {$original} » : dépasse la limite de ".self::MAX_SIZE_KB.' Ko.';
+
                 continue;
             }
 
             // Nom de stockage unique et sûr (jamais le nom client)
-            $filename = Str::uuid() . '.' . $ext;
-            $path = 'chat/attachments/' . $sessionId . '/' . $filename;
+            $filename = Str::uuid().'.'.$ext;
+            $path = 'chat/attachments/'.$sessionId.'/'.$filename;
 
             try {
                 $storedPath = Storage::disk('local')->putFileAs(
-                    'chat/attachments/' . $sessionId,
+                    'chat/attachments/'.$sessionId,
                     $file,
                     $filename,
                 );
 
                 if (! $storedPath) {
                     $errors[] = "« {$original} » : échec du stockage.";
+
                     continue;
                 }
 
@@ -121,6 +131,7 @@ class ChatAttachmentService
         try {
             if ($ext === 'txt' || $ext === 'md') {
                 $content = (string) $file->get();
+
                 return Str::limit($content, 8000);
             }
 
@@ -128,19 +139,10 @@ class ChatAttachmentService
                 $phpWord = IOFactory::load($file->getRealPath());
                 $text = '';
                 foreach ($phpWord->getSections() as $section) {
-                    foreach ($section->getElements() as $element) {
-                        if (method_exists($element, 'getText')) {
-                            $text .= (string) $element->getText() . "\n";
-                        } elseif (method_exists($element, 'getElements')) {
-                            foreach ($element->getElements() as $child) {
-                                if (method_exists($child, 'getText')) {
-                                    $text .= (string) $child->getText() . "\n";
-                                }
-                            }
-                        }
-                    }
+                    $text .= $this->extractContainerText($section);
                 }
                 $text = trim($text);
+
                 return $text === '' ? null : Str::limit($text, 8000);
             }
         } catch (\Throwable $e) {
@@ -148,12 +150,88 @@ class ChatAttachmentService
                 'ext' => $ext,
                 'error' => $e->getMessage(),
             ]);
+
             return null;
         }
 
         // pdf / xlsx / pptx : pas d'extraction (aucune lib de parsing) → on
         // signale la pièce jointe sans dump de contenu.
         return null;
+    }
+
+    /**
+     * Extrait récursivement le texte d'un conteneur PhpWord (section,
+     * TextRun, cellule…) en gérant TOUS les types d'éléments.
+     *
+     * Les DOCX réels (rapports volumineux) contiennent des éléments dont
+     * getText() retourne un tableau (footnotes, PreserveText, structures
+     * imbriquées) : un cast naïf `(string)` provoquait une erreur
+     * « Array to string conversion » et le LLM voyait « contenu non
+     * extractible » → il ne pouvait pas utiliser document_analyze.
+     *
+     * @param  bool  $inline  Contexte TextRun : les Text sont des fragments
+     *                        du même paragraphe → concaténés sans saut de ligne.
+     */
+    private function extractContainerText(object $container, bool $inline = false): string
+    {
+        if (! method_exists($container, 'getElements')) {
+            return '';
+        }
+
+        $parts = [];
+        foreach ($container->getElements() as $child) {
+            $separator = $inline ? '' : "\n";
+            if ($child instanceof Text) {
+                $parts[] = (string) ($child->getText() ?? '').$separator;
+            } elseif ($child instanceof Title) {
+                $t = $child->getText();
+                if (is_string($t)) {
+                    $parts[] = $t."\n";
+                } elseif (is_array($t)) {
+                    $parts[] = implode('', array_map('strval', $t))."\n";
+                }
+            } elseif ($child instanceof ListItem) {
+                $t = $child->getText();
+                $parts[] = (is_string($t) ? $t : '')."\n";
+            } elseif ($child instanceof PreserveText) {
+                $t = $child->getText();
+                $parts[] = (is_array($t) ? implode('', array_map('strval', $t)) : (string) ($t ?? ''))."\n";
+            } elseif ($child instanceof TextRun) {
+                // TextRun / ListItemRun : conteneur imbriqué (récursif) —
+                // les fragments sont inline (un seul paragraphe).
+                $parts[] = $this->extractContainerText($child, true).$separator;
+            } elseif ($child instanceof Table) {
+                $parts[] = $this->extractTableText($child);
+            } elseif ($child instanceof Image) {
+                $name = $child->getName() ?: basename((string) $child->getSource());
+                $parts[] = "[image:{$name}]\n";
+            } elseif (method_exists($child, 'getElements')) {
+                // Tout autre conteneur (Header, Footer, Cell, Footnote…)
+                $parts[] = $this->extractContainerText($child).$separator;
+            } elseif (method_exists($child, 'getText')) {
+                $t = $child->getText();
+                $parts[] = (is_array($t) ? implode(' ', array_map('strval', $t)) : (string) ($t ?? '')).$separator;
+            }
+        }
+
+        return implode('', $parts);
+    }
+
+    /**
+     * Extrait le texte d'un tableau PhpWord (lignes → cellules).
+     */
+    private function extractTableText(Table $table): string
+    {
+        $parts = [];
+        foreach ($table->getRows() as $row) {
+            $cells = [];
+            foreach ($row->getCells() as $cell) {
+                $cells[] = trim($this->extractContainerText($cell));
+            }
+            $parts[] = implode(' | ', array_filter($cells))."\n";
+        }
+
+        return implode('', $parts);
     }
 
     /**
@@ -167,7 +245,11 @@ class ChatAttachmentService
 
         $parts = [];
         foreach ($attachments as $i => $att) {
-            $label = '[Pièce jointe '.($i + 1).' : '.$att['name'].']';
+            // Le chemin relatif (chat/attachments/...) est exposé pour que
+            // l'IA puisse référencer la pièce jointe avec les outils
+            // document_edit / document_to_pdf.
+            $label = '[Pièce jointe '.($i + 1).' : '.$att['name']
+                .' (chemin : '.($att['path'] ?? '').')]';
             if (! empty($att['content'])) {
                 $parts[] = $label."\n".$att['content'];
             } else {
@@ -175,7 +257,7 @@ class ChatAttachmentService
             }
         }
 
-        $block = "Pièces jointes fournies par l'utilisateur :\n" . implode("\n\n", $parts);
+        $block = "Pièces jointes fournies par l'utilisateur :\n".implode("\n\n", $parts);
 
         return Str::limit($block, 8000);
     }
