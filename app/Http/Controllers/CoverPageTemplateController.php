@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\StoreCoverPageTemplateRequest;
 use App\DocAnalyzer\DocumentReconstructor;
+use App\Http\Requests\StoreCoverPageTemplateRequest;
 use App\Models\CoverPageTemplate;
 use App\Services\DocumentGeneration\CoverDetectionService;
 use App\Services\DocumentGeneration\CoverPageRenderer;
@@ -45,7 +45,7 @@ class CoverPageTemplateController extends Controller
         }
 
         $template = new CoverPageTemplate([
-            'name' => $base ? $base->name . ' (copie)' : 'Nouveau modèle',
+            'name' => $base ? $base->name.' (copie)' : 'Nouveau modèle',
             'description' => $base?->description ?? '',
             'is_public' => (bool) ($base?->is_public ?? true),
             'page_style' => $base?->page_style ?? $this->defaultPageStyle(),
@@ -115,13 +115,14 @@ class CoverPageTemplateController extends Controller
     public function destroy(CoverPageTemplate $coverTemplate): RedirectResponse
     {
         $coverTemplate->delete();
+
         return redirect()->route('cover-templates.index')->with('status', 'Modèle supprimé.');
     }
 
     public function duplicate(CoverPageTemplate $coverTemplate): RedirectResponse
     {
         $copy = $coverTemplate->replicate(['created_at', 'updated_at']);
-        $copy->name = $coverTemplate->name . ' (copie)';
+        $copy->name = $coverTemplate->name.' (copie)';
         $copy->based_on_id = $coverTemplate->id;
         $copy->save();
 
@@ -141,7 +142,18 @@ class CoverPageTemplateController extends Controller
         $coverPath = session('cover_example_path');
         if ($coverPath && Storage::disk('storage')->exists($coverPath)) {
             $exampleName = session('cover_example_name', 'Couverture');
-            $detection = (new CoverDetectionService())->detect(storage_path('uploads/' . $coverPath));
+            $detection = (new CoverDetectionService)->detect(storage_path('uploads/'.$coverPath));
+
+            // Les valeurs détectées dans l'exemple peuvent dépasser la limite
+            // des champs de saisie (max:255) : on les tronque à la source pour
+            // éviter l'erreur « nom must not be greater than 255 characters »
+            // lors de la création de la page de garde.
+            foreach ($detection['zones'] ?? [] as &$zone) {
+                if (isset($zone['value']) && is_string($zone['value'])) {
+                    $zone['value'] = Str::limit($zone['value'], 255, '');
+                }
+            }
+            unset($zone);
         }
 
         return view('cover-templates.from-example', [
@@ -204,7 +216,7 @@ class CoverPageTemplateController extends Controller
             'date' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $detection = (new CoverDetectionService())->detect(storage_path('uploads/' . $coverPath));
+        $detection = (new CoverDetectionService)->detect(storage_path('uploads/'.$coverPath));
 
         $template = CoverPageTemplate::create([
             'name' => $request->input('name'),
@@ -226,8 +238,7 @@ class CoverPageTemplateController extends Controller
      * (une rangée + un bloc texte par ligne), en remplaçant les valeurs des
      * zones par des placeholders et en conservant les styles.
      *
-     * @param array<string, mixed> $detection Sortie de CoverDetectionService::detect()
-     *
+     * @param  array<string, mixed>  $detection  Sortie de CoverDetectionService::detect()
      * @return array<int, array<string, mixed>>
      */
     private function elementsFromDetection(array $detection): array
@@ -246,7 +257,7 @@ class CoverPageTemplateController extends Controller
             if ($zone !== null) {
                 $type = (string) ($zone['type'] ?? '');
                 $label = (string) ($zone['label'] ?? '');
-                $text = $label !== '' ? $label . ' {{' . $type . '}}' : '{{' . $type . '}}';
+                $text = $label !== '' ? $label.' {{'.$type.'}}' : '{{'.$type.'}}';
             }
 
             $font = StyleMapper::toFlatFont($line['styles']['font'] ?? null);
@@ -299,10 +310,10 @@ class CoverPageTemplateController extends Controller
     ): JsonResponse {
         $values = (array) $request->input('values', []);
 
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $renderer->render($phpWord, $coverTemplate, $values);
 
-        $tmp = storage_path('app/preview-' . Str::random(10) . '.docx');
+        $tmp = storage_path('app/preview-'.Str::random(10).'.docx');
         $phpWord->save($tmp);
 
         // Applique le même post-traitement gridSpan que la génération finale
@@ -332,7 +343,7 @@ class CoverPageTemplateController extends Controller
         // révéler l'existence d'un fichier).
         abort_unless($request->hasValidSignature(), 403);
 
-        $path = storage_path('app/' . $token);
+        $path = storage_path('app/'.$token);
         abort_unless(
             Str::startsWith($token, 'preview-')
                 && Str::endsWith($path, '.docx')
@@ -357,11 +368,12 @@ class CoverPageTemplateController extends Controller
             ->where('name', $data['name'] ?? '')
             ->first();
 
-        if (!$existing) {
+        if (! $existing) {
             return response()->json(['duplicate' => false, 'hash' => $hash]);
         }
 
         $sameHash = hash('sha256', json_encode($existing->elements ?? [])) === $hash;
+
         return response()->json([
             'duplicate' => $sameHash,
             'hash' => $hash,
@@ -379,8 +391,10 @@ class CoverPageTemplateController extends Controller
                     $v[$k] = $normalize($vv);
                 }
             }
+
             return $v;
         };
+
         return hash('sha256', json_encode($normalize($elements)));
     }
 

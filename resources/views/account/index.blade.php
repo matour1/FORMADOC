@@ -59,7 +59,7 @@
                     @elseif ($quotaStatus['ai']['remaining'] > 0)
                         {{ $quotaStatus['ai']['remaining'] }} restant(s)
                     @else
-                        <span style="color:var(--color-correction)">Quota atteint — passe à un plan supérieur ou achète des crédits</span>
+                        <span style="color:var(--color-correction)">Épuisé — plan supérieur ou crédits</span>
                     @endif
                 </span>
             </div>
@@ -75,7 +75,7 @@
                         <span class="badge badge-success mono">{{ number_format($balance, 0, ',', ' ') }}</span>
                     </div>
                     <div style="margin-top:.3rem;font-size:.85rem;color:var(--color-text-muted);">1 crédit ≈ 1 FCFA</div>
-                    <button class="btn btn-primary btn-sm" style="margin-top:1.1rem;" id="showPurchaseModal" data-modal-open="purchaseModal">
+                    <button class="btn btn-primary btn-sm" style="margin-top:1.1rem;" id="showPurchaseModal">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v12"/><path d="M8 10h8"/></svg>
                         Acheter des crédits
                     </button>
@@ -104,7 +104,7 @@
                         @if ($subscription && $subscription->isActiveAt())
                             <a href="{{ route('subscriptions.checkout', $subscription->plan->slug) }}" class="btn btn-secondary btn-sm">Changer de plan</a>
                             @if ($subscription->auto_renew)
-                                <button class="btn btn-ghost btn-sm" id="showCancelSubModal" data-modal-open="cancelSubModal">Annuler l'abonnement</button>
+                                <button class="btn btn-ghost btn-sm" id="showCancelSubModal">Annuler l'abonnement</button>
                             @endif
                         @else
                             <a href="#plans" class="btn btn-secondary btn-sm">Découvrir les plans</a>
@@ -137,8 +137,8 @@
                             <tbody>
                                 @foreach ($transactions as $tx)
                                     <tr>
-                                        <td class="mono" style="white-space:nowrap" data-label="Date">{{ $tx->created_at->format('d/m/Y H:i') }}</td>
-                                        <td data-label="Type">
+                                        <td class="mono" style="white-space:nowrap">{{ $tx->created_at->format('d/m/Y H:i') }}</td>
+                                        <td>
                                             @if ($tx->type === 'purchase')
                                                 <span class="badge badge-success"><i data-lucide="plus" style="width:11px;height:11px"></i> Achat</span>
                                             @elseif ($tx->type === 'refund')
@@ -149,11 +149,11 @@
                                                 <span class="badge"><i data-lucide="zap" style="width:11px;height:11px"></i> Utilisation</span>
                                             @endif
                                         </td>
-                                        <td data-label="Description">{{ $tx->description ?: $tx->type }}</td>
-                                        <td style="text-align:right;font-weight:600;color:{{ $tx->amount >= 0 ? 'var(--color-secondary)' : 'var(--color-ink)' }}" data-label="Montant">
+                                        <td>{{ $tx->description ?: $tx->type }}</td>
+                                        <td style="text-align:right;font-weight:600;color:{{ $tx->amount >= 0 ? 'var(--color-secondary)' : 'var(--color-ink)' }}">
                                             {{ $tx->amount >= 0 ? '+' : '' }}{{ number_format($tx->amount, 0, ',', ' ') }}
                                         </td>
-                                        <td style="text-align:right" class="mono" data-label="Solde">{{ number_format($tx->balance_after, 0, ',', ' ') }}</td>
+                                        <td style="text-align:right" class="mono">{{ number_format($tx->balance_after, 0, ',', ' ') }}</td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -280,10 +280,10 @@
                     @error('amount')<p class="field-error">{{ $message }}</p>@enderror
                 </div>
                 <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.4rem;">
-                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="500" aria-pressed="false">500</button>
-                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="1000" aria-pressed="true">1 000</button>
-                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="2000" aria-pressed="false">2 000</button>
-                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="5000" aria-pressed="false">5 000</button>
+                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="500">500</button>
+                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="1000">1 000</button>
+                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="2000">2 000</button>
+                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="5000">5 000</button>
                 </div>
                 <div style="display:flex;gap:.6rem;margin-bottom:1.4rem;justify-content:center;font-size:.85rem;color:var(--color-text-secondary);flex-wrap:wrap;">
                     <span>Carte bancaire</span><span>·</span><span>KPay</span><span>·</span><span>Orange Money</span><span>·</span><span>MTN MoMo</span>
@@ -314,21 +314,18 @@
 
 @push('scripts')
 <script>
-    // Modales accessibles via le composant global (layout app) : focus trap + Escape.
-    // Repli local si le composant n'est pas disponible.
-    const openModalFn = window.openModal || function (el) { el && el.classList.add('open'); };
-    const closeModalFn = window.closeModal || function (el) { el && el.classList.remove('open'); };
+    function openModal(el) { el.classList.add('open'); }
+    function closeModal(el) { el.classList.remove('open'); }
 
     // Modale achat de crédits
     const purchaseModal = document.getElementById('purchaseModal');
     const showPurchaseBtn = document.getElementById('showPurchaseModal');
     if (showPurchaseBtn && purchaseModal) {
-        showPurchaseBtn.addEventListener('click', () => openModalFn(purchaseModal));
+        showPurchaseBtn.addEventListener('click', () => openModal(purchaseModal));
+        document.getElementById('closePurchaseModal').addEventListener('click', () => closeModal(purchaseModal));
+        purchaseModal.addEventListener('click', e => { if (e.target === purchaseModal) closeModal(purchaseModal); });
         document.querySelectorAll('.quick-amount').forEach(btn => btn.addEventListener('click', function () {
             document.getElementById('creditAmount').value = this.dataset.amount;
-            // aria-pressed : un seul bouton actif (P2 audit UI/UX)
-            document.querySelectorAll('.quick-amount').forEach(b => b.setAttribute('aria-pressed', 'false'));
-            this.setAttribute('aria-pressed', 'true');
         }));
     }
 
@@ -336,8 +333,10 @@
     const cancelSubModal = document.getElementById('cancelSubModal');
     const showCancelSubBtn = document.getElementById('showCancelSubModal');
     if (showCancelSubBtn && cancelSubModal) {
-        showCancelSubBtn.addEventListener('click', () => openModalFn(cancelSubModal));
-        document.getElementById('keepSubscription')?.addEventListener('click', () => closeModalFn(cancelSubModal));
+        showCancelSubBtn.addEventListener('click', () => openModal(cancelSubModal));
+        document.getElementById('closeCancelSubModal').addEventListener('click', () => closeModal(cancelSubModal));
+        cancelSubModal.addEventListener('click', e => { if (e.target === cancelSubModal) closeModal(cancelSubModal); });
+        document.getElementById('keepSubscription').addEventListener('click', () => closeModal(cancelSubModal));
     }
 </script>
 @endpush

@@ -7,13 +7,13 @@
         <div>
             <span class="eyebrow">Résultat · repli</span>
             <h1>Aperçu indisponible</h1>
-            <p>Le service d'aperçu est temporairement indisponible — votre document reste généré et téléchargeable.</p>
+            <p>LibreOffice n'a pas répondu : l'aperçu PDF n'a pas pu être généré, mais le document reste disponible.</p>
         </div>
     </div>
 
     <div class="banner banner-warning" role="status">
         <i data-lucide="alert-triangle" style="width:18px;height:18px;flex-shrink:0"></i>
-        <div>Le service d'aperçu est temporairement indisponible. Le document DOCX reste généré et téléchargeable normalement.</div>
+        <div>LibreOffice est indisponible : l'aperçu visuel est désactivé pour l'instant. Le document DOCX reste généré et téléchargeable normalement.</div>
     </div>
 
     <div class="card empty-state">

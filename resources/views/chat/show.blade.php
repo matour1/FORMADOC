@@ -42,29 +42,14 @@
         </div>
     </div>
 
-    {{-- Confirmation de coût AVANT envoi (exigence A) --}}
-    @if ($pendingCost = session('pending_cost'))
-        <div class="banner banner-warning">
-            <i data-lucide="info"></i>
-            <div style="flex:1">
-                <strong>Coût estimé : {{ $pendingCost['credits'] }} crédit(s)</strong>
-                <div style="font-size:.82rem">(plan {{ $pendingCost['plan'] }}, estimation avant exécution — ajustement automatique après usage)</div>
-            </div>
-            <form action="{{ route('chat.send', $chatSession) }}" method="POST" style="display:inline-flex;gap:.5rem">
-                @csrf
-                <input type="hidden" name="message" value="{{ $pendingCost['message'] }}">
-                <input type="hidden" name="confirm_cost" value="1">
-                <input type="hidden" name="confirm_token" value="{{ $pendingCost['token'] ?? '' }}">
-                <button type="submit" class="btn btn-primary btn-sm">Confirmer et envoyer</button>
-                <a href="{{ route('chat.show', $chatSession) }}" class="btn btn-ghost btn-sm">Annuler</a>
-            </form>
-        </div>
-    @endif
-
     {{-- Alerte quota IA épuisé (le chat reste accessible, la réponse sera refusée) --}}
+    {{-- Q-PAYPERUSE : un utilisateur SANS abonnement payant (plan Gratuit, quota IA
+         défini à 0) utilise le chat en pay-per-use via ses crédits : le quota ne
+         s'applique PAS à lui, la bannière ne doit pas s'afficher. --}}
     @php
         $quotaStatus = app(\App\Services\Billing\QuotaService::class)->status(auth()->user());
-        $aiExhausted = $quotaStatus['ai']['remaining'] <= 0;
+        $aiExhausted = $quotaStatus['ai']['remaining'] <= 0
+            && app(\App\Services\Anthropic\ClaudeSkillsService::class)->hasPaidSubscription(auth()->user());
     @endphp
     @if ($aiExhausted)
         <div class="banner banner-danger">
@@ -130,6 +115,10 @@
                     <span class="chat-context-info">— outils actionnables : pages de garde, reconstruction, recherche web, images</span>
                 </div>
                 <div class="chat-header-actions">
+                    {{-- Le mode d'exécution est AUTOMATIQUE (config chat.mode = agent) :
+                         les outils sont systématiquement proposés et l'IA les exécute
+                         elle-même. Aucun sélecteur n'est exposé à l'utilisateur. --}}
+
                     {{-- Sélecteur de modèle (routage réel du plan) --}}
                     <div class="chat-model-picker">
                         <button type="button" class="chat-model-select" id="chatModelSelect" aria-haspopup="true" aria-expanded="false">
@@ -209,12 +198,29 @@
                         </div>
                         <div class="msg-body">
                             <div class="msg-bubble">
-                                {!! nl2br(e($message->content)) !!}
+                            {!! nl2br(e($message->content)) !!}
                                 @if (! empty($message->metadata['tool_turns']) && $message->metadata['tool_turns'] > 0)
+                                    {{-- Q-MASQUAGE : badge discret, sans détail brut des appels d'outil --}}
                                     <p style="margin-top:.6rem;font-size:.76rem;opacity:.85">
                                         <i data-lucide="wrench" style="width:12px;height:12px;display:inline-block"></i>
-                                        {{ $message->metadata['tool_turns'] }} action(s) exécutée(s)
+                                        Action effectuée
                                     </p>
+                                @endif
+                                @if (! empty($message->metadata['generated_files']))
+                                    {{-- P0-4 : fichiers générés par l'IA (document édité, PDF, Word, image…) --}}
+                                    <div class="msg-attachments" style="margin-top:.6rem;display:flex;flex-direction:column;gap:.35rem">
+                                        @foreach ($message->metadata['generated_files'] as $gfile)
+                                            @php
+                                                $gname = basename($gfile);
+                                            @endphp
+                                            <a href="{{ route('chat.files.download', ['file' => $gfile]) }}"
+                                               class="attach-chip" style="display:inline-flex;align-items:center;gap:.4rem;text-decoration:none"
+                                               download="{{ $gname }}" title="Télécharger {{ $gname }}">
+                                                <i data-lucide="file-down" style="width:13px;height:13px"></i>
+                                                {{ $gname }}
+                                            </a>
+                                        @endforeach
+                                    </div>
                                 @endif
                                 @if (! empty($message->metadata['attachments']))
                                     <div class="msg-attachments" style="margin-top:.6rem;display:flex;flex-direction:column;gap:.35rem">
@@ -236,6 +242,20 @@
                                 <span class="msg-time">{{ $message->created_at->format('H:i') }}</span>
                                 @if ($message->model_used)
                                     <span class="model-tag">{{ $message->model_used }}</span>
+                                @endif
+                                {{-- Q-TEMPS : durée de traitement (affichée pour les traitements longs) --}}
+                                @if (! empty($message->metadata['duration_ms']) && $message->metadata['duration_ms'] >= 3000)
+                                    <span class="model-tag" title="Temps de traitement">
+                                        <i data-lucide="timer" style="width:11px;height:11px;display:inline-block;vertical-align:-1px"></i>
+                                        {{ \Illuminate\Support\Str::of($message->metadata['duration_ms'] / 1000)->limit(5, '') }} s
+                                    </span>
+                                @endif
+                                {{-- Q-FALLBACK : provider utilisé (transparence) --}}
+                                @if (! empty($message->metadata['provider']) && $message->metadata['provider'] !== 'openrouter')
+                                    <span class="model-tag" style="opacity:.8" title="Réponse fournie via le fournisseur de secours">
+                                        <i data-lucide="server" style="width:11px;height:11px;display:inline-block;vertical-align:-1px"></i>
+                                        secours
+                                    </span>
                                 @endif
                                 @if ($message->cost_credits > 0)
                                     <span class="cost">{{ $message->cost_credits }} crédit(s)</span>
@@ -279,6 +299,9 @@
             {{-- Composer --}}
             <form class="chat-composer" action="{{ route('chat.send', $chatSession) }}" method="POST" id="chat-form" enctype="multipart/form-data">
                 @csrf
+                {{-- Le mode d'exécution est automatique (config chat.mode) :
+                     aucun champ mode n'est envoyé — le backend applique
+                     tool_choice: required quand le mode est agent. --}}
                 <div class="composer-attachments" id="chatAttachments" style="display:none;"></div>
 
                 <div class="composer-box">
@@ -339,7 +362,7 @@
                 </div>
 
                 <p class="chat-disclaimer">
-                    Le coût en crédits est estimé avant l'envoi et confirmé. En cas d'échec, vos crédits sont remboursés.
+                    Le coût en crédits est estimé avant l'envoi et ajusté après usage. En cas d'échec, vos crédits sont remboursés.
                     @if ($claudeEligible ?? false)
                         Skills documentaires Claude activés (expérimental) : inclus Standard+, sinon pay-per-use en crédits (×1,5).
                     @endif
@@ -364,7 +387,10 @@
             }
         });
 
-        // Indicateur « L'assistant réfléchit… » + désactivation pendant l'envoi
+        // Indicateur « L'assistant réfléchit… » + protection pendant l'envoi.
+        // IMPORTANT : on utilise readOnly (et non disabled) pour le textarea :
+        // un champ disabled n'est PAS envoyé avec le formulaire → Laravel
+        // renverrait « The message field is required ».
         const chatForm = document.getElementById('chat-form');
         const typingIndicator = document.getElementById('typingIndicator');
         const chatSend = document.getElementById('chat-send');
@@ -374,7 +400,7 @@
                 if (!input || !input.value.trim()) return; // Laisse le required gérer
                 if (typingIndicator) typingIndicator.style.display = 'flex';
                 if (chatSend) { chatSend.disabled = true; chatSend.setAttribute('aria-busy', 'true'); }
-                if (input) input.disabled = true;
+                if (input) input.readOnly = true;
             });
         }
 
@@ -468,10 +494,20 @@
         });
 
         // Pièces jointes (affichage local ; upload réel géré par le backend)
+        // Q-PJ : le coût estimé affiché inclut le coût des pièces jointes
+        // sélectionnées (coût fixe par fichier, cf. config/chat.php).
         const fileInput = document.getElementById('chatFileInput');
         const attachBtn = document.getElementById('chatAttachIconBtn');
         const attachments = document.getElementById('chatAttachments');
+        const costPreview = document.querySelector('.chat-cost-preview strong');
+        const baseCost = {{ (int) ($chatCostEstimate ?? 0) }};
+        const attachmentCost = {{ (int) ($attachmentCostCredits ?? 1) }};
         if (fileInput && attachBtn && attachments) {
+            const updateCostPreview = () => {
+                if (!costPreview) return;
+                const total = baseCost + (fileInput.files.length * attachmentCost);
+                costPreview.textContent = total + ' crédit(s)';
+            };
             attachBtn.addEventListener('click', () => fileInput.click());
             fileInput.addEventListener('change', () => {
                 attachments.innerHTML = '';
@@ -482,6 +518,7 @@
                     attachments.appendChild(chip);
                 });
                 attachments.style.display = fileInput.files.length ? 'flex' : 'none';
+                updateCostPreview();
             });
         }
 

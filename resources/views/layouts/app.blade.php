@@ -104,8 +104,8 @@
                 </button>
                 <div class="navbar-search" role="search">
                     <i data-lucide="search" style="width:15px;height:15px"></i>
-                    <label for="navbarSearchInput" class="sr-only">Filtrer la page</label>
-                    <input id="navbarSearchInput" type="search" placeholder="Filtrer la page…" autocomplete="off">
+                    <label for="navbarSearchInput" class="sr-only">Rechercher</label>
+                    <input id="navbarSearchInput" type="search" placeholder="Rechercher…" autocomplete="off">
                     <span class="search-label mono" style="font-size:.66rem">Ctrl K</span>
                 </div>
             </div>
@@ -137,46 +137,31 @@
             </div>
         </header>
 
-        {{-- Bandeau discret : email non confirmé (non bloquant) --}}
-        @auth
-            @if (! auth()->user()->hasVerifiedEmail())
-                <div class="verify-email-banner" role="status">
-                    <i data-lucide="mail-warning" style="width:15px;height:15px;flex-shrink:0"></i>
-                    <span style="flex:1">
-                        Confirme ton adresse email pour sécuriser ton compte.
-                        <a href="{{ route('verification.notice') }}" style="color:inherit;text-decoration:underline;font-weight:600">Confirmer</a>
-                    </span>
-                    <button type="button" class="verify-email-dismiss" aria-label="Fermer"
-                            onclick="this.closest('.verify-email-banner').style.display='none'">&times;</button>
-                </div>
-            @endif
-        @endauth
-
         {{-- Toasts (flash messages) --}}
         <div class="toast-container" id="toast-container" aria-live="polite">
             @if (session('success'))
-                <div class="toast toast-success" role="status">
+                <div class="toast toast-success">
                     <i data-lucide="check-circle" style="width:17px;height:17px"></i>
                     <div style="flex:1">{{ session('success') }}</div>
                     <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
                 </div>
             @endif
             @if (session('error'))
-                <div class="toast toast-error" role="alert">
+                <div class="toast toast-error">
                     <i data-lucide="alert-circle" style="width:17px;height:17px"></i>
                     <div style="flex:1">{{ session('error') }}</div>
                     <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
                 </div>
             @endif
             @if (session('warning'))
-                <div class="toast toast-warning" role="status">
+                <div class="toast toast-warning">
                     <i data-lucide="alert-triangle" style="width:17px;height:17px"></i>
                     <div style="flex:1">{{ session('warning') }}</div>
                     <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
                 </div>
             @endif
             @if (session('info'))
-                <div class="toast" role="status">
+                <div class="toast">
                     <i data-lucide="info" style="width:17px;height:17px"></i>
                     <div style="flex:1">{{ session('info') }}</div>
                     <button type="button" class="toast-close" aria-label="Fermer">&times;</button>
@@ -184,7 +169,7 @@
             @endif
             @if (session('pending_cost'))
                 @php $pendingCost = session('pending_cost'); @endphp
-                <div class="toast toast-warning" role="alert">
+                <div class="toast toast-warning">
                     <i data-lucide="hourglass" style="width:17px;height:17px"></i>
                     <div style="flex:1">
                         @if (is_array($pendingCost))
@@ -217,7 +202,7 @@
         </main>
 
         {{-- Pied de page --}}
-        <footer class="app-footer">
+        <footer class="page-container" style="padding-top:0">
             <div style="border-top:1px solid var(--color-border);padding-top:1.25rem;display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap">
                 <p class="mono" style="font-size:.72rem;color:var(--color-text-muted)">
                     © {{ date('Y') }} FORMADOC — Mise en forme automatique de rapports académiques
@@ -307,91 +292,6 @@
                 });
             });
         }
-
-        // ── Modales accessibles (focus trap + Escape + retour de focus) ──────────
-        // Utilisation : ouvrir via window.openModal(el) ; fermer via closeModal(el).
-        // Le bouton .modal-close et un clic sur l'overlay ferment la modale.
-        // Requis : .modal-overlay[role="dialog"] .modal ; boutons .modal-close.
-        (function () {
-            const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-            let lastFocused = null;
-            let activeModal = null;
-
-            function focusableElements(modal) {
-                return Array.from(modal.querySelectorAll(FOCUSABLE)).filter(el => el.offsetParent !== null);
-            }
-
-            function trapFocus(e) {
-                if (!activeModal || e.key !== 'Tab') return;
-                const els = focusableElements(activeModal);
-                if (els.length === 0) { e.preventDefault(); return; }
-                const first = els[0];
-                const last = els[els.length - 1];
-                if (e.shiftKey && document.activeElement === first) {
-                    e.preventDefault();
-                    last.focus();
-                } else if (!e.shiftKey && document.activeElement === last) {
-                    e.preventDefault();
-                    first.focus();
-                }
-            }
-
-            function openModal(el) {
-                if (!el) return;
-                lastFocused = document.activeElement;
-                activeModal = el;
-                el.classList.add('open');
-                // Désactive le scroll de fond
-                document.body.style.overflow = 'hidden';
-                // Focus initial : premier champ ou bouton de fermeture
-                const els = focusableElements(el);
-                const closeBtn = el.querySelector('.modal-close');
-                (closeBtn || els[0])?.focus();
-                document.addEventListener('keydown', onKeydown);
-            }
-
-            function closeModal(el) {
-                if (!el) return;
-                el.classList.remove('open');
-                if (activeModal === el) activeModal = null;
-                document.body.style.overflow = '';
-                document.removeEventListener('keydown', onKeydown);
-                lastFocused?.focus?.();
-            }
-
-            function onKeydown(e) {
-                if (e.key === 'Escape' && activeModal) {
-                    e.preventDefault();
-                    closeModal(activeModal);
-                } else {
-                    trapFocus(e);
-                }
-            }
-
-            window.openModal = openModal;
-            window.closeModal = closeModal;
-
-            // Liaison générique : tout bouton [data-modal-open="id"] ouvre la modale #id
-            document.addEventListener('click', (e) => {
-                const opener = e.target.closest('[data-modal-open]');
-                if (opener) {
-                    e.preventDefault();
-                    openModal(document.getElementById(opener.dataset.modalOpen));
-                }
-            });
-            // Fermeture : boutons .modal-close et clic sur l'overlay (hors .modal)
-            document.addEventListener('click', (e) => {
-                const closeBtn = e.target.closest('.modal-close');
-                if (closeBtn) {
-                    const modal = closeBtn.closest('.modal-overlay');
-                    if (modal) closeModal(modal);
-                    return;
-                }
-                if (e.target.classList && e.target.classList.contains('modal-overlay')) {
-                    closeModal(e.target);
-                }
-            });
-        })();
     </script>
 </body>
 </html>

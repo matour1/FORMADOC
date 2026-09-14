@@ -20,7 +20,7 @@
             </button>
             <button class="onboarding-card" data-onboarding-step="document">
                 <span class="step-num">2</span>
-                <span><strong>Téléverser un document</strong><br><span style="color:var(--color-text-muted);font-size:.84rem;">DOCX/DOC/TXT, type de document et gabarit.</span></span>
+                <span><strong>Téléverser un document</strong><br><span style="color:var(--color-text-muted);font-size:.84rem;">DOCX/PDF, type de document et gabarit.</span></span>
             </button>
             <button class="onboarding-card" data-onboarding-step="credits">
                 <span class="step-num">3</span>
@@ -44,7 +44,7 @@
                 <span class="proof-stamp">Étape 2</span>
                 <h2 style="font-size:1.65rem;margin:.9rem 0 .5rem;">Préparer le premier fichier</h2>
                 <ul class="check-list">
-                    <li>Accepter uniquement DOCX/DOC/TXT jusqu'à 50 Mo.</li>
+                    <li>Accepter uniquement DOCX/PDF jusqu'à 50 Mo.</li>
                     <li>Choisir rapport, mémoire, CV ou document professionnel.</li>
                     <li>Sélectionner un gabarit public ou personnel.</li>
                 </ul>

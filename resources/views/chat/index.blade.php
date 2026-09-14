@@ -92,7 +92,7 @@
                 <div class="chat-context">
                     <span class="chat-context-dot"></span>
                     <strong>Nouvelle conversation</strong>
-                    <span class="chat-context-info">— pose ta question ou demande une action</span>
+                    <span class="chat-context-info">— posez une question ou demandez une action</span>
                 </div>
                 <div class="chat-header-actions">
                     <div class="chat-model-picker" id="chatModelPicker">
@@ -129,13 +129,6 @@
                     <button type="button" class="suggest-chip" data-prompt="Cherche des sources récentes sur le changement climatique au Cameroun.">Recherche web</button>
                     <button type="button" class="suggest-chip" data-prompt="Génère une image pour illustrer mon rapport.">Générer une image</button>
                 </div>
-
-                {{-- Indicateur de pensée (affiché pendant l'envoi) --}}
-                <div class="thinking-indicator" id="typingIndicator" style="display:none;" aria-live="polite">
-                    <span class="thinking-avatar"><i data-lucide="sparkles" style="width:14px;height:14px"></i></span>
-                    <span class="thinking-dots"><span></span><span></span><span></span></span>
-                    <span class="thinking-label">L'assistant réfléchit…</span>
-                </div>
             </div>
 
             {{-- Composer --}}
@@ -143,7 +136,7 @@
                 @csrf
                 <div class="composer-box">
                     <textarea name="message" id="chat-input" rows="1" required maxlength="12000"
-                              placeholder="Pose ta question ou demande une action…"
+                              placeholder="Posez une question ou demandez une action…"
                               aria-label="Votre message"></textarea>
                     <div class="composer-tools">
                         <button type="button" class="composer-tool-btn" title="Outils disponibles (actionnables par l'IA)"
@@ -212,20 +205,6 @@
             }
         });
 
-        // Indicateur « L'assistant réfléchit… » + désactivation pendant l'envoi
-        const chatForm = document.getElementById('chat-form');
-        const typingIndicator = document.getElementById('typingIndicator');
-        const chatSend = document.getElementById('chat-send');
-        if (chatForm) {
-            chatForm.addEventListener('submit', () => {
-                const input = document.getElementById('chat-input');
-                if (!input || !input.value.trim()) return; // Laisse le required gérer
-                if (typingIndicator) typingIndicator.style.display = 'flex';
-                if (chatSend) { chatSend.disabled = true; chatSend.setAttribute('aria-busy', 'true'); }
-                if (input) input.disabled = true;
-            });
-        }
-
         // Actions rapides et chips → remplir le champ
         document.querySelectorAll('.chat-action-btn, .suggest-chip').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -254,46 +233,15 @@
         const modelSelect = document.getElementById('chatModelSelect');
         const modelMenu = document.getElementById('chatModelMenu');
         if (modelSelect && modelMenu) {
-            const closeModelMenu = () => {
-                modelMenu.classList.remove('open');
-                modelSelect.setAttribute('aria-expanded', 'false');
-            };
-            const openModelMenu = () => {
-                modelMenu.classList.add('open');
-                modelSelect.setAttribute('aria-expanded', 'true');
-            };
             modelSelect.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const open = modelMenu.classList.toggle('open');
                 modelSelect.setAttribute('aria-expanded', open ? 'true' : 'false');
             });
             document.addEventListener('click', (e) => {
-                if (!modelMenu.contains(e.target)) closeModelMenu();
-            });
-            // Clavier (P2 audit UI/UX) : Échap ferme, flèches parcourent, Entrée/Space choisit
-            modelSelect.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    openModelMenu();
-                    const items = [...modelMenu.querySelectorAll('.model-menu-item')];
-                    const activeIdx = items.findIndex(i => i.classList.contains('active'));
-                    const nextIdx = e.key === 'ArrowDown' ? Math.min(activeIdx + 1, items.length - 1)
-                        : (e.key === 'ArrowUp' ? Math.max(activeIdx - 1, 0) : activeIdx);
-                    items.forEach(i => i.setAttribute('tabindex', '-1'));
-                    items[nextIdx]?.setAttribute('tabindex', '0');
-                    items[nextIdx]?.focus();
-                }
-            });
-            modelMenu.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') { e.preventDefault(); closeModelMenu(); modelSelect.focus(); return; }
-                const items = [...modelMenu.querySelectorAll('.model-menu-item')];
-                const idx = items.findIndex(i => i.getAttribute('tabindex') === '0');
-                if (e.key === 'ArrowDown') { e.preventDefault(); const n = (idx + 1) % items.length; items.forEach(i => i.setAttribute('tabindex', '-1')); items[n].setAttribute('tabindex', '0'); items[n].focus(); }
-                if (e.key === 'ArrowUp') { e.preventDefault(); const n = (idx - 1 + items.length) % items.length; items.forEach(i => i.setAttribute('tabindex', '-1')); items[n].setAttribute('tabindex', '0'); items[n].focus(); }
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    const item = items[idx];
-                    if (item) item.click();
+                if (!modelMenu.contains(e.target)) {
+                    modelMenu.classList.remove('open');
+                    modelSelect.setAttribute('aria-expanded', 'false');
                 }
             });
             modelMenu.querySelectorAll('.model-menu-item').forEach(item => {
@@ -304,7 +252,8 @@
                     if (label) {
                         document.getElementById('chatModelLabel').textContent = label.childNodes[0].textContent.trim();
                     }
-                    closeModelMenu();
+                    modelMenu.classList.remove('open');
+                    modelSelect.setAttribute('aria-expanded', 'false');
                 });
             });
         }

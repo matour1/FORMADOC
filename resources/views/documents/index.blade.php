@@ -29,9 +29,6 @@
                 <a href="{{ route('documents.index', array_filter(['filter' => $key === 'all' ? null : $key, 'q' => $search ?: null])) }}"
                    class="{{ $filter === $key ? 'active' : '' }}" data-doc-filter="{{ $key }}">
                     {{ $label }}
-                    @isset($statusCounts[$key])
-                        <span class="seg-count">{{ $statusCounts[$key] }}</span>
-                    @endisset
                 </a>
             @endforeach
         </div>

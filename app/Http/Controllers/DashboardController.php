@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Billing\QuotaService;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -30,7 +31,7 @@ class DashboardController extends Controller
         $chatCount = $user->chatSessions()->count();
 
         // Quotas du plan courant
-        $quotaStatus = app(\App\Services\Billing\QuotaService::class)->status($user);
+        $quotaStatus = app(QuotaService::class)->status($user);
 
         return view('dashboard', [
             'user' => $user,
@@ -67,19 +68,10 @@ class DashboardController extends Controller
             $query->where('filename', 'like', '%'.$search.'%');
         }
 
-        // Compteurs par statut pour les filtres (P2 audit UI/UX)
-        $statusCounts = [
-            'all' => $user->documents()->count(),
-            'processing' => $user->documents()->whereIn('status', ['pending', 'processing', 'detected', 'validated', 'generated'])->count(),
-            'done' => $user->documents()->where('status', 'ready')->count(),
-            'failed' => $user->documents()->where('status', 'failed')->count(),
-        ];
-
         return view('documents.index', [
             'documents' => $query->paginate(12)->withQueryString(),
             'filter' => $filter,
             'search' => trim((string) $request->query('q')),
-            'statusCounts' => $statusCounts,
         ]);
     }
 }

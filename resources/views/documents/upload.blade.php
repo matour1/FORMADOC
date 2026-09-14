@@ -14,11 +14,11 @@
             </div>
         </div>
 
-        {{-- Étapes de création : Fichier → Gabarit → Options IA → Aperçu --}}
+        {{-- Étapes du parcours (fidèle au template) --}}
         <div class="upload-steps" aria-label="Étapes de création d'un document">
-            <div class="upload-step active"><span class="num">1</span> Fichier</div>
+            <div class="upload-step done"><span class="num">✓</span> Fichier</div>
             <div class="upload-step-sep"></div>
-            <div class="upload-step"><span class="num">2</span> Gabarit</div>
+            <div class="upload-step active"><span class="num">2</span> Gabarit</div>
             <div class="upload-step-sep"></div>
             <div class="upload-step"><span class="num">3</span> Options IA</div>
             <div class="upload-step-sep"></div>
@@ -35,7 +35,6 @@
                 <div class="min-w-0 flex-1">
                     <p id="file-preview-name" class="fp-name"></p>
                     <p id="file-preview-meta" class="fp-meta"></p>
-                    <p id="file-preview-hint" class="fp-hint hidden"></p>
                     <div id="file-preview-content" class="fp-content hidden">
                         <span class="eyebrow" style="margin-bottom:.5rem">Aperçu du contenu</span>
                         <pre id="file-preview-text"></pre>
@@ -139,41 +138,6 @@
             </div>
         </div>
 
-        {{-- Page de garde (optionnelle) : à choisir à l'étape Aperçu/Export --}}
-        <section class="card" style="margin-top:1.5rem">
-            <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
-                <i data-lucide="book-open" style="width:19px;height:19px;color:var(--color-primary)"></i>
-                <h2 class="card-title">Page de garde (page de couverture)</h2>
-            </div>
-            <p style="color:var(--color-text-secondary);font-size:.85rem;margin-bottom:1.1rem">
-                Ajoutez une couverture institutionnelle à votre rapport (facultatif).
-                Vous pourrez l'appliquer à l'étape <strong>Aperçu / Export</strong>.
-            </p>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.8rem">
-                <a href="{{ route('cover-templates.from-example') }}" class="card" style="padding:1rem;text-decoration:none;display:flex;gap:.7rem;align-items:flex-start;border:1px solid var(--color-border)">
-                    <span class="rc-icon"><i data-lucide="scan-text" style="width:17px;height:17px"></i></span>
-                    <span>
-                        <strong style="display:block;font-size:.88rem">Créer à partir d'un exemple</strong>
-                        <small style="color:var(--color-text-muted);font-size:.78rem;display:block;margin-top:.2rem">Importez une couverture : les zones de texte sont détectées puis remplacées par vos informations.</small>
-                    </span>
-                </a>
-                <a href="{{ route('cover-templates.create') }}" class="card" style="padding:1rem;text-decoration:none;display:flex;gap:.7rem;align-items:flex-start;border:1px solid var(--color-border)">
-                    <span class="rc-icon"><i data-lucide="plus" style="width:17px;height:17px"></i></span>
-                    <span>
-                        <strong style="display:block;font-size:.88rem">Créer une page de garde</strong>
-                        <small style="color:var(--color-text-muted);font-size:.78rem;display:block;margin-top:.2rem">Construisez un modèle avec le builder visuel (blocs, logos, placeholders).</small>
-                    </span>
-                </a>
-                <a href="{{ route('cover-templates.index') }}" class="card" style="padding:1rem;text-decoration:none;display:flex;gap:.7rem;align-items:flex-start;border:1px solid var(--color-border)">
-                    <span class="rc-icon"><i data-lucide="copy" style="width:17px;height:17px"></i></span>
-                    <span>
-                        <strong style="display:block;font-size:.88rem">Utiliser une page de garde existante</strong>
-                        <small style="color:var(--color-text-muted);font-size:.78rem;display:block;margin-top:.2rem">Réutilisez ou dupliquez un modèle déjà enregistré.</small>
-                    </span>
-                </a>
-            </div>
-        </section>
-
         {{-- Aperçu du parcours --}}
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:1.5rem">
             @foreach ([
@@ -203,9 +167,6 @@
             const previewText = document.getElementById('file-preview-text');
             const previewContent = document.getElementById('file-preview-content');
             const previewIcon = document.getElementById('file-preview-icon');
-            const dropzone = document.querySelector('.dropzone');
-            const MAX_SIZE = 50 * 1024 * 1024; // 50 Mo
-            const ALLOWED_EXT = ['docx', 'doc', 'txt'];
 
             // ── Aperçu du fichier sélectionné ──────────────────────────────────
             function formatSize(bytes) {
@@ -214,47 +175,21 @@
                 return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
             }
 
-            function validateFile(file) {
-                const name = (file && file.name) || '';
-                const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
-                if (!ALLOWED_EXT.includes(ext)) {
-                    return 'Format non pris en charge. Formats acceptés : .docx, .doc, .txt.';
-                }
-                if (file.size > MAX_SIZE) {
-                    return 'Fichier trop volumineux (50 Mo maximum).';
-                }
-                return '';
-            }
-
             function showPreview(file) {
                 if (!file) return;
-
-                const err = validateFile(file);
-                if (err) {
-                    preview.classList.add('hidden');
-                    alert(err);
-                    input.value = '';
-                    return;
-                }
 
                 previewName.textContent = file.name;
                 previewMeta.textContent = formatSize(file.size) + ' · ' + (file.type || 'inconnu');
 
-                // Icône par type (P2 audit UI/UX : différencier visuellement)
-                const lower = file.name.toLowerCase();
-                let iconName = 'file-text';
-                if (lower.endsWith('.docx')) {
-                    iconName = 'file-text';      // Word récent
-                } else if (lower.endsWith('.doc')) {
-                    iconName = 'file-type';      // Word ancien
-                } else if (lower.endsWith('.txt')) {
-                    iconName = 'file-code-2';    // Texte brut
+                if (file.name.toLowerCase().endsWith('.txt')) {
+                    previewIcon.innerHTML = '<i data-lucide="file-text"></i>';
+                } else {
+                    previewIcon.innerHTML = '<i data-lucide="file-text"></i>';
                 }
-                previewIcon.innerHTML = '<i data-lucide="' + iconName + '"></i>';
                 if (window.lucide) lucide.createIcons();
 
                 // Aperçu du contenu pour les .txt (petits fichiers uniquement)
-                if (lower.endsWith('.txt') && file.size < 100000) {
+                if (file.name.toLowerCase().endsWith('.txt') && file.size < 100000) {
                     const reader = new FileReader();
                     reader.onload = function (e) {
                         previewText.textContent = e.target.result.slice(0, 4000);
@@ -263,20 +198,6 @@
                     reader.readAsText(file);
                 } else {
                     previewContent.classList.add('hidden');
-                }
-
-                // Message d'aide selon le type (P2 audit UI/UX)
-                const hint = document.getElementById('file-preview-hint');
-                if (hint) {
-                    if (lower.endsWith('.txt') && file.size >= 100000) {
-                        hint.textContent = 'Aperçu disponible uniquement pour les fichiers .txt de moins de 100 Ko.';
-                        hint.classList.remove('hidden');
-                    } else if (lower.endsWith('.docx') || lower.endsWith('.doc')) {
-                        hint.textContent = 'Aperçu du contenu disponible uniquement pour les fichiers .txt.';
-                        hint.classList.remove('hidden');
-                    } else {
-                        hint.classList.add('hidden');
-                    }
                 }
 
                 preview.classList.remove('hidden');
@@ -290,33 +211,6 @@
             input.addEventListener('change', function () {
                 showPreview(input.files[0]);
             });
-
-            // ── Drag & drop réel (la promesse « glissez-déposez » doit fonctionner) ──
-            if (dropzone) {
-                ['dragenter', 'dragover'].forEach(evt => {
-                    dropzone.addEventListener(evt, (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        dropzone.classList.add('drag-over');
-                    });
-                });
-                ['dragleave', 'drop'].forEach(evt => {
-                    dropzone.addEventListener(evt, (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        dropzone.classList.remove('drag-over');
-                    });
-                });
-                dropzone.addEventListener('drop', (e) => {
-                    const files = e.dataTransfer && e.dataTransfer.files;
-                    if (files && files.length > 0) {
-                        const dt = new DataTransfer();
-                        dt.items.add(files[0]);
-                        input.files = dt.files;
-                        showPreview(files[0]);
-                    }
-                });
-            }
 
             // ── Soumission AJAX + animation d'analyse ──────────────────────────
             const form = document.getElementById('upload-form');
@@ -399,18 +293,8 @@
                     return; // Le champ required laisse le navigateur gérer.
                 }
 
-                // Validation client avant envoi (taille + type)
-                const err = validateFile(file);
-                if (err) {
-                    e.preventDefault();
-                    alert(err);
-                    return;
-                }
-
                 // Affiche l'animation + désactive le formulaire
                 e.preventDefault();
-                const submitBtn = document.getElementById('upload-submit');
-                if (submitBtn) { submitBtn.disabled = true; submitBtn.setAttribute('aria-busy', 'true'); }
                 form.classList.add('hidden');
                 panel.classList.remove('hidden');
                 titleEl.textContent = 'Analyse en cours…';
@@ -446,11 +330,11 @@
                         titleEl.textContent = 'Analyse impossible';
                         subtitleEl.textContent = 'Veuillez réessayer.';
                     });
-                }).catch(function () {
+                }).catch(function (err) {
                     anim.finish();
-                    appendLog('Erreur réseau : vérifiez votre connexion puis réessayez.', 'error');
+                    appendLog('Erreur réseau : ' + err.message, 'error');
                     titleEl.textContent = 'Analyse impossible';
-                    subtitleEl.textContent = 'Veuillez vérifier votre connexion et réessayer.';
+                    subtitleEl.textContent = 'Veuillez réessayer.';
                 });
             });
 

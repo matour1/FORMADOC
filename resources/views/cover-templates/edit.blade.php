@@ -42,35 +42,6 @@
         </div>
     </div>
 
-    {{-- Créer à partir d'un modèle existant (mode création uniquement) --}}
-    @if ($mode === 'create')
-        <div class="card" style="margin-bottom:1.3rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
-            <div style="display:flex;align-items:center;gap:.55rem;min-width:0">
-                <i data-lucide="copy" style="width:18px;height:18px;color:var(--color-primary);flex-shrink:0"></i>
-                <div style="min-width:0">
-                    <p style="font-weight:600;font-size:.9rem">Partir d'un modèle existant</p>
-                    <p style="color:var(--color-text-muted);font-size:.78rem">Choisissez un modèle pour pré-remplir le builder (facultatif).</p>
-                </div>
-            </div>
-            <div style="display:flex;align-items:center;gap:.5rem;flex:1;min-width:220px">
-                <select class="form-control" style="max-width:340px"
-                        onchange="if (this.value) window.location.href='{{ route('cover-templates.create') }}?based_on=' + this.value;">
-                    <option value="">— Partir de zéro —</option>
-                    @foreach ($existingTemplates as $ct)
-                        <option value="{{ $ct->id }}" @selected(($basedOnId ?? null) == $ct->id)>
-                            {{ $ct->name }}
-                        </option>
-                    @endforeach
-                </select>
-                @if (isset($basedOnId) && $basedOnId)
-                    <a href="{{ route('cover-templates.create') }}" class="btn btn-ghost btn-sm" style="white-space:nowrap">
-                        <i data-lucide="x" style="width:14px;height:14px"></i> Réinitialiser
-                    </a>
-                @endif
-            </div>
-        </div>
-    @endif
-
     <form method="POST"
           :action="actionUrl"
           x-ref="form"
@@ -80,9 +51,6 @@
         <input type="hidden" name="elements" :value="JSON.stringify(elements)">
         <input type="hidden" name="page_style" :value="JSON.stringify(pageStyle)">
         <input type="hidden" name="is_public" :value="isPublic ? 1 : 0">
-        @if (isset($basedOnId) && $basedOnId)
-            <input type="hidden" name="based_on_id" value="{{ $basedOnId }}">
-        @endif
 
         <div style="display:grid;grid-template-columns:2fr 1fr;gap:1.4rem;align-items:start">
             {{-- Colonne éditeur --}}

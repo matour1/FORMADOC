@@ -50,11 +50,11 @@
 
             <form method="POST" action="{{ route('cover-templates.detect-example') }}" enctype="multipart/form-data">
                 @csrf
-                <label for="cover" class="dropzone" style="cursor:pointer">
-                    <span class="dz-icon"><i data-lucide="file-up" style="width:26px;height:26px"></i></span>
-                    <span class="dz-title">Glissez-déposez votre couverture ici</span>
-                    <span class="dz-sub">ou cliquez pour parcourir vos fichiers</span>
-                    <span class="dz-formats">.DOCX — 50 Mo max</span>
+                <label for="cover" class="dropzone" id="coverDropzone" style="cursor:pointer">
+                    <span class="dz-icon" id="dzIcon"><i data-lucide="file-up" style="width:26px;height:26px"></i></span>
+                    <span class="dz-title" id="dzTitle">Glissez-déposez votre couverture ici</span>
+                    <span class="dz-sub" id="dzSub">ou cliquez pour parcourir vos fichiers</span>
+                    <span class="dz-formats" id="dzFormats">.DOCX — 50 Mo max</span>
                     <input type="file"
                            class="sr-only @error('cover') is-invalid @enderror"
                            id="cover"
@@ -73,6 +73,43 @@
                     </button>
                 </div>
             </form>
+
+            @push('scripts')
+            <script>
+                // Indicateur visuel : affiche le nom du fichier sélectionné
+                // dans la dropzone (feedback immédiat de l'upload).
+                (function () {
+                    const input = document.getElementById('cover');
+                    const dropzone = document.getElementById('coverDropzone');
+                    const title = document.getElementById('dzTitle');
+                    const sub = document.getElementById('dzSub');
+                    const icon = document.getElementById('dzIcon');
+                    if (!input || !dropzone) return;
+
+                    input.addEventListener('change', function () {
+                        const file = input.files && input.files[0];
+                        if (!file) {
+                            dropzone.classList.remove('has-file');
+                            title.textContent = 'Glissez-déposez votre couverture ici';
+                            sub.textContent = 'ou cliquez pour parcourir vos fichiers';
+                            return;
+                        }
+                        dropzone.classList.add('has-file');
+                        title.textContent = 'Fichier choisi : ' + file.name;
+                        sub.textContent = (file.size / 1024 / 1024).toFixed(2) + ' Mo — cliquez pour changer';
+                        if (icon) {
+                            icon.innerHTML = '<i data-lucide="file-check" style="width:26px;height:26px"></i>';
+                            if (window.lucide) lucide.createIcons();
+                        }
+                    });
+
+                    // Si le navigateur restaure la sélection (retour arrière)
+                    if (input.files && input.files.length > 0) {
+                        input.dispatchEvent(new Event('change'));
+                    }
+                })();
+            </script>
+            @endpush
         </div>
     @else
         {{-- Étape 2 : zones détectées + saisie des informations --}}

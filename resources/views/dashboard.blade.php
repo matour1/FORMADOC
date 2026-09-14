@@ -94,17 +94,10 @@
                 </div>
                 @if ($doc->status === 'ready')
                     <span class="proof-stamp">✓ Terminé</span>
-                @elseif ($doc->status === 'processing')
-                    <span class="proof-stamp pending">⏳ IA en cours</span>
                 @elseif (in_array($doc->status, ['pending', 'detected', 'validated', 'generated']))
                     <span class="proof-stamp pending">⏳ En cours</span>
                 @else
                     <span class="proof-stamp failed">✕ Échec</span>
-                @endif
-                @if ($doc->status === 'ready')
-                    <a href="{{ route('documents.export', $doc) }}" class="icon-btn" aria-label="Télécharger le document" title="Télécharger le DOCX">
-                        <i data-lucide="download" style="width:16px;height:16px"></i>
-                    </a>
                 @endif
             </div>
             <div style="margin-top:.75rem;">
