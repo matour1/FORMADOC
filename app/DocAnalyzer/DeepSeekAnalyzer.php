@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\DocAnalyzer;
 
 use Exception;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -29,8 +30,6 @@ class DeepSeekAnalyzer
 {
     /**
      * Clé API DeepSeek.
-     *
-     * @var string
      */
     private string $apiKey;
 
@@ -42,8 +41,8 @@ class DeepSeekAnalyzer
     private array $options;
 
     /**
-     * @param string               $apiKey  Clé API DeepSeek
-     * @param array<string, mixed> $options Options : model, api_url, timeout, max_retries…
+     * @param  string  $apiKey  Clé API DeepSeek
+     * @param  array<string, mixed>  $options  Options : model, api_url, timeout, max_retries…
      */
     public function __construct(string $apiKey, array $options = [])
     {
@@ -54,13 +53,18 @@ class DeepSeekAnalyzer
     /**
      * Analyse le texte contextuel positionné et retourne les catégories.
      *
-     * @param string $contextTextWithPositions Sortie context_text_with_positions du DocumentParser
-     *
+     * @param  string  $contextTextWithPositions  Sortie context_text_with_positions du DocumentParser
      * @return array<string, array<int, array<string, mixed>>> Résultat conforme à AnalyzerResult
      */
     public function analyze(string $contextTextWithPositions): array
     {
         $empty = AnalyzerResult::empty();
+
+        // Q-TEMPS : l'appel HTTP DeepSeek (jusqu'à 600 s) doit survivre à la
+        // limite PHP par défaut (120 s). On repousse au max + marge.
+        if (function_exists('set_time_limit')) {
+            set_time_limit((int) config('deepseek.timeout.max', 600) + 60);
+        }
 
         if (mb_strlen(trim($contextTextWithPositions)) < 20) {
             Log::warning('DeepSeekAnalyzer : texte trop court, résultat vide', [
@@ -75,8 +79,23 @@ class DeepSeekAnalyzer
             $decoded = $this->extractJson($json);
 
             if ($decoded === null) {
+                // Certains documents source contiennent des caractères UTF-8
+                // invalides (mojibake type « Lâ€™ ») que le modèle recopie dans
+                // sa réponse JSON → json_decode échoue. On tente un nettoyage.
+                $cleaned = $this->cleanInvalidUtf8($json);
+                if ($cleaned !== $json) {
+                    $decoded = $this->extractJson($cleaned);
+                }
+            }
+
+            if ($decoded === null) {
                 Log::warning('DeepSeekAnalyzer : JSON invalide après extraction', [
                     'raw_prefix' => mb_substr($json, 0, 300),
+                    'raw_length' => mb_strlen($json),
+                    // Un JSON tronqué (fin sans accolade fermante) = réponse
+                    // coupée par la limite de tokens → monter max_tokens.
+                    'raw_ends_with_brace' => str_ends_with(trim($json), '}'),
+                    'json_error' => json_last_error_msg(),
                 ]);
 
                 return $empty;
@@ -108,7 +127,7 @@ class DeepSeekAnalyzer
     private function callLlm(string $text): string
     {
         $apiUrl = rtrim((string) ($this->options['api_url'] ?? config('deepseek.api_url', 'https://api.deepseek.com/v1')), '/')
-            . '/chat/completions';
+            .'/chat/completions';
 
         $model = (string) ($this->options['model'] ?? config('deepseek.model', 'deepseek-v4-flash'));
         $maxAttempts = 1 + (int) ($this->options['max_retries'] ?? config('deepseek.max_retries', 2));
@@ -130,7 +149,7 @@ class DeepSeekAnalyzer
             try {
                 $response = Http::timeout($timeout)
                     ->withHeaders([
-                        'Authorization' => 'Bearer ' . $this->apiKey,
+                        'Authorization' => 'Bearer '.$this->apiKey,
                         'Content-Type' => 'application/json',
                     ])
                     ->post($apiUrl, [
@@ -141,10 +160,14 @@ class DeepSeekAnalyzer
                         ],
                         // JSON mode : le modèle est contraint à produire du JSON valide
                         'response_format' => ['type' => 'json_object'],
+                        // Q-JSON : sans max_tokens, DeepSeek tronque les réponses
+                        // longues (~8K tokens) → JSON invalide sur les gros
+                        // documents. On repousse la limite au max configuré.
+                        'max_tokens' => (int) ($this->options['max_tokens'] ?? config('deepseek.max_tokens', 16384)),
                     ]);
 
                 if ($response->failed()) {
-                    throw new Exception('DeepSeek API error: ' . $response->body());
+                    throw new Exception('DeepSeek API error: '.$response->body());
                 }
 
                 $json = $response->json();
@@ -157,7 +180,7 @@ class DeepSeekAnalyzer
             } catch (Exception $e) {
                 $lastError = $e;
 
-                if ($attempt >= $maxAttempts || !$this->isRetryable($e)) {
+                if ($attempt >= $maxAttempts || ! $this->isRetryable($e)) {
                     throw $e;
                 }
 
@@ -179,7 +202,7 @@ class DeepSeekAnalyzer
      */
     private function isRetryable(Exception $e): bool
     {
-        return $e instanceof \Illuminate\Http\Client\ConnectionException
+        return $e instanceof ConnectionException
             || str_contains($e->getMessage(), 'cURL error');
     }
 
@@ -263,6 +286,35 @@ class DeepSeekAnalyzer
         }
 
         return null;
+    }
+
+    /**
+     * Nettoie les caractères UTF-8 invalides d'une chaîne.
+     *
+     * Certains documents source contiennent du mojibake (« Lâ€™ » pour « L' »)
+     * que le modèle recopie tel quel dans sa réponse JSON, ce qui fait échouer
+     * `json_decode`. On retire ici les séquences invalides sans altérer le texte
+     * valide, afin que le JSON redevienne décodable.
+     *
+     * @param  string  $raw  Réponse brute du modèle
+     * @return string Chaîne nettoyée (inchangée si déjà valide)
+     */
+    private function cleanInvalidUtf8(string $raw): string
+    {
+        // 1) Remplacement des séquences invalides par un caractère de substitution.
+        $clean = mb_convert_encoding($raw, 'UTF-8', 'UTF-8');
+
+        // `mb_convert_encoding` peut ne rien changer selon la version de mbstring :
+        // on force un nettoyage octet par octet en conservant l'UTF-8 valide.
+        $converted = iconv('UTF-8', 'UTF-8//IGNORE', $clean);
+
+        if ($converted !== false) {
+            $clean = $converted;
+        }
+
+        // 2) Suppression des caractères de contrôle interdits en JSON
+        //    (hors \t, \n, \r qui sont valides une fois échappés).
+        return preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $clean) ?? $clean;
     }
 
     /**

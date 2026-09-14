@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Services\OpenRouter;
 
+use App\Services\OpenRouter\ModelRouter;
 use App\Services\OpenRouter\OpenRouterService;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
@@ -74,6 +75,54 @@ class OpenRouterMultiTurnCostTest extends TestCase
         return (int) ceil($usd * (1 + 0.15) * (1 + 0.60) * 620);
     }
 
+    public function test_le_tool_call_imbrique_est_normalise_avant_lexecuteur(): void
+    {
+        // Tour 1 : le modèle demande un outil au format OpenAI/DeepSeek
+        // imbriqué ({function:{name,arguments}}).
+        $tour1 = $this->fakeResponse([
+            'choices' => [[
+                'index' => 0,
+                'message' => [
+                    'role' => 'assistant',
+                    'content' => null,
+                    'tool_calls' => [[
+                        'id' => 'call_1',
+                        'type' => 'function',
+                        'function' => ['name' => 'web_search', 'arguments' => '{"query":"test"}'],
+                    ]],
+                ],
+                'finish_reason' => 'tool_calls',
+            ]],
+        ]);
+        // Tour 2 : réponse finale
+        $tour2 = $this->fakeResponse();
+
+        $this->fakeChat([$tour1, $tour2]);
+
+        $service = new OpenRouterService(new ModelRouter);
+
+        $received = null;
+        $result = $service->chat('function_calling', [
+            ['role' => 'user', 'content' => 'Recherche web'],
+        ], 'default', [
+            'tools' => [['type' => 'function', 'function' => ['name' => 'web_search']]],
+            'executor' => function (array $toolCall) use (&$received): array {
+                $received = $toolCall;
+
+                return ['result' => 'résultat'];
+            },
+        ]);
+
+        // L'executor a reçu le nom APLATI (pas de clé 'function' imbriquée)
+        $this->assertNotNull($received, 'L\'executor doit être appelé avec le tool_call');
+        $this->assertSame('web_search', $received['name']);
+        $this->assertSame('{"query":"test"}', $received['arguments']);
+        $this->assertArrayNotHasKey('function', $received);
+
+        // La boucle a bien tourné 1 fois
+        $this->assertSame(1, $result['tool_turns']);
+    }
+
     public function test_le_cout_cumule_tous_les_tours_de_la_boucle_d_outils(): void
     {
         // Tour 1 : le modèle demande un outil
@@ -86,7 +135,7 @@ class OpenRouterMultiTurnCostTest extends TestCase
                     'tool_calls' => [[
                         'id' => 'call_1',
                         'type' => 'function',
-                        'function' => ['name' => 'web.search', 'arguments' => '{"query":"test"}'],
+                        'function' => ['name' => 'web_search', 'arguments' => '{"query":"test"}'],
                     ]],
                 ],
                 'finish_reason' => 'tool_calls',
@@ -99,12 +148,12 @@ class OpenRouterMultiTurnCostTest extends TestCase
 
         $this->fakeChat([$tour1, $tour2]);
 
-        $service = new OpenRouterService(new \App\Services\OpenRouter\ModelRouter());
+        $service = new OpenRouterService(new ModelRouter);
 
         $result = $service->chat('function_calling', [
             ['role' => 'user', 'content' => 'Recherche web + réponse'],
         ], 'default', [
-            'tools' => [['type' => 'function', 'function' => ['name' => 'web.search']]],
+            'tools' => [['type' => 'function', 'function' => ['name' => 'web_search']]],
             'executor' => fn () => ['result' => 'résultat de la recherche'],
         ]);
 
@@ -134,7 +183,7 @@ class OpenRouterMultiTurnCostTest extends TestCase
     {
         $this->fakeChat([$this->fakeResponse()]);
 
-        $service = new OpenRouterService(new \App\Services\OpenRouter\ModelRouter());
+        $service = new OpenRouterService(new ModelRouter);
 
         $result = $service->chat('chat_text', [
             ['role' => 'user', 'content' => 'Bonjour'],
@@ -161,7 +210,7 @@ class OpenRouterMultiTurnCostTest extends TestCase
                         'tool_calls' => [[
                             'id' => 'call_a',
                             'type' => 'function',
-                            'function' => ['name' => 'structure.correct', 'arguments' => '{}'],
+                            'function' => ['name' => 'structure_correct', 'arguments' => '{}'],
                         ]],
                     ],
                     'finish_reason' => 'tool_calls',
@@ -189,12 +238,12 @@ class OpenRouterMultiTurnCostTest extends TestCase
 
         $this->fakeChat($responses);
 
-        $service = new OpenRouterService(new \App\Services\OpenRouter\ModelRouter());
+        $service = new OpenRouterService(new ModelRouter);
 
         $result = $service->chat('function_calling', [
             ['role' => 'user', 'content' => 'Corrige la structure'],
         ], 'default', [
-            'tools' => [['type' => 'function', 'function' => ['name' => 'structure.correct']]],
+            'tools' => [['type' => 'function', 'function' => ['name' => 'structure_correct']]],
             'executor' => fn () => ['result' => 'fait'],
         ]);
 
@@ -217,7 +266,7 @@ class OpenRouterMultiTurnCostTest extends TestCase
     {
         // Deux appels chat successifs sur la même instance : le cumul du
         // premier ne doit pas polluer le second.
-        $service = new OpenRouterService(new \App\Services\OpenRouter\ModelRouter());
+        $service = new OpenRouterService(new ModelRouter);
 
         // Appel 1 : multi-tours (2 réponses HTTP)
         $this->fakeChat([
@@ -230,7 +279,7 @@ class OpenRouterMultiTurnCostTest extends TestCase
                         'tool_calls' => [[
                             'id' => 'call_1',
                             'type' => 'function',
-                            'function' => ['name' => 'web.search', 'arguments' => '{}'],
+                            'function' => ['name' => 'web_search', 'arguments' => '{}'],
                         ]],
                     ],
                     'finish_reason' => 'tool_calls',
@@ -242,7 +291,7 @@ class OpenRouterMultiTurnCostTest extends TestCase
         $result1 = $service->chat('function_calling', [
             ['role' => 'user', 'content' => 'Premier message'],
         ], 'default', [
-            'tools' => [['type' => 'function', 'function' => ['name' => 'web.search']]],
+            'tools' => [['type' => 'function', 'function' => ['name' => 'web_search']]],
             'executor' => fn () => ['result' => 'ok'],
         ]);
         $this->assertCount(2, $result1['cost_usd_per_turn']);
@@ -258,5 +307,40 @@ class OpenRouterMultiTurnCostTest extends TestCase
         // Le coût du second appel est celui du tour unique, pas le cumul du 1er
         $cout1 = 100 / 1_000_000 * 0.2574 + 50 / 1_000_000 * 1.029;
         $this->assertEqualsWithDelta(round($cout1, 6), $result2['cost_usd'], 1e-9);
+    }
+
+    /**
+     * Le callback `when` de PendingRequest::retry() (Laravel 13) est appelé
+     * avec ($exception, $request, $method) — PAS ($attempt, $exception).
+     * Avant le correctif, la closure typée `fn (int $attempt, ...)` jetait
+     * un TypeError dès la première réponse 5xx → le chat plantait.
+     */
+    public function test_le_callback_retry_accepte_la_signature_laravel_13(): void
+    {
+        Config::set('openrouter.max_retries', 2);
+        Config::set('openrouter.retry_delays_ms', [0, 0, 0, 0]);
+
+        $appel = 0;
+        Http::fake([
+            'openrouter.test/*' => function () use (&$appel) {
+                $appel++;
+                if ($appel === 1) {
+                    // 503 Service Unavailable → retryable (>= 500)
+                    return Http::response(['error' => 'overloaded'], 503);
+                }
+
+                return Http::response($this->fakeResponse(), 200);
+            },
+        ]);
+
+        $service = new OpenRouterService(new ModelRouter);
+
+        // Doit réussir après le retry (avant le correctif : TypeError)
+        $result = $service->chat('chat_text', [
+            ['role' => 'user', 'content' => 'Retry test'],
+        ], 'default');
+
+        $this->assertSame('Réponse finale', $result['content']);
+        $this->assertSame(2, $appel);
     }
 }

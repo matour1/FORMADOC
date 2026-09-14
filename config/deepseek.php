@@ -13,7 +13,21 @@ return [
 
     'api_key' => env('DEEPSEEK_API_KEY', ''),
     'api_url' => env('DEEPSEEK_API_URL', 'https://api.deepseek.com/v1'),
-    'model' => env('DEEPSEEK_MODEL', 'deepseek-v4-flash'),
+    // deepseek-chat = alias non-reasoning de deepseek-v4-flash : produit du
+    // contenu même sur les gros documents. deepseek-v4-flash explicite brûle
+    // tout le budget de sortie en reasoning_content (content vide).
+    'model' => env('DEEPSEEK_MODEL', 'deepseek-chat'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Limite de tokens de sortie
+    |--------------------------------------------------------------------------
+    | Sans max_tokens, DeepSeek tronque les réponses longues (~8K tokens par
+    | défaut) → JSON invalide pour les analyses de gros documents.
+    | deepseek-v4-flash (alias deepseek-chat) supporte jusqu'à 384K tokens de
+    | sortie. 65 536 = budget sûr pour un rapport complet avec positions.
+    */
+    'max_tokens' => (int) env('DEEPSEEK_MAX_TOKENS', 65536),
 
     /*
     |--------------------------------------------------------------------------

@@ -18,6 +18,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Fallback externe (DeepSeek direct)
+    |--------------------------------------------------------------------------
+    | Quand TOUS les modèles OpenRouter ont échoué (service down, timeout
+    | généralisé, quota API épuisé), le chat bascule sur l'API DeepSeek
+    | directe (config/deepseek.php) pour rester fonctionnel.
+    */
+    'external_fallback_enabled' => (bool) env('OPENROUTER_EXTERNAL_FALLBACK', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Routage par type de tâche et par plan
     |--------------------------------------------------------------------------
     | Chaque plan liste les modèles autorisés DANS L'ORDRE DE PRÉFÉRENCE :
