@@ -200,6 +200,91 @@ class CreditService
     }
 
     /**
+     * Rembourse la part d'un débit correspondant aux étapes ÉCHOUÉES (R7).
+     *
+     * **Le problème qu'il résout.** Une chaîne de cinq appels d'outils dont
+     * trois réussissent a produit un tiers de valeur inutile : l'utilisateur a
+     * payé cinq appels, il en a reçu trois. Rembourser la totalité serait une
+     * perte sèche ; ne rien rembourser facture un service non rendu. Le
+     * remboursement est donc **proportionnel au nombre d'échecs**.
+     *
+     * La part remboursée est calculée par `proportionalRefund()`, séparément de
+     * l'écriture comptable, pour que le calcul soit vérifiable sans base de
+     * données.
+     *
+     * @param  int  $debitedAmount  Crédits réellement payés pour la chaîne d'appels
+     * @param  int  $failed  Nombre d'appels échoués
+     * @param  int  $total  Nombre total d'appels
+     * @return array{ok: bool, balance: int, refunded: int, reason?: string}
+     */
+    public function refundPartial(
+        User $user,
+        int $debitedAmount,
+        int $failed,
+        int $total,
+        string $reference = '',
+        string $description = '',
+        array $metadata = [],
+    ): array {
+        $montant = self::proportionalRefund($debitedAmount, $failed, $total);
+
+        if ($montant <= 0) {
+            return [
+                'ok' => true,
+                'balance' => $this->balance($user),
+                'refunded' => 0,
+                'reason' => 'rien_a_rembourser',
+            ];
+        }
+
+        $resultat = $this->credit(
+            $user,
+            $montant,
+            type: 'refund',
+            reference: $reference,
+            description: $description !== '' ? $description : 'Remboursement partiel (échecs d\'outils)',
+            metadata: [
+                ...$metadata,
+                'partial_refund' => true,
+                'failed' => $failed,
+                'total' => $total,
+                'base_credits' => $debitedAmount,
+            ],
+        );
+
+        return [
+            'ok' => $resultat['ok'],
+            'balance' => $resultat['balance'],
+            'refunded' => $resultat['ok'] ? $montant : 0,
+        ];
+    }
+
+    /**
+     * Part proportionnelle d'un montant correspondant aux échecs.
+     *
+     * Arrondi vers le bas (`intdiv`) : arrondir au supérieur ferait payer à
+     * l'application une fraction de crédit à chaque incident, et des échecs
+     * répétés finiraient par rendre le remboursement plus coûteux que le
+     * service rendu.
+     *
+     * Le cas « tout a échoué » est traité à part : la division entière
+     * garantit déjà l'exactitude, mais l'exprimer évite qu'un futur changement
+     * d'arrondi ne transforme un remboursement total en remboursement partiel.
+     */
+    public static function proportionalRefund(int $debitedAmount, int $failed, int $total): int
+    {
+        if ($debitedAmount <= 0 || $failed <= 0 || $total <= 0) {
+            return 0;
+        }
+
+        if ($failed >= $total) {
+            return $debitedAmount;
+        }
+
+        return intdiv($debitedAmount * $failed, $total);
+    }
+
+    /**
      * Solde actuel (fraîchement rechargé).
      */
     public function balance(User $user): int
