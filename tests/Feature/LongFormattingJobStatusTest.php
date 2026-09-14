@@ -6,6 +6,7 @@ use App\Jobs\LongFormattingJob;
 use App\Models\Document;
 use App\Models\DocumentStructure;
 use App\Models\User;
+use App\Services\Billing\CreditService;
 use App\Services\OpenRouter\OpenRouterService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -70,6 +71,42 @@ class LongFormattingJobStatusTest extends TestCase
         });
     }
 
+    public function test_le_job_transmet_le_contexte_de_facturation_au_modele(): void
+    {
+        Mail::fake();
+
+        $contexte = null;
+
+        // R7 : le mode automatique alimente le même registre d'usage que le chat.
+        // Sans ce contexte, les lignes seraient orphelines — impossible de
+        // rattacher le coût d'un traitement au document ni à son propriétaire,
+        // donc impossible de le refacturer ou de l'auditer.
+        $this->mock(OpenRouterService::class, function (Mockery\MockInterface $mock) use (&$contexte) {
+            $mock->shouldReceive('chat')->andReturnUsing(function (string $t, array $m, string $p, array $o) use (&$contexte) {
+                $contexte = $o;
+
+                return [
+                    'content' => '{"améliorations": []}',
+                    'model' => 'deepseek/deepseek-chat',
+                    'cost_usd' => 0.0005,
+                    'cost_credits' => 2,
+                    'usage' => ['prompt_tokens' => 100, 'completion_tokens' => 50],
+                ];
+            });
+        });
+
+        $user = $this->makeUser();
+        $document = $this->makeDocument($user);
+
+        (new LongFormattingJob($document, estimatedCredits: 5, userId: $user->id))
+            ->handle(app(OpenRouterService::class), app(CreditService::class));
+
+        $this->assertNotNull($contexte, 'Le contexte de facturation doit être transmis au service.');
+        $this->assertSame($user->id, $contexte['user_id']);
+        $this->assertSame($document->id, $contexte['document_id']);
+        $this->assertSame('document:'.$document->id, $contexte['billing_reference']);
+    }
+
     public function test_job_reussi_passe_le_document_de_processing_a_ready(): void
     {
         Mail::fake();
@@ -79,7 +116,7 @@ class LongFormattingJobStatusTest extends TestCase
         $document = $this->makeDocument($user);
 
         (new LongFormattingJob($document, estimatedCredits: 5, userId: $user->id))
-            ->handle(app(OpenRouterService::class), app(\App\Services\Billing\CreditService::class));
+            ->handle(app(OpenRouterService::class), app(CreditService::class));
 
         // Statut final : ready (le job a transité par processing)
         $document->refresh();
@@ -107,7 +144,7 @@ class LongFormattingJobStatusTest extends TestCase
         $document = $this->makeDocument($user);
 
         (new LongFormattingJob($document, estimatedCredits: 5, userId: $user->id))
-            ->handle(app(OpenRouterService::class), app(\App\Services\Billing\CreditService::class));
+            ->handle(app(OpenRouterService::class), app(CreditService::class));
 
         // Statut revenu à detected (relançable) + crédits remboursés
         $document->refresh();
@@ -121,7 +158,7 @@ class LongFormattingJobStatusTest extends TestCase
         $document = $this->makeDocument($user);
 
         (new LongFormattingJob($document, estimatedCredits: 5, userId: $user->id))
-            ->handle(app(OpenRouterService::class), app(\App\Services\Billing\CreditService::class));
+            ->handle(app(OpenRouterService::class), app(CreditService::class));
 
         $document->refresh();
         $this->assertSame('detected', $document->status);

@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Mail\DocumentReadyMail;
 use App\Models\Document;
+use App\Models\Template;
 use App\Models\User;
 use App\Services\Billing\CreditService;
 use App\Services\OpenRouter\OpenRouterService;
@@ -31,15 +32,16 @@ class LongFormattingJob implements ShouldQueue
      * Durées de suppression avant exécution.
      */
     public int $tries = 3;
+
     public int $timeout = 600;
+
     public int $backoff = 30;
 
     public function __construct(
         public readonly Document $document,
         public readonly int $estimatedCredits,
         public readonly ?int $userId = null,
-    ) {
-    }
+    ) {}
 
     public function handle(
         OpenRouterService $openRouter,
@@ -50,6 +52,7 @@ class LongFormattingJob implements ShouldQueue
         if (! $user) {
             Log::error('LongFormattingJob : utilisateur introuvable', ['document_id' => $this->document->id]);
             $this->fail(new \RuntimeException('Utilisateur introuvable.'));
+
             return;
         }
 
@@ -61,6 +64,7 @@ class LongFormattingJob implements ShouldQueue
                 'required' => $this->estimatedCredits,
             ]);
             $this->fail(new \RuntimeException('Solde de crédits insuffisant.'));
+
             return;
         }
 
@@ -83,6 +87,7 @@ class LongFormattingJob implements ShouldQueue
             // P2-2 : retour au statut détecté (l'utilisateur peut relancer)
             $this->document->update(['status' => 'detected']);
             $this->fail(new \RuntimeException('Impossible de débiter les crédits ('.$debit['reason'].').'));
+
             return;
         }
 
@@ -93,6 +98,7 @@ class LongFormattingJob implements ShouldQueue
             // P2-2 : retour au statut détecté (l'utilisateur peut relancer)
             $this->document->update(['status' => 'detected']);
             $this->fail(new \RuntimeException('Aucune structure détectée pour le document.'));
+
             return;
         }
 
@@ -116,6 +122,13 @@ class LongFormattingJob implements ShouldQueue
             $response = $openRouter->chat('document_full_format', $messages, $plan, [
                 'temperature' => 0.2,
                 'response_format' => ['type' => 'json_object'],
+                // R7 : sans ce contexte, les lignes du registre d'usage seraient
+                // orphelines — impossible de rattacher le coût d'un traitement
+                // automatique au document ni à l'utilisateur qui l'a déclenché,
+                // donc impossible de le refacturer ou de l'auditer.
+                'user_id' => $user->id,
+                'document_id' => $this->document->id,
+                'billing_reference' => 'document:'.$this->document->id,
             ]);
         } catch (\Throwable $e) {
             $this->refund($credits, $user, 'llm_failure');
@@ -126,6 +139,7 @@ class LongFormattingJob implements ShouldQueue
                 'error' => $e->getMessage(),
             ]);
             $this->fail($e);
+
             return;
         }
 
@@ -147,7 +161,7 @@ class LongFormattingJob implements ShouldQueue
         if (isset($metadata['template_name']) && is_string($metadata['template_name'])) {
             $templateName = $metadata['template_name'];
         } elseif (isset($metadata['template_id'])) {
-            $templateName = \App\Models\Template::find((int) $metadata['template_id'])?->name;
+            $templateName = Template::find((int) $metadata['template_id'])?->name;
         }
 
         try {
