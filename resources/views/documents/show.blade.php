@@ -58,6 +58,100 @@
                 @endif
             </div>
 
+            {{-- Annulation des modifications faites par le chat (R6 §9.7) --}}
+            {{-- Affiché seulement s'il y a quelque chose à annuler : un bloc vide
+                 laisserait croire à une fonctionnalité en panne. --}}
+            @if (! empty($undoHistory))
+                <section class="card" style="margin-bottom:1.25rem">
+                    <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
+                        <i data-lucide="undo-2" style="width:19px;height:19px;color:var(--color-primary)"></i>
+                        <h2 class="card-title">Annuler une modification</h2>
+                    </div>
+                    <p style="color:var(--color-text-secondary);font-size:.85rem;margin-bottom:1rem">
+                        Chaque modification faite par le chat enregistre l'état précédent du document.
+                        Restaurer un état <strong>remplace le contenu actuel</strong> — l'annulation
+                        n'est pas elle-même annulable.
+                    </p>
+
+                    <div style="display:flex;flex-direction:column;gap:.6rem">
+                        @foreach ($undoHistory as $action)
+                            <form method="POST" action="{{ route('documents.undo-edit', $document) }}"
+                                  style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+                                @csrf
+                                <input type="hidden" name="snapshot_id" value="{{ $action['id'] }}">
+                                <div style="min-width:0">
+                                    <div style="font-size:.88rem">{{ $action['reason'] }}</div>
+                                    <div style="font-size:.78rem;color:var(--color-text-secondary)">
+                                        {{ $action['block_count'] }} blocs
+                                        · {{ \Illuminate\Support\Str::substr($action['created_at'] ?? '', 0, 16) }}
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-secondary btn-sm">
+                                    Restaurer cet état
+                                </button>
+                            </form>
+                        @endforeach
+                    </div>
+                </section>
+            @endif
+
+            {{-- Réanalyse (3 modes : regex / IA / assistée) --}}
+            <section class="card" style="margin-bottom:1.25rem">
+                <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
+                    <i data-lucide="refresh-cw" style="width:19px;height:19px;color:var(--color-primary)"></i>
+                    <h2 class="card-title">Réanalyse (comparer les méthodes)</h2>
+                </div>
+                <p style="color:var(--color-text-secondary);font-size:.85rem;margin-bottom:1rem">
+                    Relancez l'analyse sur le fichier source avec une autre méthode
+                    <strong>sans ré-uploader</strong>. La structure précédente est conservée
+                    (traçabilité avant/après), puis remplacée par le nouveau résultat.
+                </p>
+
+                <form method="POST" action="{{ route('documents.reanalyze', $document) }}">
+                    @csrf
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem" role="radiogroup" aria-label="Méthode de réanalyse">
+                        <label class="radio-card" for="reanalyze-regex">
+                            <input type="radio" name="title_method" id="reanalyze-regex" value="regex"
+                                   @checked(($document->metadata['title_method'] ?? 'regex') !== 'ia')>
+                            <span class="rc-icon"><i data-lucide="file-check" style="width:17px;height:17px"></i></span>
+                            <span>
+                                <strong>Analyse rapide (Regex)</strong>
+                                <small>Déterministe et hors-ligne : styles Word (Heading, tailles, gras) + motifs regex. Aucune donnée envoyée à l'extérieur.</small>
+                            </span>
+                        </label>
+
+                        <label class="radio-card" for="reanalyze-ia">
+                            <input type="radio" name="title_method" id="reanalyze-ia" value="ia"
+                                   @checked(($document->metadata['title_method'] ?? '') === 'ia')>
+                            <span class="rc-icon"><i data-lucide="bot" style="width:17px;height:17px"></i></span>
+                            <span>
+                                <strong>Analyse par IA</strong>
+                                <small>Le LLM (DeepSeek) lit l'intégralité du texte pour classer titres, sous-titres, en-têtes, pieds, tableaux et images. Plus précise mais plus lente.</small>
+                            </span>
+                        </label>
+                    </div>
+
+                    <label for="reanalyze-use-ai" class="check-card" style="margin-top:1.2rem">
+                        <input type="checkbox" name="use_ai" id="reanalyze-use-ai" value="1"
+                               @checked((bool) ($document->metadata['use_ai'] ?? false))>
+                        <span class="cc-icon"><i data-lucide="sparkles" style="width:17px;height:17px"></i></span>
+                        <span>
+                            <strong>Assistance IA (mode assisté)</strong>
+                            <small>Complète la détection regex par une IA correctrice sur les ambiguïtés (listes, niveaux). Consomme 1 unité du quota IA.</small>
+                            <span class="cc-note">Combine la méthode choisie ci-dessus avec le post-processeur IA.</span>
+                        </span>
+                    </label>
+
+                    <div style="display:flex;justify-content:flex-end;margin-top:1.2rem">
+                        <button type="submit" class="btn btn-secondary">
+                            <i data-lucide="refresh-cw" style="width:16px;height:16px"></i>
+                            Relancer l'analyse
+                        </button>
+                    </div>
+                </form>
+            </section>
+
             {{-- Validation des ambiguïtés --}}
             <section class="card" style="margin-bottom:1.25rem">
                 <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:1rem">
@@ -283,19 +377,19 @@
                         </div>
                         <div>
                             <label for="nom" style="display:block;font-size:.82rem;font-weight:600;margin-bottom:.35rem;color:var(--color-text-secondary)">Nom</label>
-                            <input type="text" class="form-control" id="nom" name="nom" placeholder="Ex : JEAN DUPONT">
+                            <input type="text" class="form-control" id="nom" name="nom" maxlength="255" placeholder="Ex : JEAN DUPONT">
                         </div>
                         <div>
                             <label for="titre" style="display:block;font-size:.82rem;font-weight:600;margin-bottom:.35rem;color:var(--color-text-secondary)">Titre</label>
-                            <input type="text" class="form-control" id="titre" name="titre" placeholder="Ex : CONCEPTION D'UNE APPLICATION WEB">
+                            <input type="text" class="form-control" id="titre" name="titre" maxlength="255" placeholder="Ex : CONCEPTION D'UNE APPLICATION WEB">
                         </div>
                         <div>
                             <label for="encadrant" style="display:block;font-size:.82rem;font-weight:600;margin-bottom:.35rem;color:var(--color-text-secondary)">Encadrant</label>
-                            <input type="text" class="form-control" id="encadrant" name="encadrant" placeholder="Ex : Dr. MARTIN">
+                            <input type="text" class="form-control" id="encadrant" name="encadrant" maxlength="255" placeholder="Ex : Dr. MARTIN">
                         </div>
                         <div>
                             <label for="date" style="display:block;font-size:.82rem;font-weight:600;margin-bottom:.35rem;color:var(--color-text-secondary)">Date / Année académique</label>
-                            <input type="text" class="form-control" id="date" name="date" placeholder="Ex : 2025-2026">
+                            <input type="text" class="form-control" id="date" name="date" maxlength="255" placeholder="Ex : 2025-2026">
                         </div>
                         <div style="grid-column:1 / -1;display:flex;justify-content:flex-end">
                             <button type="submit" class="btn btn-secondary">

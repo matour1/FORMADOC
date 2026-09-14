@@ -4,27 +4,34 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Services\Chat;
 
+use App\Document\Editing\ToolWhitelist;
 use App\Models\CoverPageTemplate;
 use App\Models\User;
+use App\Services\Anthropic\ClaudeSkillsService;
 use App\Services\Chat\ChatToolsService;
+use App\Services\Chat\DocumentEditService;
 use App\Services\DocumentGeneration\CoverGenerationService;
 use App\Services\DocumentGeneration\CoverPageRenderer;
 use App\Services\OpenRouter\OpenRouterService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
+use PhpOffice\PhpWord\IOFactory;
+use PhpOffice\PhpWord\PhpWord;
 use Tests\TestCase;
 
 /**
  * Tests des outils actionnables du chat IA (exigence A).
  *
- * - schemas() : 6 outils déclarés (4 internes + 2 externes)
+ * - schemas() : 9 outils déclarés (7 internes + 2 externes)
  * - availableTools() : identifiants des outils
  * - execute() : outil inconnu → erreur, arguments JSON → décodés
- * - web.search : délègue à OpenRouter (web_search_options), citations ajoutées
- * - image.generate : image base64 → fichier stocké
- * - cover_page.generate : gabarit introuvable → erreur propre
- * - structure.correct : délègue à StructureCorrectionService
+ * - web_search : délègue à OpenRouter (web_search_options), citations ajoutées
+ * - image_generate : image base64 → fichier stocké
+ * - cover_page_generate : gabarit introuvable → erreur propre
+ * - structure_correct : délègue à StructureCorrectionService
+ * - document_edit / document_to_pdf / document_create : édition PJ et
+ *   génération Word/PDF
  */
 class ChatToolsServiceTest extends TestCase
 {
@@ -48,20 +55,51 @@ class ChatToolsServiceTest extends TestCase
             $this->openRouter,
             $coverGeneration,
             $this->coverPageRenderer,
+            new DocumentEditService,
         );
     }
 
-    public function test_available_tools_liste_les_6_outils(): void
+    public function test_available_tools_liste_les_11_outils(): void
     {
         $tools = $this->service->availableTools();
 
-        $this->assertContains('cover_page.generate', $tools);
-        $this->assertContains('document.reconstruct', $tools);
+        $this->assertContains('cover_page_generate', $tools);
+        $this->assertContains('document_reconstruct', $tools);
+        $this->assertContains('document_analyze', $tools);
+        $this->assertContains('document_to_docx', $tools);
         $this->assertContains('table_of_contents', $tools);
-        $this->assertContains('structure.correct', $tools);
-        $this->assertContains('web.search', $tools);
-        $this->assertContains('image.generate', $tools);
-        $this->assertCount(6, $tools);
+        $this->assertContains('structure_correct', $tools);
+        $this->assertContains('web_search', $tools);
+        $this->assertContains('image_generate', $tools);
+        $this->assertContains('document_edit', $tools);
+        $this->assertContains('document_to_pdf', $tools);
+        $this->assertContains('document_create', $tools);
+
+        // Tools d'édition structurelle (R6) : ils éditent un document ANALYSÉ
+        // et persisté, contrairement à document_edit qui travaille sur une
+        // pièce jointe. Ils proviennent de `ToolWhitelist`.
+        $this->assertContains('rewrite_paragraph', $tools);
+        $this->assertContains('insert_block', $tools);
+        $this->assertContains('modify_table', $tools);
+        $this->assertContains('delete_block', $tools);
+        $this->assertContains('regenerate_section', $tools);
+        $this->assertContains('undo_last_action', $tools);
+
+        $this->assertCount(17, $tools);
+    }
+
+    public function test_les_tools_d_edition_correspondent_a_la_liste_blanche(): void
+    {
+        // Cohérence structurelle : aucun tool d'édition ne peut être exposé au
+        // modèle sans figurer dans la liste blanche, et inversement. C'est ce
+        // qui rend impossible l'ajout d'un outil non autorisé par inadvertance.
+        $exposes = $this->service->availableTools();
+
+        foreach (ToolWhitelist::editingToolNames() as $nom) {
+            $this->assertContains($nom, $exposes, "Le tool « {$nom} » n'est pas exposé au modèle.");
+        }
+
+        $this->assertContains('undo_last_action', $exposes);
     }
 
     public function test_schemas_sont_des_functions_openai(): void
@@ -121,7 +159,7 @@ class ChatToolsServiceTest extends TestCase
 
         $result = $this->service->execute(
             [
-                'name' => 'web.search',
+                'name' => 'web_search',
                 'arguments' => json_encode(['query' => 'Quel est le prix du riz au Cameroun ?']),
             ],
             null,
@@ -137,7 +175,7 @@ class ChatToolsServiceTest extends TestCase
     public function test_web_search_requete_vide_retourne_erreur(): void
     {
         $result = $this->service->execute(
-            ['name' => 'web.search', 'arguments' => '{"query": ""}'],
+            ['name' => 'web_search', 'arguments' => '{"query": ""}'],
             null,
             'default',
         );
@@ -165,7 +203,7 @@ class ChatToolsServiceTest extends TestCase
 
         $result = $this->service->execute(
             [
-                'name' => 'image.generate',
+                'name' => 'image_generate',
                 'arguments' => json_encode(['prompt' => 'Un schéma de réseau', 'output_filename' => 'schema']),
             ],
             null,
@@ -181,7 +219,7 @@ class ChatToolsServiceTest extends TestCase
     {
         $result = $this->service->execute(
             [
-                'name' => 'cover_page.generate',
+                'name' => 'cover_page_generate',
                 'arguments' => json_encode(['template_id' => 999999, 'values' => []]),
             ],
             null,
@@ -215,14 +253,14 @@ class ChatToolsServiceTest extends TestCase
         // Le rendu de la page de garde est délégué au renderer (mocké)
         $this->coverPageRenderer->shouldReceive('render')
             ->once()
-            ->withArgs(function (\PhpOffice\PhpWord\PhpWord $phpWord, $tpl, array $values) {
+            ->withArgs(function (PhpWord $phpWord, $tpl, array $values) {
                 return $tpl instanceof CoverPageTemplate
                     && ($values['titre'] ?? null) === 'Mon rapport';
             });
 
         $result = $this->service->execute(
             [
-                'name' => 'cover_page.generate',
+                'name' => 'cover_page_generate',
                 'arguments' => json_encode([
                     'template_id' => $template->id,
                     'values' => ['titre' => 'Mon rapport'],
@@ -242,7 +280,7 @@ class ChatToolsServiceTest extends TestCase
     {
         $result = $this->service->execute(
             [
-                'name' => 'structure.correct',
+                'name' => 'structure_correct',
                 'arguments' => json_encode([
                     'structure' => [
                         'titres' => [
@@ -282,6 +320,264 @@ class ChatToolsServiceTest extends TestCase
 
         $relative = str_replace('chat/generated/', '', explode(' : ', $result['result'])[1]);
         Storage::disk('local')->assertExists('chat/generated/'.$relative);
+    }
+
+    public function test_document_edit_chemin_invalide_refuse(): void
+    {
+        $result = $this->service->execute(
+            [
+                'name' => 'document_edit',
+                'arguments' => json_encode([
+                    'source_path' => 'config/app.php', // hors PJ → refusé
+                    'operation' => 'replace_text',
+                    'search' => 'x',
+                    'replacement' => 'y',
+                ]),
+            ],
+            null,
+            'default',
+        );
+
+        $this->assertArrayHasKey('error', $result);
+        $this->assertStringContainsString('invalide', $result['error']);
+    }
+
+    public function test_document_edit_operation_inconnue_erreur(): void
+    {
+        Storage::fake('local');
+
+        // Crée un vrai DOCX de pièce jointe
+        $phpWord = new PhpWord;
+        $phpWord->addTitleStyle(1, ['bold' => true, 'size' => 16]);
+        $section = $phpWord->addSection();
+        $section->addTitle('Intro', 1);
+        $section->addText('Contenu');
+        Storage::disk('local')->makeDirectory('chat/attachments/1');
+        $writer = IOFactory::createWriter($phpWord, 'Word2007');
+        $writer->save(Storage::disk('local')->path('chat/attachments/1/test.docx'));
+
+        $result = $this->service->execute(
+            [
+                'name' => 'document_edit',
+                'arguments' => json_encode([
+                    'source_path' => 'chat/attachments/1/test.docx',
+                    'operation' => 'delete_all',
+                ]),
+            ],
+            null,
+            'default',
+        );
+
+        $this->assertArrayHasKey('error', $result);
+        $this->assertStringContainsString('inconnue', $result['error']);
+    }
+
+    public function test_document_create_genere_un_docx(): void
+    {
+        Storage::fake('local');
+
+        $result = $this->service->execute(
+            [
+                'name' => 'document_create',
+                'arguments' => json_encode([
+                    'content' => "# Titre\n\nUn paragraphe.\n\n- item 1\n- item 2",
+                    'format' => 'word',
+                    'output_filename' => 'notes_test',
+                ]),
+            ],
+            null,
+            'default',
+        );
+
+        $this->assertArrayHasKey('result', $result);
+        $this->assertStringContainsString('DOCX généré', $result['result']);
+        $this->assertStringContainsString('.docx', $result['result']);
+
+        $relative = str_replace('chat/generated/', '', explode(' : ', $result['result'])[1]);
+        Storage::disk('local')->assertExists('chat/generated/'.$relative);
+    }
+
+    public function test_document_create_contenu_vide_erreur(): void
+    {
+        $result = $this->service->execute(
+            [
+                'name' => 'document_create',
+                'arguments' => json_encode(['content' => '   ', 'format' => 'word']),
+            ],
+            null,
+            'default',
+        );
+
+        $this->assertArrayHasKey('error', $result);
+        $this->assertStringContainsString('vide', $result['error']);
+    }
+
+    public function test_document_create_format_inconnu_erreur(): void
+    {
+        $result = $this->service->execute(
+            [
+                'name' => 'document_create',
+                'arguments' => json_encode(['content' => 'Texte', 'format' => 'xls']),
+            ],
+            null,
+            'default',
+        );
+
+        $this->assertArrayHasKey('error', $result);
+        $this->assertStringContainsString('Format inconnu', $result['error']);
+    }
+
+    public function test_document_analyze_analyse_une_piece_jointe(): void
+    {
+        Storage::fake('local');
+
+        // Crée un vrai DOCX de pièce jointe
+        $phpWord = new PhpWord;
+        $phpWord->addTitleStyle(1, ['bold' => true, 'size' => 16]);
+        $phpWord->addTitleStyle(2, ['bold' => true, 'size' => 14]);
+        $section = $phpWord->addSection();
+        $section->addTitle('Introduction', 1);
+        $section->addText('Contenu du rapport.');
+        $section->addTitle('Conclusion', 1);
+
+        Storage::disk('local')->makeDirectory('chat/attachments/1');
+        $writer = IOFactory::createWriter($phpWord, 'Word2007');
+        $writer->save(Storage::disk('local')->path('chat/attachments/1/analyse.docx'));
+
+        $result = $this->service->execute(
+            [
+                'name' => 'document_analyze',
+                'arguments' => json_encode([
+                    'source_path' => 'chat/attachments/1/analyse.docx',
+                    'method' => 'regex',
+                ]),
+            ],
+            null,
+            'default',
+        );
+
+        $this->assertArrayHasKey('result', $result);
+        $this->assertStringContainsString('Structure détectée', $result['result']);
+        $this->assertStringContainsString('titres', strtolower($result['result']));
+    }
+
+    public function test_document_analyze_source_path_manquant_erreur(): void
+    {
+        $result = $this->service->execute(
+            [
+                'name' => 'document_analyze',
+                'arguments' => json_encode(['method' => 'regex']),
+            ],
+            null,
+            'default',
+        );
+
+        $this->assertArrayHasKey('error', $result);
+        $this->assertStringContainsString('source_path', $result['error']);
+    }
+
+    public function test_document_analyze_chemin_invalide_erreur(): void
+    {
+        $result = $this->service->execute(
+            [
+                'name' => 'document_analyze',
+                'arguments' => json_encode([
+                    'source_path' => 'config/app.php',
+                    'method' => 'regex',
+                ]),
+            ],
+            null,
+            'default',
+        );
+
+        $this->assertArrayHasKey('error', $result);
+        $this->assertStringContainsString('invalide', $result['error']);
+    }
+
+    public function test_fallback_claude_declenche_sur_echec_outil_interne(): void
+    {
+        // Mock du ClaudeSkillsService éligible → le fallback doit être utilisé
+        $claudeSkills = Mockery::mock(ClaudeSkillsService::class);
+        $claudeSkills->shouldReceive('isEligible')->andReturn(true);
+        $claudeSkills->shouldReceive('generate')
+            ->once()
+            ->andReturn([
+                'path' => 'claude-skills/document_modifie.docx',
+                'filename' => 'document_modifie.docx',
+                'cost_credits' => 10,
+                'model' => 'claude-sonnet',
+            ]);
+
+        $user = User::factory()->create();
+
+        $openRouter = Mockery::mock(OpenRouterService::class);
+        $coverGeneration = Mockery::mock(CoverGenerationService::class);
+        $coverPageRenderer = Mockery::mock(CoverPageRenderer::class);
+
+        $service = new ChatToolsService(
+            $openRouter,
+            $coverGeneration,
+            $coverPageRenderer,
+            new DocumentEditService,
+            $claudeSkills,
+        );
+
+        $result = $service->execute(
+            [
+                'name' => 'document_edit',
+                'arguments' => json_encode([
+                    'source_path' => 'chat/attachments/1/introuvable.docx', // échec interne
+                    'operation' => 'replace_text',
+                    'search' => 'a',
+                    'replacement' => 'b',
+                ]),
+            ],
+            $user,
+            'standard',
+        );
+
+        $this->assertArrayHasKey('result', $result);
+        $this->assertStringContainsString('Claude Skills', $result['result']);
+        $this->assertStringContainsString('claude-skills/', $result['result']);
+    }
+
+    public function test_fallback_claude_non_eligible_retourne_options_manuelles(): void
+    {
+        // Mock non éligible → le fallback ne doit PAS être utilisé
+        $claudeSkills = Mockery::mock(ClaudeSkillsService::class);
+        $claudeSkills->shouldReceive('isEligible')->andReturn(false);
+
+        $user = User::factory()->create();
+
+        $openRouter = Mockery::mock(OpenRouterService::class);
+        $coverGeneration = Mockery::mock(CoverGenerationService::class);
+        $coverPageRenderer = Mockery::mock(CoverPageRenderer::class);
+
+        $service = new ChatToolsService(
+            $openRouter,
+            $coverGeneration,
+            $coverPageRenderer,
+            new DocumentEditService,
+            $claudeSkills,
+        );
+
+        $result = $service->execute(
+            [
+                'name' => 'document_edit',
+                'arguments' => json_encode([
+                    'source_path' => 'chat/attachments/1/introuvable.docx',
+                    'operation' => 'replace_text',
+                    'search' => 'a',
+                    'replacement' => 'b',
+                ]),
+            ],
+            $user,
+            'standard',
+        );
+
+        $this->assertArrayHasKey('error', $result);
+        $this->assertStringContainsString('introuvable', $result['error']);
+        $this->assertStringNotContainsString('Claude Skills', $result['error']);
     }
 
     protected function tearDown(): void

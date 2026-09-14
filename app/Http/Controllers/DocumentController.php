@@ -3,17 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\DocAnalyzer\DocAnalyzer;
+use App\DocAnalyzer\DocumentParser;
 use App\DocAnalyzer\DocumentReconstructor;
+use App\Document\DocumentPipeline;
+use App\Document\Editing\DocumentEditingService;
 use App\Http\Requests\GenerateCoverRequest;
 use App\Http\Requests\StoreDocumentRequest;
 use App\Http\Requests\ValidateStructureRequest;
 use App\Jobs\LongFormattingJob;
+use App\Models\CoverPageTemplate;
 use App\Models\CoverTemplate;
 use App\Models\Document;
 use App\Models\DocumentStructure;
 use App\Models\GeneratedDocument;
-use App\Models\User;
-use App\Services\Billing\CreditService;
+use App\Models\Template;
 use App\Services\Billing\QuotaService;
 use App\Services\Detection\AiCorrectionService;
 use App\Services\Detection\AmbiguityDetectionService;
@@ -21,14 +24,18 @@ use App\Services\Detection\LegendDetectionService;
 use App\Services\Detection\StructureCorrectionService;
 use App\Services\Detection\TextExtractionService;
 use App\Services\DocumentGeneration\CoverDetectionService;
+use App\Services\DocumentGeneration\PdfPreviewService;
 use App\Services\OpenRouter\OpenRouterService;
 use Exception;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Throwable;
 
 /**
  * Gestion des documents : upload, analyse de structure, affichage.
@@ -48,8 +55,8 @@ class DocumentController extends Controller
         private readonly LegendDetectionService $legendDetection,
         private readonly QuotaService $quotas,
         private readonly OpenRouterService $openRouter,
-    ) {
-    }
+        private readonly DocumentEditingService $editing,
+    ) {}
 
     /**
      * Vérifie l'appartenance du document à l'utilisateur connecté (P0-1).
@@ -61,7 +68,7 @@ class DocumentController extends Controller
     private function authorizeDocument(Document $document): void
     {
         $userId = (int) ($document->metadata['user_id'] ?? 0);
-        $currentUserId = (int) \Illuminate\Support\Facades\Auth::id();
+        $currentUserId = (int) Auth::id();
 
         if ($userId === 0 || $userId !== $currentUserId) {
             abort(404, 'Document introuvable.');
@@ -182,14 +189,14 @@ class DocumentController extends Controller
 
             try {
                 $this->runDetection($document, $titleMethod, $useAi);
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 // P2-1 : échec de l'analyse → on nettoie le document créé et
                 // son fichier, puis on rembourse les quotas consommés. L'exception
                 // est relancée pour être loggée par le catch global.
                 try {
-                    \Illuminate\Support\Facades\Storage::disk('storage')->delete($document->path);
+                    Storage::disk('storage')->delete($document->path);
                     $document->delete();
-                } catch (\Throwable) {
+                } catch (Throwable) {
                     // Best-effort : le catch global rembourse déjà les quotas
                 }
                 throw $e;
@@ -249,7 +256,7 @@ class DocumentController extends Controller
 
             return back()
                 ->withInput()
-                ->withErrors(['document' => 'Erreur lors du traitement : ' . $e->getMessage()]);
+                ->withErrors(['document' => 'Erreur lors du traitement : '.$e->getMessage()]);
         }
     }
 
@@ -263,7 +270,133 @@ class DocumentController extends Controller
         return view('documents.show', [
             'document' => $document,
             'structure' => $document->structure,
+            // Historique des actions annulables (R6 §9.7). Exposé ici parce que
+            // c'est la page où l'utilisateur constate le résultat d'une édition :
+            // proposer l'annulation ailleurs l'obligerait à chercher.
+            'undoHistory' => $this->editing->undoHistory($document->id),
         ]);
+    }
+
+    /**
+     * Annule la dernière modification du document (R6 §9.7).
+     *
+     * L'annulation restaure un **état complet** enregistré avant l'action, et non
+     * une opération inversée : un journal d'opérations à rejouer à l'envers se
+     * trompe dès qu'une opération n'est pas parfaitement réversible.
+     */
+    public function undoEdit(Request $request, Document $document): RedirectResponse
+    {
+        $this->authorizeDocument($document);
+
+        $snapshotId = $request->filled('snapshot_id') ? (int) $request->input('snapshot_id') : null;
+
+        $resultat = $this->editing->undo($document->id, $snapshotId);
+
+        if (! $resultat['restored']) {
+            return back()->with('error', $resultat['error']);
+        }
+
+        return back()->with('status', $resultat['summary']);
+    }
+
+    /**
+     * Relance l'analyse du document SOURCE avec la méthode choisie.
+     *
+     * Permet de comparer les 3 modes d'analyse directement depuis l'onglet
+     * Traitement (page de validation) sans ré-uploader le fichier :
+     *   - regex       : analyse 100 % déterministe (styles Word + motifs)
+     *   - ia          : lecture complète par le LLM (DeepSeek)
+     *   - regex + assistée : détection regex complétée par l'IA correctrice
+     *                        (post-processeur sur ambiguïtés)
+     *
+     * La structure précédente est conservée dans metadata['previous_structure']
+     * à titre de référence (traçabilité avant/après).
+     */
+    public function reanalyze(Request $request, Document $document): RedirectResponse
+    {
+        $this->authorizeDocument($document);
+
+        // Méthode demandée : 'regex' ou 'ia' (règles déterministes sinon)
+        $titleMethod = in_array($request->input('title_method'), [
+            DocAnalyzer::METHOD_REGEX,
+            DocAnalyzer::METHOD_IA,
+        ], true) ? $request->input('title_method') : DocAnalyzer::METHOD_REGEX;
+
+        // Assistance IA (post-processeur correctif) — mode « assisté »
+        $useAi = $request->boolean('use_ai', false);
+
+        // Quota IA : l'assistance consomme 1 unité du quota IA, mais reste
+        // OPTIONNELLE (bascule déterministe si le quota est épuisé).
+        $user = $request->user();
+        $aiActive = false;
+        if ($useAi && $user) {
+            $quota = $this->quotas->consume($user, 'ai');
+            if ($quota['ok']) {
+                $aiActive = true;
+            } else {
+                $useAi = false;
+                session()->flash('warning', 'Quota IA mensuel atteint ('
+                    .$quota['used'].'/'.$quota['quota'].'). '
+                    .'Analyse relancée en mode déterministe.');
+            }
+        }
+
+        // L'IA peut être lente : on prolonge l'exécution PHP si nécessaire.
+        if (($useAi || $titleMethod === DocAnalyzer::METHOD_IA) && function_exists('set_time_limit')) {
+            set_time_limit((int) config('deepseek.timeout.max', 600) + 60);
+        }
+
+        try {
+            // Mémorise l'ancienne structure pour traçabilité (avant/après)
+            $previous = $document->structure?->structure;
+            if (! empty($previous)) {
+                $document->update([
+                    'metadata' => array_merge($document->metadata ?? [], [
+                        'previous_structure' => $previous,
+                        'previous_analysis' => [
+                            'title_method' => $document->metadata['title_method'] ?? null,
+                            'use_ai' => $document->metadata['use_ai'] ?? false,
+                            'at' => now()->toDateTimeString(),
+                        ],
+                    ]),
+                ]);
+            }
+
+            $this->runDetection($document, $titleMethod, $useAi);
+
+            // Traçabilité de la méthode réellement utilisée
+            $document->update([
+                'metadata' => array_merge($document->metadata ?? [], [
+                    'title_method' => $titleMethod,
+                    'use_ai' => $useAi,
+                    'reanalyzed_at' => now()->toDateTimeString(),
+                ]),
+            ]);
+
+            $mode = match (true) {
+                $useAi => 'regex + assistance IA',
+                $titleMethod === DocAnalyzer::METHOD_IA => 'IA complète',
+                default => 'regex (déterministe)',
+            };
+
+            return back()->with('success', 'Analyse relancée avec succès (mode '.$mode.'). '
+                .'La structure a été mise à jour.');
+        } catch (Throwable $e) {
+            // P2-1 : échec → remboursement du quota IA consommé
+            if ($aiActive && $user) {
+                $this->quotas->refund($user, 'ai');
+            }
+
+            Log::error('Erreur lors de la réanalyse du document', [
+                'document_id' => $document->id,
+                'title_method' => $titleMethod,
+                'use_ai' => $useAi,
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ]);
+
+            return back()->withErrors(['document' => 'Erreur lors de la réanalyse : '.$e->getMessage()]);
+        }
     }
 
     /**
@@ -276,9 +409,9 @@ class DocumentController extends Controller
     {
         $this->authorizeDocument($document);
 
-        $path = storage_path('uploads/' . $document->path);
+        $path = storage_path('uploads/'.$document->path);
 
-        if (!is_file($path)) {
+        if (! is_file($path)) {
             abort(404, 'Fichier introuvable.');
         }
 
@@ -295,7 +428,7 @@ class DocumentController extends Controller
         // DOCX/DOC : renvoie le fichier en inline (aperçu navigateur natif)
         return response()->file($path, [
             'Content-Type' => $mime,
-            'Content-Disposition' => 'inline; filename="' . $document->filename . '"',
+            'Content-Disposition' => 'inline; filename="'.$document->filename.'"',
         ]);
     }
 
@@ -326,12 +459,12 @@ class DocumentController extends Controller
     {
         $this->authorizeDocument($document);
 
-        $coverTemplates = \App\Models\CoverPageTemplate::query()
+        $coverTemplates = CoverPageTemplate::query()
             ->where('is_public', true)
             ->orderBy('name')
             ->get(['id', 'name', 'description', 'elements']);
 
-        $templates = \App\Models\Template::query()
+        $templates = Template::query()
             ->where('is_public', true)
             ->orderBy('name')
             ->get(['id', 'name', 'description', 'params']);
@@ -356,9 +489,9 @@ class DocumentController extends Controller
     {
         $this->authorizeDocument($document);
 
-        $template = \App\Models\CoverPageTemplate::find($request->integer('cover_page_template_id'));
+        $template = CoverPageTemplate::find($request->integer('cover_page_template_id'));
 
-        if (!$template) {
+        if (! $template) {
             return back()->withErrors(['cover_page_template_id' => 'Modèle de page de garde introuvable.']);
         }
 
@@ -413,7 +546,7 @@ class DocumentController extends Controller
             }
 
             $generatedPath = $this->generateOutputPath($document);
-            $reconstructor = new DocumentReconstructor();
+            $reconstructor = new DocumentReconstructor;
             $structure = $document->structure?->structure;
 
             if (empty($structure)) {
@@ -428,7 +561,7 @@ class DocumentController extends Controller
             $outputPath = $reconstructor->reconstruct($structure, $generatedPath, null, $template?->params);
 
             // Conversion PDF (LibreOffice) pour l'aperçu
-            $pdfPath = (new \App\Services\DocumentGeneration\PdfPreviewService())->convertToPdf($outputPath);
+            $pdfPath = (new PdfPreviewService)->convertToPdf($outputPath);
 
             // Mémorise la génération
             GeneratedDocument::updateOrCreate(
@@ -440,12 +573,16 @@ class DocumentController extends Controller
                 ]
             );
 
-            // Stocke le chemin du PDF pour la route d'affichage (iframe)
+            // Stocke le chemin du PDF pour la route d'affichage (iframe).
+            // Le document est « prêt » dès que l'aperçu est produit : en mode
+            // sans IA (le plus courant), aucun job asynchrone ne tourne, c'est
+            // ici que le document passe à l'état « Terminé ».
             $document->update([
+                'status' => 'ready',
                 'metadata' => array_merge($document->metadata ?? [], [
                     // Chemin relatif au dossier storage/ (indépendant des séparateurs)
                     'pdf_preview_path' => str_replace(
-                        [storage_path() . DIRECTORY_SEPARATOR, storage_path() . '/'],
+                        [storage_path().DIRECTORY_SEPARATOR, storage_path().'/'],
                         '',
                         $pdfPath
                     ),
@@ -461,7 +598,7 @@ class DocumentController extends Controller
                 'line' => $e->getLine(),
             ]);
 
-            return back()->withErrors(['document' => 'Erreur lors de l\'aperçu : ' . $e->getMessage()]);
+            return back()->withErrors(['document' => 'Erreur lors de l\'aperçu : '.$e->getMessage()]);
         }
     }
 
@@ -474,14 +611,14 @@ class DocumentController extends Controller
 
         $pdfPath = $document->metadata['pdf_preview_path'] ?? null;
 
-        if (!is_string($pdfPath) || $pdfPath === '') {
+        if (! is_string($pdfPath) || $pdfPath === '') {
             abort(404, 'Aperçu non généré.');
         }
 
         // Chemin relatif à storage/ OU absolu (tolérance aux anciens enregistrements)
         $absolute = is_file($pdfPath) ? $pdfPath : storage_path($pdfPath);
 
-        if (!is_file($absolute)) {
+        if (! is_file($absolute)) {
             abort(404, 'Fichier PDF introuvable.');
         }
 
@@ -494,7 +631,7 @@ class DocumentController extends Controller
     /**
      * Résout le gabarit de mise en forme depuis la requête (template_id).
      */
-    private function resolveTemplate(Request $request): ?\App\Models\Template
+    private function resolveTemplate(Request $request): ?Template
     {
         $templateId = $request->integer('template_id');
 
@@ -502,7 +639,7 @@ class DocumentController extends Controller
             return null;
         }
 
-        $template = \App\Models\Template::where('is_public', true)->find($templateId);
+        $template = Template::where('is_public', true)->find($templateId);
 
         return $template ?: null;
     }
@@ -527,9 +664,9 @@ class DocumentController extends Controller
     /**
      * Flux commun de génération + téléchargement (avec ou sans couverture).
      *
-     * @param null|array<string, mixed> $cover { detection, values, cover_template_id }
+     * @param  null|array<string, mixed>  $cover  { detection, values, cover_template_id }
      */
-    private function generateAndDownload(Document $document, ?array $cover, ?\App\Models\Template $template = null): Response|RedirectResponse|BinaryFileResponse
+    private function generateAndDownload(Document $document, ?array $cover, ?Template $template = null): Response|RedirectResponse|BinaryFileResponse
     {
         try {
             $structure = $document->structure?->structure;
@@ -545,7 +682,7 @@ class DocumentController extends Controller
 
             $generatedPath = $this->generateOutputPath($document);
 
-            $reconstructor = new DocumentReconstructor();
+            $reconstructor = new DocumentReconstructor;
 
             // Phase 3 : mêmes complétions d'images que previewPdf (binaire
             // extrait depuis le DOCX source — défaut 3).
@@ -573,6 +710,12 @@ class DocumentController extends Controller
                 'template_id' => $template?->id,
             ]);
 
+            // Le document est généré et téléchargeable → il devient « Terminé »
+            // (badge « ✓ Terminé » + téléchargement sur le tableau de bord).
+            // En mode sans IA, aucun job asynchrone ne passe le statut à
+            // « ready » : c'est ici que la transition se produit.
+            $document->update(['status' => 'ready']);
+
             return response()
                 ->download($outputPath, $this->generatedFilename($document))
                 ->deleteFileAfterSend(false);
@@ -583,7 +726,7 @@ class DocumentController extends Controller
                 'line' => $e->getLine(),
             ]);
 
-            return back()->withErrors(['document' => 'Erreur lors de la génération : ' . $e->getMessage()]);
+            return back()->withErrors(['document' => 'Erreur lors de la génération : '.$e->getMessage()]);
         }
     }
 
@@ -598,9 +741,9 @@ class DocumentController extends Controller
         $file = $request->file('cover');
 
         $coverPath = $file->store('cover_templates', 'storage');
-        $absoluteCoverPath = storage_path('uploads/' . $coverPath);
+        $absoluteCoverPath = storage_path('uploads/'.$coverPath);
 
-        $detection = (new CoverDetectionService())->detect($absoluteCoverPath);
+        $detection = (new CoverDetectionService)->detect($absoluteCoverPath);
 
         $values = array_filter([
             'nom' => $request->input('nom'),
@@ -611,7 +754,7 @@ class DocumentController extends Controller
 
         // Gabarit de couverture : zones détectées + mapping automatique (V1)
         $coverTemplate = CoverTemplate::create([
-            'name' => 'Couverture — ' . $file->getClientOriginalName(),
+            'name' => 'Couverture — '.$file->getClientOriginalName(),
             'example_docx_path' => $coverPath,
             'detected_zones' => $detection['zones'],
             'zone_mapping' => $detection['zones'],
@@ -630,11 +773,11 @@ class DocumentController extends Controller
     private function generateOutputPath(Document $document): string
     {
         $dir = storage_path('test_scripts');
-        if (!is_dir($dir)) {
+        if (! is_dir($dir)) {
             mkdir($dir, 0777, true);
         }
 
-        return $dir . '/gen_' . $document->id . '_' . date('Ymd_His') . '.docx';
+        return $dir.'/gen_'.$document->id.'_'.date('Ymd_His').'.docx';
     }
 
     /**
@@ -643,22 +786,23 @@ class DocumentController extends Controller
     private function generatedFilename(Document $document): string
     {
         $base = pathinfo($document->filename, PATHINFO_FILENAME);
-        return $base . '_reconstruit.docx';
+
+        return $base.'_reconstruit.docx';
     }
 
     /**
      * Pipeline de détection complet (DocAnalyzer → légendes → ambiguïtés →
      * post-processeur IA facultatif → sauvegarde).
      *
-     * @param string $titleMethod 'regex' (défaut) ou 'ia'
-     * @param bool   $useAi       Assistance IA activée explicitement par
-     *                            l'utilisateur (case à cocher). Faux par défaut :
-     *                            aucun appel externe n'est émis.
+     * @param  string  $titleMethod  'regex' (défaut) ou 'ia'
+     * @param  bool  $useAi  Assistance IA activée explicitement par
+     *                       l'utilisateur (case à cocher). Faux par défaut :
+     *                       aucun appel externe n'est émis.
      */
     private function runDetection(Document $document, string $titleMethod = DocAnalyzer::METHOD_REGEX, bool $useAi = false): void
     {
         // 1. Chemin absolu du fichier stocké
-        $absolutePath = storage_path('uploads/' . $document->path);
+        $absolutePath = storage_path('uploads/'.$document->path);
 
         // 2. Analyse structurelle : parse → règles déterministes → regex
         //    (si demandé) → IA (UNIQUEMENT si title_method='ia') → fusion
@@ -672,7 +816,7 @@ class DocumentController extends Controller
         // 3bis. Body complet (paragraphes, listes, tableaux, images) : re-parse
         //       pour conserver TOUS les éléments avec leurs styles. C'est la
         //       source de vérité de la reconstruction (aucune perte de contenu).
-        $parser = new \App\DocAnalyzer\DocumentParser($absolutePath);
+        $parser = new DocumentParser($absolutePath);
         $parsed = $parser->parse();
         $bodyComplet = [];
         foreach (($parsed['sections'] ?? []) as $sectionIndex => $section) {
@@ -699,7 +843,7 @@ class DocumentController extends Controller
         ];
 
         // 5. Détection des ambiguïtés (déterministe — numérotation vs niveau)
-        $ambiguities = (new AmbiguityDetectionService())->detect($structure);
+        $ambiguities = (new AmbiguityDetectionService)->detect($structure);
 
         // 5bis. Assistance IA FACULTATIVE (post-processeur correctif).
         //       Intervient APRÈS la détection déterministe, UNIQUEMENT si
@@ -709,19 +853,65 @@ class DocumentController extends Controller
         //       dans la structure. En cas d'échec/timeout, elle est ignorée
         //       et la structure déterministe est conservée telle quelle.
         if ($useAi) {
-            $structure = (new AiCorrectionService())->correct($structure, $ambiguities);
+            $structure = (new AiCorrectionService)->correct($structure, $ambiguities);
         }
 
         // 6. Sauvegarde (colonne 'structure' et 'ambiguities', casts array)
+        //
+        // Le nouveau pipeline documentaire (refonte) est exécuté EN PARALLÈLE
+        // quand il est activé : il produit le JSON structurel commun sans rien
+        // retirer à l'ancien format, qui reste la source de vérité tant que la
+        // migration n'est pas validée (principe du strangleur).
+        $structural = $this->buildStructuralPayload($document, $absolutePath);
+        $legacyPayload = [
+            'structure' => $structure,
+            'ambiguities' => $ambiguities,
+        ];
+
         DocumentStructure::updateOrCreate(
             ['document_id' => $document->id],
-            [
-                'structure' => $structure,
-                'ambiguities' => $ambiguities,
-            ]
+            $structural === null ? $legacyPayload : [...$legacyPayload, ...$structural]
         );
 
         $document->update(['status' => 'detected']);
+    }
+
+    /**
+     * Exécute le nouveau pipeline documentaire et prépare sa persistance.
+     *
+     * Renvoie null quand le pipeline est désactivé, quand le format n'est pas
+     * supporté, ou quand la conversion a échoué en mode `auto` — dans tous ces
+     * cas l'ancien pipeline fait foi, et l'utilisateur ne voit aucune différence.
+     *
+     * @return null|array{structural_json: array<string, mixed>, schema_version: int, pipeline: string}
+     */
+    private function buildStructuralPayload(Document $document, string $absolutePath): ?array
+    {
+        $pipeline = app(DocumentPipeline::class);
+
+        if (! $pipeline->isNativeEnabled()) {
+            return null;
+        }
+
+        try {
+            $structural = $pipeline->convert($absolutePath, (string) $document->hash_id);
+
+            if ($structural === null) {
+                return null;
+            }
+
+            return $pipeline->forPersistence($structural, DocumentPipeline::NATIVE);
+        } catch (Throwable $e) {
+            // En mode strict, l'échec du pipeline natif ne doit PAS empêcher le
+            // document d'être traité : l'ancien pipeline a déjà réussi, et
+            // perdre le document serait bien plus grave qu'un log d'erreur.
+            Log::error('Pipeline natif : échec, l\'ancien pipeline fait foi', [
+                'document_id' => $document->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /**
@@ -738,7 +928,7 @@ class DocumentController extends Controller
 
         // Mémorise la version IA si elle a été produite (trace)
         $structureData = $current?->structure ?? [];
-        if (!empty($structureData['ai_corrections'])) {
+        if (! empty($structureData['ai_corrections'])) {
             $document->update([
                 'metadata' => array_merge($document->metadata ?? [], [
                     'previous_ai_structure' => $structureData,
@@ -747,14 +937,14 @@ class DocumentController extends Controller
         }
 
         // Nouvelle analyse 100 % déterministe (regex, sans forceIA, sans use_ai)
-        $absolutePath = storage_path('uploads/' . $document->path);
+        $absolutePath = storage_path('uploads/'.$document->path);
         $analyzer = new DocAnalyzer(config_path('analyzer.php'));
         $analysis = $analyzer->analyze($absolutePath, titleMethod: DocAnalyzer::METHOD_REGEX);
 
         $text = $this->textExtraction->execute($absolutePath);
         $legends = $this->legendDetection->execute($text);
 
-        $parser = new \App\DocAnalyzer\DocumentParser($absolutePath);
+        $parser = new DocumentParser($absolutePath);
         $parsed = $parser->parse();
         $bodyComplet = [];
         foreach (($parsed['sections'] ?? []) as $section) {
@@ -782,7 +972,7 @@ class DocumentController extends Controller
             ['document_id' => $document->id],
             [
                 'structure' => $structure,
-                'ambiguities' => (new AmbiguityDetectionService())->detect($structure),
+                'ambiguities' => (new AmbiguityDetectionService)->detect($structure),
             ]
         );
 
@@ -804,15 +994,13 @@ class DocumentController extends Controller
      * Cette méthode re-parse le DOCX source et recopie pour chaque élément
      * image du body_complet les données extraites par DocumentParser.
      *
-     * @param Document              $document
-     * @param array<string, mixed>  $structure
-     *
+     * @param  array<string, mixed>  $structure
      * @return array<string, mixed> Structure complétée
      */
     private function enrichBodyImages(Document $document, array $structure): array
     {
         $bodyComplet = $structure['body_complet'] ?? null;
-        if (!is_array($bodyComplet) || $bodyComplet === []) {
+        if (! is_array($bodyComplet) || $bodyComplet === []) {
             return $structure;
         }
 
@@ -844,13 +1032,13 @@ class DocumentController extends Controller
         }
 
         // Re-parse du DOCX source pour extraire les binaires d'images
-        $absolutePath = storage_path('uploads/' . $document->path);
-        if (!is_file($absolutePath)) {
+        $absolutePath = storage_path('uploads/'.$document->path);
+        if (! is_file($absolutePath)) {
             return $structure;
         }
 
         try {
-            $parser = new \App\DocAnalyzer\DocumentParser($absolutePath);
+            $parser = new DocumentParser($absolutePath);
             $parsed = $parser->parse();
 
             // Map position → données d'image (depuis le parse frais)
@@ -863,7 +1051,7 @@ class DocumentController extends Controller
 
                     $pos = $element['position'] ?? [];
                     $imagesByPosition[
-                        ($pos['section_index'] ?? 0) . ':' . ($pos['element_index'] ?? 0)
+                        ($pos['section_index'] ?? 0).':'.($pos['element_index'] ?? 0)
                     ] = [
                         'image_data' => $element['image_data'] ?? null,
                         'image_extension' => $element['image_extension'] ?? null,
@@ -874,14 +1062,14 @@ class DocumentController extends Controller
 
             // Complète / convertit les éléments image du body_complet mémorisé
             foreach ($bodyComplet as &$element) {
-                if (!$needsEnrichment($element)) {
+                if (! $needsEnrichment($element)) {
                     continue;
                 }
 
                 $pos = $element['position'] ?? [];
-                $key = ($pos['section_index'] ?? 0) . ':' . ($pos['element_index'] ?? 0);
+                $key = ($pos['section_index'] ?? 0).':'.($pos['element_index'] ?? 0);
 
-                if (!isset($imagesByPosition[$key])) {
+                if (! isset($imagesByPosition[$key])) {
                     continue;
                 }
 
@@ -901,7 +1089,7 @@ class DocumentController extends Controller
             unset($element);
 
             $structure['body_complet'] = $bodyComplet;
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             Log::warning('enrichBodyImages : re-parse impossible, images non complétées', [
                 'document_id' => $document->id,
                 'error' => $e->getMessage(),
@@ -929,7 +1117,7 @@ class DocumentController extends Controller
         }
 
         $corrections = $request->validated('corrections') ?? [];
-        $corrected = (new StructureCorrectionService())->apply($structure->structure, $corrections);
+        $corrected = (new StructureCorrectionService)->apply($structure->structure, $corrections);
 
         $structure->update([
             'structure' => $corrected,

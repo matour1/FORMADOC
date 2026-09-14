@@ -2,11 +2,22 @@
 
 namespace App\Providers;
 
+use App\Document\Adapters\DocxNativeAdapter;
+use App\Document\DocumentPipeline;
+use App\Document\Editing\DocumentEditingService;
+use App\Document\Structure\LegacyStructureBridge;
+use App\Services\Anthropic\ClaudeSkillsService;
+use App\Services\Chat\ChatToolsService;
+use App\Services\Chat\DocumentEditService;
+use App\Services\Detection\TextExtractionService;
+use App\Services\DocumentGeneration\CoverGenerationService;
+use App\Services\DocumentGeneration\CoverPageRenderer;
+use App\Services\OpenRouter\OpenRouterService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -15,7 +26,39 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Orchestrateur de la coexistence entre l'ancien pipeline documentaire
+        // (`app/DocAnalyzer`) et celui de la refonte (`app/Document`). Enregistré
+        // en singleton : il ne porte aucun état, mais éviter de reconstruire le
+        // parseur à chaque injection est utile sur les traitements en boucle.
+        $this->app->singleton(DocumentPipeline::class, function (): DocumentPipeline {
+            return new DocumentPipeline(
+                new DocxNativeAdapter,
+                new LegacyStructureBridge,
+            );
+        });
+
+        // Éditeur structurel : il porte les snapshots et le verrou d'édition, et
+        // doit donc être un singleton.
+        $this->app->singleton(DocumentEditingService::class);
+
+        // ChatToolsService est lié explicitement pour une raison précise : ses
+        // derniers paramètres sont optionnels (édition structurelle, Skills
+        // Claude, extraction de texte). Or l'injection automatique de Laravel
+        // **renseigne les paramètres optionnels à `null`** au lieu de les
+        // résoudre. Les tools d'édition répondraient donc « non disponible » en
+        // production, sans qu'aucune erreur ne le signale — un test de câblage
+        // a mis ce défaut en évidence.
+        $this->app->singleton(ChatToolsService::class, function ($app): ChatToolsService {
+            return new ChatToolsService(
+                $app->make(OpenRouterService::class),
+                $app->make(CoverGenerationService::class),
+                $app->make(CoverPageRenderer::class),
+                $app->make(DocumentEditService::class),
+                $app->make(ClaudeSkillsService::class),
+                $app->make(TextExtractionService::class),
+                $app->make(DocumentEditingService::class),
+            );
+        });
     }
 
     /**
