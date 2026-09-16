@@ -41,3 +41,12 @@ Dans `runDetection()`, l'échec est loggé et absorbé — jamais propagé. Perd
 **Cohabitation (strangleur)** : `document_structures.structure` (ancien) ET `structural_json` (nouveau) sont écrits **en parallèle**. La colonne historique n'est jamais supprimée avant validation en production — le retour arrière reste possible. `schema_version` permet de détecter une structure écrite par une version antérieure du code ; `pipeline` trace qui a traité le document.
 
 **Défauts sûrs** : `persist_structural=true` mais `pipeline.v2=false` → le JSON n'est écrit que si on active explicitement le nouveau pipeline.
+
+## R2 est une closure injectée, pas une dépendance du pipeline
+`DocumentPipeline::convert()` reçoit un 3ᵉ paramètre optionnel `?Closure $classifier` — l'étape R2, fournie par l'appelant. Elle est reçue en paramètre et non instanciée dedans pour que l'orchestrateur reste sans référence à l'IA (contrainte d'architecture vérifiée par test).
+
+L'appel de la closure est isolé dans son propre `try/catch` : sans cela, une défaillance de classification remonterait au `catch` extérieur qui, en mode `true`, RELANCE l'exception — et le document serait perdu alors que sa conversion a réussi. Règle du projet : la classification ne perd jamais de contenu.
+
+`forPersistence()` reçoit un 3ᵉ paramètre `array $meta` fusionné NON destructivement dans `structural_json.meta` (les clés du document, produites par le parseur, font foi). Sans ce passage, le rapport de R2 n'existerait nulle part : `toArray()` ne sérialise que ce que le document porte.
+
+Câblage : `DocumentController::buildStructuralPayload()` fournit la closure et crée les clarifications ; `creerClarifications()` lit `$structural->ambiguous()` (confiance STOCKÉE sur le bloc) et non le rapport de classification.

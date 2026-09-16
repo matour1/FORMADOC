@@ -74,8 +74,34 @@ final class SignalAggregator
 
     private readonly CaptionPattern $captions;
 
-    public function __construct()
-    {
+    /**
+     * Préserve-t-on la confiance établie par l'adaptateur d'entrée (R1) ?
+     *
+     * **Le problème que ce mode résout.** `Block::$headingLevel` a DEUX origines
+     * possibles, et l'agrégateur ne peut pas les distinguer :
+     *
+     *  1. un style Word `w:outlineLvl` — signal fort, corroboré par la mise en
+     *     forme réelle de l'auteur ;
+     *  2. la SEULE numérotation du texte (« I. », « 1.1 », « A. ») — l'adaptateur
+     *     remplit le champ avec le niveau qu'il a déduit du texte, sans qu'aucun
+     *     style ne confirme.
+     *
+     * Dans le cas 2, `assessHeadingWithBothSignals()` voit `styleLevel` ET
+     * `numbering` et conclut « les deux signaux concordent » à 0,98 — alors qu'en
+     * réalité le même signal a été compté deux fois. La mesure sur 51 documents
+     * réels est sans ambiguïté : **775 titres** que l'adaptateur estime à 0,80
+     * (numérotation seule, fiable) étaient recalculés à 0,98, donc acceptés sans
+     * aucune vérification IA.
+     *
+     * Activer ce mode préserve la confiance de l'adaptateur pour les blocs dont
+     * il a explicitement tranché l'ambiguïté (`heading_level` renseigné par la
+     * numérotation). Les autres signaux — motifs texte, gras, longueur — restent
+     * recalculés normalement, car ils se déduisent du contenu sans cette
+     * confusion.
+     */
+    public function __construct(
+        private readonly bool $preserveExistingHeadingConfidence = false,
+    ) {
         $this->numbering = new HeadingNumberingPattern;
         $this->captions = new CaptionPattern;
     }
@@ -127,6 +153,28 @@ final class SignalAggregator
 
         // --- 2. Signal de style contre signal de numérotation ---
         $styleLevel = $block->headingLevel;
+
+        // Confiance déjà tranchée par l'adaptateur : on la préserve.
+        //
+        // Le test porte sur `numbering !== null` ET non sur `styleLevel` seul :
+        // si le TEXTE porte une numérotation, alors l'adaptateur a déduit
+        // `heading_level` de ce texte (et non d'un style Word), donc le faire
+        // « corroborer » par ce même texte reviendrait à compter un signal deux
+        // fois. Quand le texte n'est PAS numéroté, `headingLevel` vient
+        // nécessairement d'un style Word : le calcul normal reste valable.
+        if ($this->preserveExistingHeadingConfidence
+            && $styleLevel !== null
+            && $numbering !== null
+            && $block->type === BlockType::Heading) {
+            return $this->verdict(
+                type: BlockType::Heading,
+                confidence: $block->confidence,
+                signals: ['adapter_heading_level'],
+                headingLevel: $styleLevel,
+                category: null,
+                reason: 'Niveau de titre établi par le parseur à partir du texte, sans style Word.',
+            );
+        }
 
         if ($styleLevel !== null && $numbering !== null) {
             return $this->assessHeadingWithBothSignals($block, $styleLevel, $numbering);

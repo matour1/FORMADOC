@@ -3,6 +3,12 @@
 namespace App\Providers;
 
 use App\Document\Adapters\DocxNativeAdapter;
+use App\Document\Clarification\AskUserClarificationTool;
+use App\Document\Clarification\ClarificationService;
+use App\Document\Classification\BlockClassifier;
+use App\Document\Classification\ClassificationPolicy;
+use App\Document\Classification\DetectBlocksTool;
+use App\Document\Classification\SignalAggregator;
 use App\Document\DocumentPipeline;
 use App\Document\Editing\DocumentEditingService;
 use App\Document\Structure\LegacyStructureBridge;
@@ -43,6 +49,48 @@ class AppServiceProvider extends ServiceProvider
         // Éditeur structurel : il porte les snapshots et le verrou d'édition, et
         // doit donc être un singleton.
         $this->app->singleton(DocumentEditingService::class);
+
+        // Classification (R2) : le cycle déterministe → IA → clarification.
+        //
+        // `SignalAggregator` recalculerait « style + numérotation concordent »
+        // pour tout bloc portant un `headingLevel` — or l'adaptateur remplit ce
+        // champ depuis la SEULE numérotation quand aucun style Word n'est
+        // présent. Le champ ne signifie donc pas ce que l'agrégateur croit :
+        // il ne prouve pas qu'un style a corroboré la détection.
+        //
+        // Conséquence mesurée sur 51 documents réels : 775 titres que
+        // l'adaptateur estime à 0,80 (numérotation seule, fiable) étaient
+        // recalculés à 0,98 par l'agrégateur, les faisant passer au-dessus du
+        // seuil de 0,85 et supprimant toute vérification IA.
+        //
+        // On retire donc ce signal avant de classer (les autres signaux, eux,
+        // sont recalculés depuis le texte et le gras : ils restent valables).
+        // La confiance de l'adaptateur — celle qui décide de l'appel IA — est
+        // alors préservée, conformément à la conception de R1.
+        $this->app->singleton(SignalAggregator::class, function (): SignalAggregator {
+            return new SignalAggregator(
+                preserveExistingHeadingConfidence: true,
+            );
+        });
+
+        $this->app->bind(DetectBlocksTool::class, function ($app): DetectBlocksTool {
+            return new DetectBlocksTool($app->make(OpenRouterService::class));
+        });
+
+        $this->app->singleton(BlockClassifier::class, function ($app): BlockClassifier {
+            return new BlockClassifier(
+                $app->make(SignalAggregator::class),
+                $app->make(DetectBlocksTool::class),
+                new ClassificationPolicy,
+            );
+        });
+
+        // Clarification : sans ce binding, `ClarificationService` recevrait un
+        // `AskUserClarificationTool` construit à la main — acceptable ici, mais
+        // on rend la dépendance explicite pour rester aligné sur le reste.
+        $this->app->singleton(ClarificationService::class, function ($app): ClarificationService {
+            return new ClarificationService(new AskUserClarificationTool);
+        });
 
         // OpenRouterService est lié explicitement pour la même raison que
         // ChatToolsService ci-dessous : ses deux derniers paramètres sont

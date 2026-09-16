@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\DocAnalyzer\DocAnalyzer;
 use App\DocAnalyzer\DocumentParser;
 use App\DocAnalyzer\DocumentReconstructor;
+use App\Document\Clarification\ClarificationService;
+use App\Document\Classification\BlockClassifier;
 use App\Document\DocumentPipeline;
 use App\Document\Editing\DocumentEditingService;
 use App\Http\Requests\GenerateCoverRequest;
@@ -56,6 +58,8 @@ class DocumentController extends Controller
         private readonly QuotaService $quotas,
         private readonly OpenRouterService $openRouter,
         private readonly DocumentEditingService $editing,
+        private readonly BlockClassifier $classifier,
+        private readonly ClarificationService $clarifications,
     ) {}
 
     /**
@@ -862,7 +866,7 @@ class DocumentController extends Controller
         // quand il est activé : il produit le JSON structurel commun sans rien
         // retirer à l'ancien format, qui reste la source de vérité tant que la
         // migration n'est pas validée (principe du strangleur).
-        $structural = $this->buildStructuralPayload($document, $absolutePath);
+        $structural = $this->buildStructuralPayload($document, $absolutePath, $useAi);
         $legacyPayload = [
             'structure' => $structure,
             'ambiguities' => $ambiguities,
@@ -883,9 +887,18 @@ class DocumentController extends Controller
      * supporté, ou quand la conversion a échoué en mode `auto` — dans tous ces
      * cas l'ancien pipeline fait foi, et l'utilisateur ne voit aucune différence.
      *
+     * Le cycle complet est exécuté quand le pipeline est actif :
+     *
+     * ```
+     * R1 conversion (adaptateur OOXML natif)
+     *  → R2 classification (déterministe, puis IA si demandée)  ← BRANCHÉ ICI
+     *  → clarification ciblée sur les blocs restés ambigus
+     * ```
+     *
+     * @param  bool  $useAi  Assistance IA demandée explicitement par l'utilisateur
      * @return null|array{structural_json: array<string, mixed>, schema_version: int, pipeline: string}
      */
-    private function buildStructuralPayload(Document $document, string $absolutePath): ?array
+    private function buildStructuralPayload(Document $document, string $absolutePath, bool $useAi = false): ?array
     {
         $pipeline = app(DocumentPipeline::class);
 
@@ -893,14 +906,43 @@ class DocumentController extends Controller
             return null;
         }
 
+        // Le plan détermine le modèle consulté ; il vient de l'utilisateur.
+        // On lit une seule fois la relation pour ne pas la requêter à chaque
+        // étape, et on tolère un utilisateur absent (document orphelin).
+        $plan = $document->user?->currentPlanSlug() ?? 'default';
+
+        $rapportClassification = null;
+
         try {
-            $structural = $pipeline->convert($absolutePath, (string) $document->hash_id);
+            // R2 est transmise au pipeline en paramètre (et non instanciée
+            // dedans) pour que `DocumentPipeline` reste sans référence à l'IA.
+            $structural = $pipeline->convert(
+                $absolutePath,
+                (string) $document->hash_id,
+                function ($documentStructurel) use ($plan, $useAi, &$rapportClassification) {
+                    $resultat = $this->classifier->classify($documentStructurel, $plan, $useAi);
+                    $rapportClassification = $resultat['report'];
+
+                    return $resultat['document'];
+                },
+            );
 
             if ($structural === null) {
                 return null;
             }
 
-            return $pipeline->forPersistence($structural, DocumentPipeline::NATIVE);
+            // Les blocs encore ambigus deviennent des questions pour
+            // l'utilisateur. On passe par `$structural->ambiguous()` plutôt que
+            // par le rapport : c'est la confiance STOCKÉE sur le bloc qui fait
+            // foi, et elle diffère de celle calculée par l'agrégateur (deux
+            // échelles de confiance coexistent, voir .ai/rules/classification.md).
+            $this->creerClarifications($document, $structural);
+
+            return $pipeline->forPersistence(
+                $structural,
+                DocumentPipeline::NATIVE,
+                $rapportClassification === null ? [] : ['classification' => $rapportClassification],
+            );
         } catch (Throwable $e) {
             // En mode strict, l'échec du pipeline natif ne doit PAS empêcher le
             // document d'être traité : l'ancien pipeline a déjà réussi, et
@@ -911,6 +953,37 @@ class DocumentController extends Controller
             ]);
 
             return null;
+        }
+    }
+
+    /**
+     * Crée les questions de clarification pour les blocs restés ambigus.
+     *
+     * Jamais bloquant : un échec d'enregistrement laisse simplement les blocs
+     * à clarifier lors d'une analyse ultérieure. Le document, lui, est utilisable.
+     */
+    private function creerClarifications(Document $document, $structural): void
+    {
+        $ambigus = $structural->ambiguous();
+
+        if ($ambigus === []) {
+            return;
+        }
+
+        try {
+            $resultat = $this->clarifications->createQuestions($document->id, $ambigus);
+
+            Log::info('Classification : clarifications créées', [
+                'document_id' => $document->id,
+                'blocs_ambigus' => count($ambigus),
+                'questions_creees' => $resultat['created'],
+                'deja_presentes' => $resultat['skipped'],
+            ]);
+        } catch (Throwable $e) {
+            Log::warning('Classification : création des clarifications impossible', [
+                'document_id' => $document->id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

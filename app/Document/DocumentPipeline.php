@@ -8,6 +8,7 @@ use App\Document\Adapters\DocxNativeAdapter;
 use App\Document\Exceptions\InvalidStructuralDocument;
 use App\Document\Structure\LegacyStructureBridge;
 use App\Document\Structure\StructuralDocument;
+use Closure;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -64,10 +65,16 @@ final class DocumentPipeline
      *
      * @param  string  $filePath  Chemin absolu du fichier
      * @param  string  $documentId  Identifiant du document (traçabilité)
+     * @param  null|Closure(StructuralDocument): StructuralDocument  $classifier
+     *                                                                            Étape de classification optionnelle, appliquée APRÈS la conversion.
+     *                                                                            Elle est reçue en paramètre plutôt qu'instanciée ici pour que
+     *                                                                            l'orchestrateur reste ignorant de la classification : c'est ce qui
+     *                                                                            permet à `app/Document` hors `Classification/` de rester sans
+     *                                                                            référence à l'IA (contrainte d'architecture vérifiée par test).
      * @return null|StructuralDocument null si la conversion a échoué
      *                                 (l'appelant décide alors du repli)
      */
-    public function convert(string $filePath, string $documentId): ?StructuralDocument
+    public function convert(string $filePath, string $documentId, ?Closure $classifier = null): ?StructuralDocument
     {
         if (! $this->isNativeEnabled()) {
             return null;
@@ -92,6 +99,27 @@ final class DocumentPipeline
 
         try {
             $document = $this->adapter->convert($filePath, $documentId);
+
+            // Classification (R2) : étape facultative, fournie par l'appelant.
+            //
+            // Elle est isolée dans son propre `try` à dessein. Sans cela, une
+            // défaillance de classification (clé API absente, modèle
+            // indisponible, réponse illisible) remonterait au `catch` extérieur
+            // qui, en mode `true`, RELANCE l'exception — et le document serait
+            // perdu alors que sa conversion, elle, a réussi. La règle du
+            // projet (« la classification ne perd jamais de contenu ») exige
+            // que l'échec de l'étape optionnelle laisse la structure
+            // déterministe intacte.
+            if ($classifier !== null) {
+                try {
+                    $document = $classifier($document);
+                } catch (Throwable $e) {
+                    Log::warning('Pipeline natif : classification échouée, structure déterministe conservée', [
+                        'document_id' => $documentId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
 
             Log::info('Pipeline natif : conversion réussie', [
                 'document_id' => $documentId,
@@ -163,17 +191,30 @@ final class DocumentPipeline
     /**
      * Sérialise un document structurel pour la persistance.
      *
+     * @param  array<string, mixed>  $meta  Métadonnées supplémentaires à
+     *                                      sérialiser dans `structural_json.meta` (rapport de classification,
+     *                                      paramètres d'exécution…). Sans ce passage, le rapport de R2
+     *                                      n'existerait nulle part : `toArray()` ne sérialise que ce que le
+     *                                      document porte, et le rapport est produit à côté de lui.
      * @return null|array{structural_json: array<string, mixed>, schema_version: int, pipeline: string}
      *                                                                                                  null si la persistance est désactivée
      */
-    public function forPersistence(StructuralDocument $document, string $pipeline): ?array
+    public function forPersistence(StructuralDocument $document, string $pipeline, array $meta = []): ?array
     {
         if (! config('document.persist_structural', true)) {
             return null;
         }
 
+        $serialise = $document->toArray();
+
+        if ($meta !== []) {
+            // Fusion NON destructive : les clés déjà présentes dans le document
+            // (produites par le parseur) font foi sur les métadonnées ajoutées.
+            $serialise['meta'] = [...$meta, ...($serialise['meta'] ?? [])];
+        }
+
         return [
-            'structural_json' => $document->toArray(),
+            'structural_json' => $serialise,
             'schema_version' => StructuralDocument::SCHEMA_VERSION,
             'pipeline' => $pipeline,
         ];

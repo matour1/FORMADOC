@@ -52,3 +52,12 @@ Garde-fous obligatoires (ne pas les retirer) :
 2. exclure l'apostrophe (droite et typographique) du lookahead : `(?![a-zA-Z\p{L}'’])`.
 
 Le même garde-fou est dupliqué dans `CrossRefRewriter::ancienNumeroDe()` — toute modification doit être appliquée aux deux endroits.
+
+## headingLevel a deux origines : ne pas compter le même signal deux fois
+`Block::$headingLevel` a DEUX origines que l'agrégateur ne peut pas distinguer : (1) un style Word `w:outlineLvl`, signal corroboré ; (2) la SEULE numérotation du texte, que l'adaptateur traduit en niveau. Dans le cas 2, `assessHeadingWithBothSignals()` voit `styleLevel` ET `numbering` et conclut « les deux concordent » à 0,98 — le même signal compté deux fois.
+
+Mesure sur 51 documents réels : 775 titres que l'adaptateur estime à 0,80 (numérotation seule fiable) étaient recalculés à 0,98, donc acceptés sans vérification IA.
+
+Correction : `SignalAggregator::__construct(preserveExistingHeadingConfidence: true)` — activé par le container (`AppServiceProvider`). La confiance de l'adaptateur est conservée quand `type === Heading` ET que le texte porte un motif (`numbering !== null`) ou un mot-clé de section : dans ce cas `headingLevel` vient du texte. Si le texte n'a AUCUN motif, le `headingLevel` vient d'un vrai style Word et le calcul normal s'applique (0,98 légitime).
+
+Le mode par défaut (false) reproduit l'ancien comportement — le changement est un CHOIX du site d'appel. Tests : `BlockClassifierWiringTest` (8 tests, dont le câblage container et l'effet réel).
