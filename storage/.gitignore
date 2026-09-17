@@ -1,5 +1,15 @@
-*.txt
-*.docx
-*.php
-!test_scripts/generate_test_report.php
-!test_scripts/reports/
+# Artefacts generes a la volee (DOCX de sortie, scripts jetables).
+# Les fichiers ci-dessous sont VOLONTAIREMENT suivis car des tests les utilisent :
+#   - test_scripts/generate_test_report.php (test de purge)
+#   - test_scripts/reports/rapport_test_structure.docx (fixture)
+!generate_test_report.php
+!reports/
+
+# Scripts jetables et sorties de mesure
+gen_*.docx
+diag_*.docx
+audit_*.php
+mesure_*.php
+verif_*.php
+check_*.php
+commit-*.txt
