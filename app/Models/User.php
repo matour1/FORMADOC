@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Mail\PasswordResetMail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Mail;
 
 #[Fillable(['name', 'email', 'password', 'credits_balance', 'preferences', 'usage_deterministic_month', 'usage_ai_month', 'usage_month'])]
 #[Hidden(['password', 'remember_token'])]
@@ -28,6 +30,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'is_admin' => 'boolean',
             'password' => 'hashed',
             'credits_balance' => 'integer',
             'preferences' => 'array',
@@ -142,6 +145,6 @@ class User extends Authenticatable
      */
     public function sendPasswordResetNotification($token): void
     {
-        \Illuminate\Support\Facades\Mail::to($this->email)->send(new \App\Mail\PasswordResetMail($this, $token));
+        Mail::to($this->email)->send(new PasswordResetMail($this, $token));
     }
 }

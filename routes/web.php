@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\ClarificationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
@@ -47,6 +48,22 @@ Route::get('/feedback', [FeedbackController::class, 'showForm'])->name('feedback
 Route::post('/feedback', [FeedbackController::class, 'store'])
     ->name('feedback.store')
     ->middleware('throttle:feedback');
+
+// Espace d'administration (étape 8).
+//
+// `auth` PUIS `admin` : l'ordre compte. Un invité doit être redirigé vers le
+// login (réponse utile), un utilisateur connecté sans droits reçoit un 404 — et
+// non un 403, qui confirmerait l'existence de l'espace.
+//
+// Toutes les routes sont en LECTURE SEULE : agir sur les données d'un utilisateur
+// depuis l'admin exige une décision explicite, qui n'a pas été prise.
+Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/', [AdminController::class, 'index'])->name('index');
+    Route::get('/billing', [AdminController::class, 'billing'])->name('billing');
+    Route::get('/usage', [AdminController::class, 'usage'])->name('usage');
+    Route::get('/classification', [AdminController::class, 'classification'])->name('classification');
+    Route::get('/documents', [AdminController::class, 'documents'])->name('documents');
+});
 
 // ⚠️ MODULE « PAGE DE GARDE » RETIRÉ DE CETTE VERSION.
 //

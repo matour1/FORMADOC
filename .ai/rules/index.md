@@ -5,6 +5,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | Applies to | Rule file |
 | --- | --- |
 | app/Document/Adapters/** | .ai/rules/adapters.md |
+| app/Http/Controllers/Admin/** | .ai/rules/admin.md |
 | app/Services/Billing/**, app/Console/Commands/BillingReport.php, app/Services/OpenRouter/** | .ai/rules/billing.md |
 | app/Services/Chat/** | .ai/rules/chat.md |
 | app/Document/Classification/** | .ai/rules/classification.md |
