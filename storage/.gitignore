@@ -1,2 +1,5 @@
 *.txt
-!test_scripts/
+*.docx
+*.php
+!test_scripts/generate_test_report.php
+!test_scripts/reports/
