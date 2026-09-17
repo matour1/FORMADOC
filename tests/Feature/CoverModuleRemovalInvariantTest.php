@@ -2,7 +2,11 @@
 
 namespace Tests\Feature;
 
+use FilesystemIterator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use SplFileInfo;
 use Tests\TestCase;
 
 /**
@@ -86,5 +90,109 @@ class CoverModuleRemovalInvariantTest extends TestCase
         // seule la PAGE DE GARDE (couverture) est retirée.
         $this->assertTrue(app('router')->has('templates.index'));
         $this->assertTrue(app('router')->has('templates.compare'));
+    }
+
+    /**
+     * Classes supprimées avec le module.
+     *
+     * @return array<int, string>
+     */
+    private function removedClasses(): array
+    {
+        return [
+            'CoverPageTemplateController',
+            'CoverGenerationService',
+            'CoverDetectionService',
+            'CoverPageRenderer',
+            'CoverPageTemplate',
+            'CoverTemplate',
+            'StoreCoverPageTemplateRequest',
+            'GenerateCoverRequest',
+        ];
+    }
+
+    /**
+     * Invariant de CODE, complémentaire de l'invariant de ROUTES ci-dessus.
+     *
+     * Pourquoi il existe : après le retrait, deux relations Eloquent pointaient
+     * encore vers `CoverTemplate` et `CoverPageTemplate` — des classes qui
+     * n'existent plus. Rien ne le signalait : une relation n'est évaluée qu'au
+     * premier appel, donc le code restait vert jusqu'à ce qu'un jour quelqu'un
+     * appelle `$generatedDocument->coverTemplate()` et obtienne une erreur
+     * fatale. Le test de routes ne voyait pas ce défaut : il ne regarde que le
+     * routeur, jamais le code.
+     *
+     * Les commentaires sont retirés avant l'analyse (voir `stripComments`) :
+     * expliquer le retrait, comme le fait ce fichier, n'est pas une référence.
+     */
+    public function test_aucun_code_ne_reference_une_classe_supprimee(): void
+    {
+        $references = [];
+
+        foreach ($this->removedClasses() as $classe) {
+            $motif = '/(?<![\w$\\\\])'.preg_quote($classe, '/').'(?![\w])/';
+
+            foreach ($this->fichiersPhp(base_path('app')) as $chemin) {
+                $code = $this->stripComments(file_get_contents($chemin));
+
+                if (preg_match($motif, $code)) {
+                    $references[] = $classe.' → '.str_replace(base_path().DIRECTORY_SEPARATOR, '', $chemin);
+                }
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $references,
+            "Le module « page de garde » est supprimé : plus aucun code ne doit référencer ses classes.\n"
+            ."Références trouvées :\n - ".implode("\n - ", $references)
+        );
+    }
+
+    /**
+     * Tous les fichiers PHP sous un répertoire, récursivement.
+     *
+     * @return array<int, string>
+     */
+    private function fichiersPhp(string $racine): array
+    {
+        $fichiers = [];
+
+        foreach (new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($racine, FilesystemIterator::SKIP_DOTS)
+        ) as $file) {
+            if ($file instanceof SplFileInfo && $file->getExtension() === 'php') {
+                $fichiers[] = $file->getPathname();
+            }
+        }
+
+        return $fichiers;
+    }
+
+    /**
+     * Retire commentaires et docblocks d'un source PHP.
+     *
+     * Analyse le CODE réellement exécuté : un commentaire qui explique « cette
+     * classe a été supprimée » ne doit pas être compté comme une référence.
+     */
+    private function stripComments(string $source): string
+    {
+        $code = '';
+
+        foreach (token_get_all($source) as $token) {
+            if (is_array($token)) {
+                if (in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                    continue;
+                }
+
+                $code .= $token[1];
+
+                continue;
+            }
+
+            $code .= $token;
+        }
+
+        return $code;
     }
 }

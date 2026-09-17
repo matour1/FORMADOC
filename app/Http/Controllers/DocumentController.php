@@ -124,7 +124,8 @@ class DocumentController extends Controller
         // images du corps sont perdues à la reconstruction.
         $structure = $this->enrichBodyImages($document, $structure);
 
-        return (new DocumentReconstructor)->reconstruct($structure, $outputPath, null, $template?->params);
+        // `$cover` a été retiré de la signature : le gabarit est le 3e paramètre.
+        return (new DocumentReconstructor)->reconstruct($structure, $outputPath, $template?->params);
     }
 
     /**
@@ -557,7 +558,7 @@ class DocumentController extends Controller
 
         $template = $this->resolveTemplate($request);
 
-        return $this->generateAndDownload($document, null, $template);
+        return $this->generateAndDownload($document, $template);
     }
 
     /**
@@ -677,11 +678,14 @@ class DocumentController extends Controller
     }
 
     /**
-     * Flux commun de génération + téléchargement (avec ou sans couverture).
+     * Flux commun de génération + téléchargement.
      *
-     * @param  null|array<string, mixed>  $cover  { detection, values, cover_template_id }
+     * ⚠️ Le paramètre `$cover` du module « page de garde » a été retiré : il
+     * était toujours transmis à `null` depuis que le module l'a été, donc un
+     * paramètre optionnel sans usage. Le remettre en place sans rétablir le
+     * module ferait croire à un point d'extension qui n'existe plus.
      */
-    private function generateAndDownload(Document $document, ?array $cover, ?Template $template = null): Response|RedirectResponse|BinaryFileResponse
+    private function generateAndDownload(Document $document, ?Template $template = null): Response|RedirectResponse|BinaryFileResponse
     {
         try {
             $structure = $document->structure?->structure;
@@ -699,8 +703,6 @@ class DocumentController extends Controller
 
             // Écriture du DOCX : nouveau pipeline (styles R3 + numéros R4 +
             // éditions R6) quand une structure native existe, ancien sinon.
-            // `$cover` n'est plus transmis : la page de garde n'est plus produite
-            // dans cette version du produit.
             $outputPath = $this->writeDocument($document, $generatedPath, $template);
 
             // Mémorise la génération (tableau de bord / historique)
@@ -709,9 +711,6 @@ class DocumentController extends Controller
                 [
                     'output_path' => $outputPath,
                     'status' => 'generated',
-                    'cover_values' => $cover['values'] ?? null,
-                    'cover_template_id' => $cover['cover_template_id'] ?? null,
-                    'cover_page_template_id' => $cover['cover_page_template_id'] ?? null,
                     'template_id' => $template?->id,
                 ]
             );
@@ -719,7 +718,6 @@ class DocumentController extends Controller
             Log::info('Document généré', [
                 'document_id' => $document->id,
                 'output_path' => $outputPath,
-                'with_cover' => $cover !== null,
                 'template_id' => $template?->id,
             ]);
 

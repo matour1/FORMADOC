@@ -65,25 +65,31 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/documents', [AdminController::class, 'documents'])->name('documents');
 });
 
-// ⚠️ MODULE « PAGE DE GARDE » RETIRÉ DE CETTE VERSION.
+// ⚠️ MODULE « PAGE DE GARDE » SUPPRIMÉ DE CETTE VERSION.
 //
 // Les routes `cover-templates.*` (builder visuel) et `documents.generate-cover*`
-// ne sont plus déclarées : elles ont été retirées pour recentrer le produit sur
+// ne sont plus déclarées : le module a été retiré pour recentrer le produit sur
 // la MISE EN FORME de document, qui est l'objectif de cette version.
 //
-// Le code correspondant (`CoverPageTemplateController`, `CoverGenerationService`,
-// `CoverPageRenderer`, le modèle `CoverPageTemplate`, les vues
-// `resources/views/cover-templates/**`) est CONSERVÉ sur le disque, mais
-// inatteignable faute de route. Il n'est pas supprimé pour deux raisons :
+// Le retrait est COMPLET : contrôleur, services, modèle, requêtes, vues et
+// tests unitaires ont été supprimés du disque, et les vues proposaient encore
+// l'option ont été réécrites. Il n'existe donc AUCUN code de page de garde
+// vivant — un simple retrait de route aurait laissé des chemins atteignables
+// ailleurs (voir ci-dessous).
 //
-//   1. le retour arrière reste possible sans reconstruction depuis l'historique ;
-//   2. `Documents::generateAndDownload()` n'appelle plus `prepareCover()`, donc
-//      aucune vue ne doit plus proposer l'option — le retrait des routes suffit
-//      à garantir qu'aucun utilisateur n'y accède.
+// ⚠️ Leçon du retrait : la première passe avait cherché le module dans `app/`,
+// `resources/` et `routes/`, mais PAS dans `app/Services/Chat/`. Trois chemins
+// restaient vivants : l'outil de chat `cover_page_generate`, trois méthodes de
+// contrôleur, et la logique de couverture de `DocumentReconstructor`, appelée
+// par `previewPdf()`. **Après un retrait, chercher le CONCEPT dans tout `app/`,
+// pas seulement à ses points d'entrée connus.**
 //
-// Pour réactiver : redéclarer les routes et rebrancher le paramètre `$cover` de
-// `generateAndDownload()`. Aucune donnée n'est perdue : les tables
-// `cover_page_templates` / `cover_templates` restent intactes.
+// Aucune donnée n'est perdue : les tables `cover_page_templates` /
+// `cover_templates` restent en base (leur migration est conservée) — les
+// supprimer serait destructif et sans rapport avec le retrait du code.
+//
+// Pour réactiver : repartir de l'historique Git (le module y est complet), puis
+// redéclarer les routes.
 
 // Routes documents (upload + analyse de structure + génération DOCX).
 // P0-1 (audit sécurité) : ces routes étaient HORS du groupe auth → IDOR

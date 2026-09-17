@@ -117,13 +117,13 @@ final class FormattedDocumentExporter
         );
 
         // --- 4. Écriture ------------------------------------------------------
-        // `$cover` reste null : la page de garde n'est plus produite dans cette
-        // version du produit.
+        // Le gabarit est le 3e paramètre : le passage de `null` en 3e position
+        // (reliquat du retrait de `$cover`) le faisait ignorer silencieusement,
+        // car PHP accepte un argument surnuméraire sans erreur.
         try {
             $chemin = $this->reconstructor->reconstruct(
                 $charge['analysis'],
                 $outputPath,
-                null,
                 $charge['gabarit'],
             );
         } catch (Throwable $e) {

@@ -108,7 +108,7 @@ class CoverGenerationFlowTest extends TestCase
         return html_entity_decode($text, ENT_QUOTES | ENT_HTML401, 'UTF-8');
     }
 
-    public function test_generation_avec_couverture_remplace_les_valeurs(): void
+    public function test_la_route_de_generation_avec_couverture_a_disparu(): void
     {
         // ⚠️ MODULE RETIRÉ : la page de garde n'est plus produite dans cette
         // version du produit. Ce test est conservé sous forme d'invariant — la
@@ -130,7 +130,7 @@ class CoverGenerationFlowTest extends TestCase
             ->assertNotFound();
     }
 
-    public function test_generation_sans_couverture_est_refusee(): void
+    public function test_la_generation_sans_page_de_garde_est_le_seul_chemin(): void
     {
         // Idem : l'ancien comportement (exiger un fichier de couverture) n'a plus
         // de sens puisque la fonctionnalité est retirée. On vérifie à la place

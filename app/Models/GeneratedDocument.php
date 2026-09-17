@@ -7,18 +7,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class GeneratedDocument extends Model
 {
+    /**
+     * Colonnes `cover_template_id`, `cover_page_template_id` et `cover_values`
+     * existent toujours en base (migrations conservées) mais ne sont plus
+     * alimentées : le module « page de garde » est retiré du produit.
+     */
     protected $fillable = [
         'document_id',
         'template_id',
-        'cover_template_id',
-        'cover_page_template_id',
         'output_path',
-        'cover_values',
-        'status'
-    ];
-
-    protected $casts = [
-        'cover_values' => 'array',
+        'status',
     ];
 
     public function document(): BelongsTo
@@ -29,15 +27,5 @@ class GeneratedDocument extends Model
     public function template(): BelongsTo
     {
         return $this->belongsTo(Template::class);
-    }
-
-    public function coverTemplate(): BelongsTo
-    {
-        return $this->belongsTo(CoverTemplate::class);
-    }
-
-    public function coverPageTemplate(): BelongsTo
-    {
-        return $this->belongsTo(CoverPageTemplate::class);
     }
 }

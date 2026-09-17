@@ -415,6 +415,131 @@ class DocumentReconstructorTest extends TestCase
         $this->assertSame(['analysis', 'outputPath', 'gabarit'], $noms);
     }
 
+    /**
+     * Invariant sur les APPELANTS, complémentaire du test de signature.
+     *
+     * Pourquoi il existe : vérifier la signature ne suffit pas. Après le retrait
+     * de `$cover`, trois appels passaient encore `null` en 3e position puis le
+     * gabarit en 4e — `DocumentController`, `FormattedDocumentExporter` et ce
+     * fichier de test. PHP **ignore silencieusement** un argument surnuméraire :
+     * le gabarit recevait donc `null` et le choix de l'utilisateur n'était
+     * jamais appliqué, sans la moindre erreur, et le test « avec gabarit »
+     * passait sur un document auquel aucun gabarit n'avait été fourni.
+     *
+     * C'est la règle de cette session : un instrument qui ne mesure plus rien
+     * est plus dangereux qu'une absence d'instrument.
+     */
+    public function test_aucun_appel_ne_transmet_d_argument_surnumeraire(): void
+    {
+        $declare = (new \ReflectionMethod(DocumentReconstructor::class, 'reconstruct'))->getNumberOfParameters();
+        $fautifs = [];
+
+        foreach ($this->fichiersPhp([base_path('app'), base_path('tests')]) as $chemin) {
+            $source = file_get_contents($chemin);
+
+            foreach ($this->appelsAvecArguments($source, 'reconstruct') as $arguments) {
+                if (count($arguments) > $declare) {
+                    $fautifs[] = str_replace(base_path().DIRECTORY_SEPARATOR, '', $chemin)
+                        .' ('.count($arguments).' arguments, '.$declare.' attendus)';
+                }
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $fautifs,
+            "`reconstruct()` attend {$declare} arguments. PHP ignore un argument surnuméraire\n"
+            ."SANS erreur : la valeur n'est jamais transmise et le paramètre vaut null.\n"
+            ."Appels fautifs :\n - ".implode("\n - ", $fautifs)
+        );
+    }
+
+    /**
+     * Extrait les listes d'arguments de chaque appel `->methode(...)`.
+     *
+     * Le découpage respecte l'imbrication : une virgule dans un appel interne
+     * (`foo($a, $b)`) ou dans un tableau ne sépare pas deux arguments.
+     *
+     * @return array<int, array<int, string>>
+     */
+    private function appelsAvecArguments(string $source, string $methode): array
+    {
+        $appels = [];
+        $motif = '/->'.preg_quote($methode, '/').'\s*\(/';
+
+        if (! preg_match_all($motif, $source, $trouves, PREG_OFFSET_CAPTURE)) {
+            return [];
+        }
+
+        foreach ($trouves[0] as [$occurrence, $position]) {
+            $debut = $position + strlen($occurrence);
+            $profondeur = 1;
+            $arguments = [];
+            $courant = '';
+            $longueur = strlen($source);
+
+            for ($i = $debut; $i < $longueur && $profondeur > 0; $i++) {
+                $caractere = $source[$i];
+
+                if (in_array($caractere, ['(', '[', '{'], true)) {
+                    $profondeur++;
+                } elseif (in_array($caractere, [')', ']', '}'], true)) {
+                    $profondeur--;
+
+                    if ($profondeur === 0) {
+                        break;
+                    }
+                }
+
+                if ($caractere === ',' && $profondeur === 1) {
+                    $arguments[] = trim($courant);
+                    $courant = '';
+
+                    continue;
+                }
+
+                $courant .= $caractere;
+            }
+
+            if (trim($courant) !== '') {
+                $arguments[] = trim($courant);
+            }
+
+            if ($arguments === [] || $arguments === ['']) {
+                $appels[] = [];
+
+                continue;
+            }
+
+            $appels[] = $arguments;
+        }
+
+        return $appels;
+    }
+
+    /**
+     * Tous les fichiers PHP sous les répertoires donnés, récursivement.
+     *
+     * @param  array<int, string>  $racines
+     * @return array<int, string>
+     */
+    private function fichiersPhp(array $racines): array
+    {
+        $fichiers = [];
+
+        foreach ($racines as $racine) {
+            foreach (new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($racine, \FilesystemIterator::SKIP_DOTS)
+            ) as $file) {
+                if ($file instanceof \SplFileInfo && $file->getExtension() === 'php') {
+                    $fichiers[] = $file->getPathname();
+                }
+            }
+        }
+
+        return $fichiers;
+    }
+
     public function test_sans_couverture_le_document_reste_a_deux_sections(): void
     {
         $outputPath = $this->tempDir.'/sans_couverture.docx';
@@ -558,7 +683,7 @@ class DocumentReconstructorTest extends TestCase
         ];
 
         $outputPath = $this->tempDir.'/gabarit.docx';
-        (new DocumentReconstructor)->reconstruct($analysis, $outputPath, null, $gabarit);
+        (new DocumentReconstructor)->reconstruct($analysis, $outputPath, $gabarit);
 
         // styles.xml : police Arial + taille 18 pour les titres
         $stylesXml = $this->readPart($outputPath, 'word/styles.xml');
