@@ -214,6 +214,30 @@
                         </div>
                     </form>
                 @endif
+
+                {{-- Confirmation des blocs ambigus (R2).
+                     Place ici parce que c'est le moment où l'utilisateur examine la
+                     structure : lui proposer de confirmer les passages incertains
+                     ailleurs dissocierait la question de son contexte. --}}
+                @php $aConfirmer = $document->clarifications()->whereNull('answered_at')->count(); @endphp
+                <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--color-border);display:flex;flex-wrap:wrap;gap:.6rem;align-items:center">
+                    <a href="{{ route('documents.clarifications.index', $document) }}"
+                       class="btn {{ $aConfirmer > 0 ? 'btn-primary' : 'btn-ghost' }} btn-sm">
+                        <i data-lucide="circle-help" style="width:15px;height:15px"></i>
+                        @if ($aConfirmer > 0)
+                            Confirmer {{ $aConfirmer }} passage{{ $aConfirmer > 1 ? 's' : '' }}
+                        @else
+                            Passages à confirmer
+                        @endif
+                    </a>
+                    <span style="font-size:.78rem;color:var(--color-text-muted)">
+                        @if ($aConfirmer > 0)
+                            Passages dont la nature est incertaine (titre, légende, tableau).
+                        @else
+                            Aucun passage en attente de confirmation.
+                        @endif
+                    </span>
+                </div>
             </section>
 
             {{-- Hiérarchie des titres --}}

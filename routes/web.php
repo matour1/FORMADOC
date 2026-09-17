@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\CoverPageTemplateController;
+use App\Http\Controllers\ClarificationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\FeedbackController;
@@ -90,5 +90,14 @@ Route::middleware(['auth'])->group(function () {
         // elle est soumise à la même vérification d'appartenance que le reste.
         Route::post('/{document}/undo-edit', [DocumentController::class, 'undoEdit'])->name('documents.undo-edit');
         Route::post('/{document}/generate', [DocumentController::class, 'generate'])->name('documents.generate');
+
+        // Clarifications (R2) : confirmer les blocs dont la classification est
+        // incertaine. Dans le groupe `auth` ET avec la même vérification
+        // d'appartenance que le reste : une réponse modifie le contenu du
+        // document, donc un tiers ne doit pas pouvoir y accéder.
+        Route::get('/{document}/clarifications', [ClarificationController::class, 'index'])
+            ->name('documents.clarifications.index');
+        Route::post('/{document}/clarifications', [ClarificationController::class, 'store'])
+            ->name('documents.clarifications.store');
     });
 });

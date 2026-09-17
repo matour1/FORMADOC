@@ -4,8 +4,8 @@ namespace App\Models;
 
 use App\Models\Concerns\HasHashId;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Document extends Model
 {
@@ -15,7 +15,7 @@ class Document extends Model
         'filename',
         'path',
         'status',
-        'metadata'
+        'metadata',
     ];
 
     protected $casts = [
@@ -25,6 +25,18 @@ class Document extends Model
     public function structure(): HasOne
     {
         return $this->hasOne(DocumentStructure::class);
+    }
+
+    /**
+     * Questions de clarification posées sur les blocs ambigus (R2).
+     *
+     * Chaque ligne porte une question sur UN bloc. L'interface les liste, et
+     * `ClarificationService::applyAnswers()` applique les réponses à la
+     * structure — une réponse ne corrigeant que le bloc visé.
+     */
+    public function clarifications(): HasMany
+    {
+        return $this->hasMany(DocumentClarification::class);
     }
 
     public function generatedDocuments(): HasMany
