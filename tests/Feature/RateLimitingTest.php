@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Services\OpenRouter\OpenRouterService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Mockery;
 use Tests\TestCase;
 
@@ -13,6 +14,12 @@ use Tests\TestCase;
  *
  * POST /chat, login, register, purchase, feedback sont throttlés.
  * En test, CACHE_STORE=array → le cache est isolé par test.
+ *
+ * ⚠️ Les routes qui joignent un service externe DOIVENT être fakes
+ * (`Http::fake`) : `Limit::perMinute` a une fenêtre de 60 s, donc une requête
+ * lente (> 60 s) voit son compteur décrémenté avant l'itération suivante et le
+ * seuil n'est jamais atteint. Un appairage réseau réel rend le test vert ou
+ * rouge selon la latence, pas selon le limiteur.
  */
 class RateLimitingTest extends TestCase
 {
@@ -119,6 +126,16 @@ class RateLimitingTest extends TestCase
 
     public function test_le_throttle_purchase_limite_apres_5_requetes(): void
     {
+        // KPay est neutralisé : on teste le THROTTLE, pas la passerelle. Sans ce
+        // fake, chaque POST attend le timeout réseau (30 s) et ses reprises, et
+        // la fenêtre du limiteur (60 s) expire entre deux itérations.
+        Http::fake([
+            '*/payments/init' => Http::response([
+                'gatewayUrl' => 'https://pay.kpay.site/checkout/test',
+                'paymentId' => 'pay_test',
+            ], 201),
+        ]);
+
         $user = User::factory()->create();
 
         // amount min = 500 FCFA (config kpay.min_amount)

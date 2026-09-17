@@ -22,4 +22,5 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Services/OpenRouter/OpenRouterService.php | .ai/rules/open-router.md |
 | app/Providers/AppServiceProvider.php | .ai/rules/providers.md |
 | app/Document/Structure/LegacyStructureBridge.php | .ai/rules/structure.md |
+| tests/** | .ai/rules/tests.md |
 | app/Document/Editing/Tools/** | .ai/rules/tools.md |
