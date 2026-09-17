@@ -6,6 +6,7 @@ namespace App\Document\Classification;
 
 use App\Document\Structure\Block;
 use App\Document\Structure\BlockCategory;
+use App\Document\Structure\BlockType;
 use App\Document\Structure\StructuralDocument;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -147,6 +148,24 @@ final class BlockClassifier
             }
         }
 
+        // --- 4. Document sans aucun titre : promouvoir un nœud racine ---------
+        // Mesuré sur les documents réels : 7 sur 51 n'ont AUCUN bloc de type
+        // `heading` (devis, bilan de stage d'une page, discours). Sans titre, un
+        // document n'a pas de sommaire possible et la mise en forme n'a rien à
+        // partir de quoi construire une hiérarchie.
+        //
+        // La promotion est délibérément PRUDENTE : elle n'a lieu que sur un
+        // document dépourvu de titre, et seulement si le premier paragraphe
+        // ressemble à un intitulé (court, seul sur sa ligne, sans ponctuation
+        // finale). Deviner un titre sur un document qui en a déjà un
+        // introduirait une erreur visible ; ici il n'y a rien à casser.
+        $racine = $this->promouvoirNoeudRacine($classifiedBlocks);
+
+        if ($racine !== null) {
+            $autoApplied++;
+            $clarifications = array_values(array_diff($clarifications, [$racine]));
+        }
+
         $classifier = new StructuralDocument(
             documentId: $document->documentId,
             sourceType: $document->sourceType,
@@ -164,12 +183,105 @@ final class BlockClassifier
                 'ai_consulted' => $aiConsulted,
                 'ai_applied' => $aiApplied,
                 'clarification_needed' => $clarifications,
+                'root_heading_created' => $racine,
                 'ai_cost_usd' => round($aiCostUsd, 6),
                 'ai_cost_credits' => $aiCostCredits,
                 'ai_skipped_reason' => $aiSkippedReason,
                 'free_ratio' => $total === 0 ? 0.0 : round($autoApplied / $total, 3),
             ],
         ];
+    }
+
+    /**
+     * Promeut le premier paragraphe en titre de niveau 1 si le document n'a aucun titre.
+     *
+     * **Le problème.** Un document sans aucun bloc `heading` ne peut recevoir ni
+     * sommaire ni hiérarchie : la mise en forme n'a pas de point d'entrée. C'est
+     * le cas de 7 documents sur 51 du corpus réel (devis, bilan d'une page,
+     * discours) — mais aussi de tout document où l'auteur a écrit son titre sans
+     * appliquer de style et sans le numéroter.
+     *
+     * **Pourquoi la promotion est prudente.** Elle ne s'applique que si le
+     * document est DÉPOURVU de titre, et seulement au premier paragraphe s'il
+     * ressemble à un intitulé. Sur un document qui a déjà des titres, deviner
+     * en ajouterait un faux — et l'utilisateur verrait une incohérence.
+     *
+     * **Ce qui n'est pas fait.** Aucun texte n'est modifié : seul le TYPE du bloc
+     * change. Le contenu traverse sans altération, et l'utilisateur peut corriger
+     * la classification depuis l'écran de clarification si la promotion est
+     * indésirable.
+     *
+     * @param  array<int, Block>  $blocks  Blocs classifiés (modifiés par référence de tableau)
+     */
+    private function promouvoirNoeudRacine(array &$blocks): ?string
+    {
+        // Déjà des titres : on ne touche à rien.
+        foreach ($blocks as $bloc) {
+            if ($bloc->type === BlockType::Heading) {
+                return null;
+            }
+        }
+
+        // Le premier bloc dont le texte ressemble à un intitulé. On ne parcourt
+        // pas au-delà du premier paragraphe non vide : un titre de document vit
+        // en tête, pas au milieu.
+        foreach ($blocks as $index => $bloc) {
+            if ($bloc->type !== BlockType::Paragraph) {
+                continue;
+            }
+
+            $texte = trim($bloc->text);
+
+            if ($texte === '') {
+                continue;
+            }
+
+            if (! $this->ressembleAUnIntitule($texte)) {
+                return null;
+            }
+
+            $blocks[$index] = $bloc->withClassification(
+                type: BlockType::Heading,
+                // Confiance sous le seuil d'acceptation automatique : c'est une
+                // DÉDUCTION, pas une observation. L'utilisateur doit pouvoir la
+                // corriger, et l'IA peut la confirmer.
+                confidence: 0.75,
+                headingLevel: 1,
+            );
+
+            return $bloc->blockId;
+        }
+
+        return null;
+    }
+
+    /**
+     * Le texte a-t-il la forme d'un intitulé de document ?
+     *
+     * Critères volontairement restrictifs : un intitulé de document est court,
+     * sans ponctuation finale, et sans structure de phrase.
+     */
+    private function ressembleAUnIntitule(string $texte): bool
+    {
+        if (mb_strlen($texte) > 80) {
+            return false;
+        }
+
+        // Un intitulé ne se termine pas par un point, un point d'interrogation ou
+        // un point d'exclamation.
+        if (preg_match('/[.!?]\s*$/u', $texte) === 1) {
+            return false;
+        }
+
+        // Marqueurs de phrase : on ne promeut pas une phrase de contenu.
+        if (preg_match(
+            '/\b(est|sont|était|étaient|a été|ont été|permet|permettent|doit|doivent|nous)\b/iu',
+            $texte
+        ) === 1) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -227,6 +339,10 @@ final class BlockClassifier
             'ai_consulted' => 0,
             'ai_applied' => 0,
             'clarification_needed' => [],
+            // Même clé que le rapport complet : un appelant qui la lit ne doit
+            // pas échouer selon que le document est vide ou non. L'oublier ici
+            // produisait une erreur sur le seul cas du document sans bloc.
+            'root_heading_created' => null,
             'ai_cost_usd' => 0.0,
             'ai_cost_credits' => 0,
             'ai_skipped_reason' => 'Document vide.',
