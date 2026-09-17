@@ -6,16 +6,87 @@
     @include('partials.flow-sidebar', ['activeStep' => 2, 'document' => $document])
 
     @php
+        // Deux formats coexistent (stratégie du strangler) :
+        //  - `structural_json` : produit par le nouveau pipeline (R1-R2), la
+        //    source de vérité dès qu'elle existe ;
+        //  - `structure` : format historique, conservé pour les documents traités
+        //    avant l'activation du pipeline.
+        //
+        // Afficher `structure` alors que le document a une structure native
+        // montrerait « 0 titre » sur un document dont la classification en a
+        // détecté des dizaines : l'écran mentirait sur ce que contient le fichier.
+        //
+        // Les deux sources sont NORMALISÉES vers un format d'affichage commun :
+        // sinon chaque section devrait connaître les deux formes, et la moindre
+        // divergence produirait des cases vides.
+        $structurel = $structure?->structuralDocument();
+
+        $normaliserLegende = static fn (array $legende): array => [
+            'line' => $legende['line'] ?? '',
+            'type' => $legende['type'] ?? '',
+            'number' => $legende['number'] ?? '',
+            'label' => $legende['label'] ?? ($legende['texte'] ?? ''),
+        ];
+
+        if ($structurel !== null) {
+            $pipelineNatif = true;
+
+            $titres = array_map(
+                static fn ($bloc): array => [
+                    'texte' => $bloc->text,
+                    'niveau' => $bloc->headingLevel ?? 1,
+                    'numero' => $bloc->displayNumber(),
+                ],
+                $structurel->headings(),
+            );
+            $sousTitres = [];
+            $titreCount = count($titres);
+
+            $tableaux = array_map(
+                static fn ($bloc): array => [
+                    'rows_count' => $bloc->tableData?->rows,
+                    'texte' => $bloc->text,
+                ],
+                $structurel->blocksOfType(\App\Document\Structure\BlockType::Table),
+            );
+
+            $images = array_map(
+                static fn ($bloc): array => [
+                    'image_name' => $bloc->imageRef ?? 'image',
+                    'texte' => $bloc->text,
+                ],
+                $structurel->blocksOfType(\App\Document\Structure\BlockType::Figure),
+            );
+
+            // Légendes : le libellé est le texte sans le préfixe « Figure 3 : »,
+            // pour ne pas répéter le numéro déjà affiché dans sa colonne.
+            $legends = array_map(
+                static fn ($bloc): array => [
+                    'line' => $bloc->positionY ?? '',
+                    'type' => $bloc->category?->listTitle() ?? 'Légende',
+                    'number' => $bloc->displayNumber() ?? '',
+                    'label' => trim((string) preg_replace('/^[^:]{0,40}:\s*/u', '', $bloc->text)),
+                ],
+                $structurel->blocksOfType(\App\Document\Structure\BlockType::Caption),
+            );
+
+            $ambiguitesStructurelles = $structurel->ambiguous();
+        } else {
+            $pipelineNatif = false;
+            $data = $structure->structure ?? [];
+
+            $titres = $data['titres'] ?? [];
+            $sousTitres = $data['sous_titres'] ?? [];
+            $titreCount = count($titres) + count($sousTitres);
+            $tableaux = $data['tableaux'] ?? [];
+            $images = $data['images'] ?? [];
+            $legends = array_map($normaliserLegende, $data['legends'] ?? []);
+            $ambiguitesStructurelles = [];
+        }
+
         $ambiguities = $structure->ambiguities ?? [];
-        $data = $structure->structure ?? [];
-        $titres = $data['titres'] ?? [];
-        $sousTitres = $data['sous_titres'] ?? [];
         $enTetes = $data['en_tetes'] ?? [];
         $piedsDePage = $data['pieds_de_page'] ?? [];
-        $legends = $data['legends'] ?? [];
-        $tableaux = $data['tableaux'] ?? [];
-        $images = $data['images'] ?? [];
-        $titreCount = count($titres) + count($sousTitres);
         $isValidated = $document->status === 'validated';
     @endphp
 
@@ -24,11 +95,14 @@
         {{-- En-tête de page --}}
         <div class="page-header">
             <div>
-                <span class="eyebrow">Étape 2 / 4 — Validation</span>
+                <span class="eyebrow">Étape 2 / 4 — Vérifier la structure</span>
                 <h1 style="word-break:break-word">{{ $document->filename }}</h1>
                 <p>
                     {{ number_format(($document->metadata['size'] ?? 0) / 1024, 1) }} Ko
                     · {{ $document->metadata['mime_type'] ?? 'type inconnu' }}
+                    @if ($pipelineNatif)
+                        · <span title="Structure lue directement dans le fichier Word, sans modèle de langue">analyse native</span>
+                    @endif
                 </p>
             </div>
         </div>
@@ -126,8 +200,8 @@
                                    @checked(($document->metadata['title_method'] ?? '') === 'ia')>
                             <span class="rc-icon"><i data-lucide="bot" style="width:17px;height:17px"></i></span>
                             <span>
-                                <strong>Analyse par IA</strong>
-                                <small>Le LLM (DeepSeek) lit l'intégralité du texte pour classer titres, sous-titres, en-têtes, pieds, tableaux et images. Plus précise mais plus lente.</small>
+                                <strong>Analyse assistée par IA</strong>
+                                <small>Le même document est relu par un modèle de langue pour confirmer les passages ambigus. Plus lent et facturé en crédits.</small>
                             </span>
                         </label>
                     </div>
@@ -137,9 +211,9 @@
                                @checked((bool) ($document->metadata['use_ai'] ?? false))>
                         <span class="cc-icon"><i data-lucide="sparkles" style="width:17px;height:17px"></i></span>
                         <span>
-                            <strong>Assistance IA (mode assisté)</strong>
-                            <small>Complète la détection regex par une IA correctrice sur les ambiguïtés (listes, niveaux). Consomme 1 unité du quota IA.</small>
-                            <span class="cc-note">Combine la méthode choisie ci-dessus avec le post-processeur IA.</span>
+                            <strong>Confirmer les passages incertains par l'IA</strong>
+                            <small>Quand la détection déterministe hésite, le modèle tranche. Sans cette option, ces passages vous sont présentés à confirmer — vous gardez la décision.</small>
+                            <span class="cc-note">Consomme 1 unité du quota IA si activée.</span>
                         </span>
                     </label>
 

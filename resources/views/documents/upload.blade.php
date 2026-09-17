@@ -5,24 +5,32 @@
 @section('content')
     <div class="max-w-4xl">
 
-        {{-- En-tête de page --}}
+        {{-- En-tête de page : on annonce ce que le produit FAIT réellement
+             (mise en forme), pas une fonctionnalité retirée. --}}
         <div class="page-header">
             <div>
-                <span class="eyebrow">Traitement</span>
-                <h1>Nouveau document</h1>
-                <p>Téléversez un fichier, choisissez un gabarit, puis lancez l'analyse.</p>
+                <span class="eyebrow">Mise en forme</span>
+                <h1>Mettre un rapport en forme</h1>
+                <p>
+                    Téléversez votre document : FORMADOC détecte sa structure (titres,
+                    tableaux, figures), la numérote et la met en forme selon un gabarit
+                    académique. Le fichier produit est un DOCX prêt à rendre.
+                </p>
             </div>
         </div>
 
-        {{-- Étapes du parcours (fidèle au template) --}}
-        <div class="upload-steps" aria-label="Étapes de création d'un document">
-            <div class="upload-step done"><span class="num">✓</span> Fichier</div>
+        {{-- Étapes du parcours : elles décrivent le parcours RÉEL.
+             L'ancienne version annonçait « Gabarit » puis « Options IA » à
+             l'upload, alors que le gabarit se choisit à l'export — un décalage
+             entre ce que l'écran promet et ce que le produit fait. --}}
+        <div class="upload-steps" aria-label="Étapes de la mise en forme">
+            <div class="upload-step active"><span class="num">1</span> Téléverser</div>
             <div class="upload-step-sep"></div>
-            <div class="upload-step active"><span class="num">2</span> Gabarit</div>
+            <div class="upload-step"><span class="num">2</span> Vérifier la structure</div>
             <div class="upload-step-sep"></div>
-            <div class="upload-step"><span class="num">3</span> Options IA</div>
+            <div class="upload-step"><span class="num">3</span> Choisir un gabarit</div>
             <div class="upload-step-sep"></div>
-            <div class="upload-step"><span class="num">4</span> Aperçu</div>
+            <div class="upload-step"><span class="num">4</span> Télécharger le DOCX</div>
         </div>
 
         {{-- Carte d'upload --}}
@@ -67,43 +75,45 @@
 
                 {{-- Choix de la méthode d'analyse des titres --}}
                 <div style="margin-top:1.6rem">
-                    <p style="font-weight:600;font-size:.92rem;margin-bottom:.25rem">Méthode de détection des titres</p>
+                    <p style="font-weight:600;font-size:.92rem;margin-bottom:.25rem">Détection de la structure</p>
                     <p style="color:var(--color-text-muted);font-size:.8rem;margin-bottom:.9rem">
-                        Choisissez comment FORMADOC identifie les titres de votre rapport.
+                        FORMADOC lit directement le contenu de votre document Word (styles,
+                        numérotation) sans passer par un modèle de langue. Ce choix ne
+                        concerne que la vitesse de l'analyse préliminaire.
                     </p>
 
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem" role="radiogroup" aria-label="Méthode de détection des titres">
-                        {{-- Méthode Regex (recommandée) --}}
+                        {{-- Déterministe (recommandé) --}}
                         <label class="radio-card" for="method-regex">
                             <input type="radio" name="title_method" id="method-regex" value="regex" checked>
                             <span class="rc-icon"><i data-lucide="file-check" style="width:17px;height:17px"></i></span>
                             <span>
-                                <strong>Analyse rapide (Regex)</strong>
-                                <small>Détection par les styles Word (Heading 1-3, tailles, gras) complétée par des motifs regex (numérotation « 1. », « 1.1 », mots-clés CHAPITRE, INTRODUCTION…). <strong>Rapide et hors-ligne.</strong></small>
+                                <strong>Déterminée par le document <span style="color:var(--color-success)">(recommandé)</span></strong>
+                                <small>Les styles Word (Titre 1-3), la numérotation du texte (« 1. », « I. », « CHAPITRE ») et la mise en forme réelle déterminent la structure. <strong>Instantané, gratuit, reproductible.</strong></small>
                             </span>
                         </label>
 
-                        {{-- Méthode IA --}}
+                        {{-- IA --}}
                         <label class="radio-card" for="method-ia">
                             <input type="radio" name="title_method" id="method-ia" value="ia">
                             <span class="rc-icon"><i data-lucide="bot" style="width:17px;height:17px"></i></span>
                             <span>
-                                <strong>Analyse par IA</strong>
-                                <small>Un modèle de langue (DeepSeek) lit l'intégralité du texte pour classer chaque élément : titres, sous-titres, en-têtes, pieds de page, tableaux, images. <strong>Plus précise mais plus lente</strong> (quelques minutes selon la taille du rapport).</small>
+                                <strong>Assistée par IA</strong>
+                                <small>Le même document est relu par un modèle de langue pour confirmer les passages ambigus. <strong>Plus lent et facturé en crédits</strong>, utile si la détection automatique se trompe.</small>
                             </span>
                         </label>
                     </div>
                 </div>
 
-                {{-- Assistance IA facultative (post-processeur correctif) --}}
+                {{-- Confirmation des passages incertains --}}
                 <div style="margin-top:1.2rem">
                     <label for="use_ai" class="check-card">
                         <input type="checkbox" name="use_ai" id="use_ai" value="1">
                         <span class="cc-icon"><i data-lucide="sparkles" style="width:17px;height:17px"></i></span>
                         <span>
-                            <strong>Utiliser l'assistance IA</strong>
-                            <small>L'IA peut améliorer la détection des listes et lever les ambiguïtés, mais peut ralentir le traitement.</small>
-                            <span class="cc-note">Non cochée par défaut : aucune donnée n'est envoyée à un service externe. L'analyse déterministe reste entièrement fonctionnelle sans IA.</span>
+                            <strong>Confirmer les passages incertains par l'IA</strong>
+                            <small>Quand la détection déterministe hésite (ligne isolée, mot-clé de section), le modèle tranche. Sans cette option, ces passages vous sont présentés à confirmer — vous gardez la décision.</small>
+                            <span class="cc-note">Non cochée par défaut : aucune donnée n'est envoyée à un service externe, et aucun crédit n'est consommé. Consomme 1 unité du quota IA si activée.</span>
                         </span>
                     </label>
                 </div>
@@ -112,7 +122,7 @@
                     <a href="{{ route('account.index') }}" class="btn btn-secondary">Annuler</a>
                     <button type="submit" id="upload-submit" class="btn btn-primary">
                         <i data-lucide="search-check" id="submit-icon" style="width:17px;height:17px"></i>
-                        <span id="submit-label">Lancer l'analyse</span>
+                        <span id="submit-label">Analyser et mettre en forme</span>
                     </button>
                 </div>
             </form>
