@@ -7,15 +7,18 @@ use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 /**
- * Bibliothèque de gabarits (mise en forme) et pages de garde.
+ * Bibliothèque des gabarits de mise en forme.
  *
  * Fidélité template : « Modèles » (bibliothèque) et « Comparer des gabarits »
  * (comparaison côte à côte, réservée Premium+).
+ *
+ * Note : les pages de garde (couverture) ont été RETIRÉES de cette version du
+ * produit — voir `tests/Feature/CoverModuleRemovalInvariantTest.php`.
  */
 class TemplateController extends Controller
 {
     /**
-     * Bibliothèque des gabarits et pages de garde.
+     * Bibliothèque des gabarits de mise en forme.
      */
     public function index(Request $request): View
     {

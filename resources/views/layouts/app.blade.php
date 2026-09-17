@@ -15,7 +15,7 @@
     {{-- Design system (extrait de formadoc-template.html) + Tailwind pour les pages legacy --}}
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
-    {{-- Alpine.js (builder visuel de page de garde) --}}
+    {{-- Alpine.js (interactivité de l'interface) --}}
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     {{-- Icônes lucide (comme le template) --}}
     <script src="https://unpkg.com/lucide@latest" defer></script>

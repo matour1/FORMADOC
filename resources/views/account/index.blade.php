@@ -192,7 +192,7 @@
                         <ul class="plan-features">
                             <li><i data-lucide="check" style="width:13px;height:13px"></i> 5 documents traités / mois</li>
                             <li><i data-lucide="check" style="width:13px;height:13px"></i> Mise en forme déterministe (hors-ligne)</li>
-                            <li><i data-lucide="check" style="width:13px;height:13px"></i> Gabarits publics &amp; pages de garde</li>
+                            <li><i data-lucide="check" style="width:13px;height:13px"></i> Gabarits de mise en forme publics</li>
                             <li><i data-lucide="minus" style="width:13px;height:13px"></i> Chat IA au coût réel (crédits)</li>
                         </ul>
                         @if (!$subscription || !$subscription->isActiveAt())

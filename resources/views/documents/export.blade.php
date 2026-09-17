@@ -45,20 +45,20 @@
             <div style="display:flex;flex-direction:column;gap:1.4rem;min-width:0"
                  x-data="formatExport({{ $selectedTemplateId ?: 'null' }})">
 
-                {{-- Page de garde : RETIRÉE de cette version du produit.
+                {{-- Page de garde : FONCTIONNALITÉ NON DISPONIBLE dans cette version.
                      Le formulaire de sélection de modèle a été supprimé en même
                      temps que ses routes. Un contrôle inerte serait plus trompeur
-                     qu'absent : l'utilisateur croirait pouvoir s'en servir.
+                     qu'un message clair : l'utilisateur croirait pouvoir s'en servir.
                      L'objectif de la version est la MISE EN FORME du document. --}}
                 <section class="card">
                     <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
                         <i data-lucide="info" style="width:19px;height:19px;color:var(--color-text-muted)"></i>
-                        <h2 class="card-title">Page de garde</h2>
+                        <h2 class="card-title">Page de garde — fonctionnalité non disponible</h2>
                     </div>
                     <p style="color:var(--color-text-secondary);font-size:.85rem;margin:0">
-                        La génération de page de garde n'est pas disponible dans cette version.
-                        L'attention porte sur la <strong>mise en forme</strong> : titres, styles,
-                        numérotation des figures et tableaux, sommaire et listes.
+                        La génération de page de garde n'est <strong>pas disponible</strong> dans cette
+                        version. L'attention porte sur la <strong>mise en forme</strong> : titres,
+                        styles, numérotation des figures et tableaux, sommaire et listes.
                     </p>
                 </section>
 

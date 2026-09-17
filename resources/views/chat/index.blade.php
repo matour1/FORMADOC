@@ -124,7 +124,7 @@
                 </div>
 
                 <div class="suggest-chips" id="chatSuggest">
-                    <button type="button" class="suggest-chip" data-prompt="Génère une page de garde pour mon rapport de stage.">Créer une page de garde</button>
+                    <button type="button" class="suggest-chip" data-prompt="Analyse la structure de ma pièce jointe et dis-moi ce que tu y détectes.">Analyser un rapport</button>
                     <button type="button" class="suggest-chip" data-prompt="Explique-moi comment structurer un rapport de stage de 30 pages.">Structurer un rapport</button>
                     <button type="button" class="suggest-chip" data-prompt="Cherche des sources récentes sur le changement climatique au Cameroun.">Recherche web</button>
                     <button type="button" class="suggest-chip" data-prompt="Génère une image pour illustrer mon rapport.">Générer une image</button>
@@ -160,8 +160,8 @@
                 </div>
 
                 <div class="composer-actions" id="tools-hint">
-                    <button type="button" class="chat-action-btn" data-prompt="Génère une page de garde pour mon rapport de stage.">
-                        <i data-lucide="book-open"></i> Page de garde
+                    <button type="button" class="chat-action-btn" data-prompt="Analyse la structure de ma pièce jointe.">
+                        <i data-lucide="search-check"></i> Analyser
                     </button>
                     <button type="button" class="chat-action-btn" data-prompt="Reconstruis mon document avec la structure détectée.">
                         <i data-lucide="file-cog"></i> Reconstruction

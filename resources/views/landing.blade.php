@@ -149,9 +149,9 @@
                         <p>Modèles académiques, professionnels ou personnalisés — appliqués sans jamais perdre le contenu.</p>
                     </div>
                     <div class="feature-item">
-                        <div class="icon-wrap"><i data-lucide="book-open" style="width:19px;height:19px"></i></div>
-                        <h3>Page de garde sur mesure</h3>
-                        <p>Composez votre propre couverture ou choisissez un modèle prêt à l'emploi.</p>
+                        <div class="icon-wrap"><i data-lucide="list-ordered" style="width:19px;height:19px"></i></div>
+                        <h3>Numérotation et sommaire</h3>
+                        <p>Figures, tableaux et annexes renumérotés par ordre d'apparition, avec sommaire et listes générés automatiquement.</p>
                     </div>
                     <div class="feature-item">
                         <div class="icon-wrap"><i data-lucide="message-square" style="width:19px;height:19px"></i></div>
@@ -221,8 +221,8 @@
                         <ul>
                             <li>5 documents / mois</li>
                             <li>Mode déterministe uniquement</li>
-                            <li>Modèles publics</li>
-                            <li>Pages de garde incluses</li>
+                            <li>Gabarits de mise en forme publics</li>
+                            <li>Numérotation et sommaire inclus</li>
                             <li>Chat IA au coût réel (crédits)</li>
                         </ul>
                         <a class="btn btn-secondary" href="{{ route('register') }}">Commencer</a>

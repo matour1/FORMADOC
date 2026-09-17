@@ -30,8 +30,8 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
  *      → affichée dans le composer (coût estimé, ajusté après usage)
  *   3. vérification du solde → erreur si insuffisant
  *   4. débit immédiat des crédits estimés
- *   5. appel OpenRouter avec OUTILS (function calling : page de garde,
- *      reconstruction, recherche web, image…) et Skills Claude
+ *   5. appel OpenRouter avec OUTILS (function calling : analyse, reconstruction,
+ *      recherche web, image…) et Skills Claude
  *      (plans payants ≥ standard inclus, sinon pay-per-use ×1,5 en crédits)
  *   6. ajustement : si coût réel < estimé → remboursement de la différence
  *   7. en cas d'échec → remboursement intégral + restitution du quota IA

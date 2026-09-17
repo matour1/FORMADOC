@@ -76,7 +76,7 @@
                 <span class="proof-stamp">Compte sécurisé</span>
                 <h2 style="font-size:1.25rem;margin-top:.8rem;">Créez votre espace en une minute.</h2>
                 <p style="color:var(--color-text-muted);font-size:.88rem;margin-top:.35rem;">
-                    Plan Gratuit : 5 documents déterministes / mois et pages de garde incluses.
+                    Plan Gratuit : 5 documents déterministes / mois, mise en forme et sommaire inclus.
                     Chat IA au coût réel (crédits). Passez à Standard, Premium ou Pro pour
                     débloquer les traitements IA inclus et plus de crédits.
                 </p>

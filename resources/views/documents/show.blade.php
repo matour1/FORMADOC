@@ -452,21 +452,22 @@
                 </div>
             </section>
 
-            {{-- Page de garde : RETIRÉE de cette version du produit.
-                 Ce n'est pas un oubli mais une décision de périmètre : l'objectif
-                 de la version est la MISE EN FORME du document (titres, styles,
-                 numérotation, sommaire, listes). Laisser un formulaire inerte
-                 serait pire que l'absence — l'utilisateur croirait pouvoir
-                 l'utiliser. On l'explique donc explicitement. --}}
+            {{-- Page de garde : FONCTIONNALITÉ NON DISPONIBLE dans cette version.
+                 Ce n'est pas un oubli mais une décision de périmètre : l'objectif de
+                 la version est la MISE EN FORME du document (titres, styles,
+                 numérotation, sommaire, listes). Un formulaire inerte serait plus
+                 trompeur qu'un message clair — l'utilisateur croirait pouvoir s'en
+                 servir. --}}
             <section class="card" style="margin-bottom:1.25rem">
                 <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
                     <i data-lucide="info" style="width:19px;height:19px;color:var(--color-text-muted)"></i>
-                    <h2 class="card-title">Page de garde</h2>
+                    <h2 class="card-title">Page de garde — fonctionnalité non disponible</h2>
                 </div>
                 <p style="color:var(--color-text-secondary);font-size:.85rem;margin:0">
-                    La génération de page de garde n'est pas disponible dans cette version.
-                    FORMADOC se concentre sur la <strong>mise en forme</strong> de votre document :
-                    titres, styles, numérotation des figures et tableaux, sommaire et listes.
+                    La génération de page de garde n'est <strong>pas disponible</strong> dans cette
+                    version. FORMADOC se concentre sur la <strong>mise en forme</strong> de votre
+                    document : titres, styles, numérotation des figures et tableaux, sommaire
+                    et listes.
                 </p>
             </section>
         @endif

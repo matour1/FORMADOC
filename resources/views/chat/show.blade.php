@@ -112,7 +112,7 @@
                 <div class="chat-context">
                     <span class="chat-context-dot"></span>
                     <strong>Assistant FORMADOC</strong>
-                    <span class="chat-context-info">— outils actionnables : pages de garde, reconstruction, recherche web, images</span>
+                    <span class="chat-context-info">— outils actionnables : analyse, reconstruction, recherche web, images</span>
                 </div>
                 <div class="chat-header-actions">
                     {{-- Le mode d'exécution est AUTOMATIQUE (config chat.mode = agent) :
@@ -154,7 +154,7 @@
                                 <span class="model-menu-icon"><i data-lucide="image" style="width:15px;height:15px"></i></span>
                                 <span class="model-menu-info">
                                     <span class="model-menu-name">Image · {{ $modelShort($imageModel) }}</span>
-                                    <span class="model-menu-desc">Génération d'images, illustrations et couvertures.</span>
+                                    <span class="model-menu-desc">Génération d'images et d'illustrations.</span>
                                 </span>
                             </div>
                         </div>
@@ -274,14 +274,14 @@
                     <div class="empty-state" style="text-align:center;padding:3rem 1rem;color:var(--color-text-muted)">
                         <i data-lucide="bot" style="width:44px;height:44px;margin:0 auto .8rem;display:block;opacity:.6"></i>
                         <p style="font-size:.95rem">Aucun message. Pose ta première question !</p>
-                        <p style="font-size:.78rem;margin-top:.3rem">Exemples : « génère une page de garde », « reconstruis mon document », « cherche des sources sur le changement climatique au Cameroun »</p>
+                        <p style="font-size:.78rem;margin-top:.3rem">Exemples : « analyse la structure de ma pièce jointe », « reconstruis mon document », « cherche des sources sur le changement climatique au Cameroun »</p>
                     </div>
                 @endforelse
 
                 {{-- Chips de suggestions (quand la conversation est vide) --}}
                 @if ($messages->isEmpty())
                     <div class="suggest-chips" id="chatSuggest">
-                        <button type="button" class="suggest-chip" data-prompt="Génère une page de garde pour mon rapport de stage.">Créer une page de garde</button>
+                        <button type="button" class="suggest-chip" data-prompt="Analyse la structure de ma pièce jointe et dis-moi ce que tu y détectes.">Analyser un rapport</button>
                         <button type="button" class="suggest-chip" data-prompt="Reconstruis mon document avec la structure détectée.">Reconstruire un document</button>
                         <button type="button" class="suggest-chip" data-prompt="Cherche des sources récentes sur le changement climatique au Cameroun.">Recherche web</button>
                         <button type="button" class="suggest-chip" data-prompt="Génère une image pour illustrer mon rapport.">Générer une image</button>
@@ -342,8 +342,8 @@
 
                 {{-- Actions rapides (outils) --}}
                 <div class="composer-actions" id="tools-hint">
-                    <button type="button" class="chat-action-btn" data-prompt="Génère une page de garde pour mon rapport de stage.">
-                        <i data-lucide="book-open"></i> Page de garde
+                    <button type="button" class="chat-action-btn" data-prompt="Analyse la structure de ma pièce jointe.">
+                        <i data-lucide="search-check"></i> Analyser
                     </button>
                     <button type="button" class="chat-action-btn" data-prompt="Reconstruis mon document avec la structure détectée.">
                         <i data-lucide="file-cog"></i> Reconstruction
