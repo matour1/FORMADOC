@@ -1,8 +1,9 @@
 ---
 paths:
   - 'app/Services/Billing/**'
-  - 'app/Console/Commands/BillingReport.php'
+  - app/Console/Commands/BillingReport.php
   - 'app/Services/OpenRouter/**'
+  - 'app/Console/Commands/**'
 ---
 
 # Billing

@@ -7,6 +7,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Document/Adapters/** | .ai/rules/adapters.md |
 | app/Http/Controllers/Admin/** | .ai/rules/admin.md |
 | app/Services/Billing/**, app/Console/Commands/BillingReport.php, app/Services/OpenRouter/** | .ai/rules/billing.md |
+| app/Console/Commands/** | .ai/rules/console.md |
 | app/Services/Chat/** | .ai/rules/chat.md |
 | app/Document/Classification/** | .ai/rules/classification.md |
 | app/Http/Controllers/ChatController.php | .ai/rules/controllers.md |
