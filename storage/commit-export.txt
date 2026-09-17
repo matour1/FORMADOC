@@ -1,0 +1,64 @@
+Brancher l'ecriture DOCX + retirer le module page de garde
+
+Le maillon manquant est comble : le pipeline R1-R7 calculait un etat que personne
+n'ecrivait. Le fichier telecharge contenait les titres, mais aucun style de
+gabarit (R3), aucun numero recalcule (R4), ni les editions du chat (R6).
+
+Passerelle d'ecriture
+- `FormattedDocumentExporter` : assemble R3 -> R4 via `ReExportCoordinator`,
+  controle l'integrite des tableaux AVANT ecriture, puis traduit vers le format
+  de `DocumentReconstructor` (`buildReconstructionPayload`)
+- `SourceImageProvider` : le modele structurel ne conserve qu'une REFERENCE
+  d'image (`Block::imageRef` = `rId5.img`), jamais le binaire. Le fournisseur
+  relit le paquet source et resout la relation (le suffixe `.img` est ajoute par
+  l'adaptateur, a retirer)
+- `DocumentController::writeDocument()` : nouveau chemin si `structural_json`
+  existe, REPLI sur l'ancien pipeline sinon (strangler)
+
+Decouverte : une seule passe suffit
+Le generateur ecrit un CHAMP TOC NATIF Word (`addTOC` + `setUpdateFields`) et
+derive les listes des `legends`. La pagination de R5 (qui exige un DOCX deja
+ecrit plus LibreOffice) n'apporte RIEN au DOCX : Word calcule lui-meme les
+numeros de page. Le plan initial prevoyait 2 passes sur une hypothese fausse.
+
+DEFAUT DE PRODUCTION corrige : echappement XML
+PHPWord ecrit le texte via `writeRaw()` quand l'echappement est desactive — son
+reglage PAR DEFAUT. Un `&` ou un `<` dans le document source produisait donc un
+`word/document.xml` INVALIDE, et Word REFUSE d'ouvrir un tel fichier.
+
+Mesure sur les documents reels : 19 fichiers sur 51 concernes (37 %) ; apres
+correction, 51/51. Les caracteres en cause sont banals dans un memoire
+(« Hebergement & nom de Domaine », « Prix < 1 000 »).
+
+Ce defaut n'etait PAS dans le nouveau code : l'ancien pipeline l'avait aussi. Il
+etait invisible parce que les fixtures de test ne contiennent jamais ces
+caracteres — il a fallu mesurer sur des documents reels pour le decouvrir.
+
+Correction : `Settings::setOutputEscapingEnabled(true)` autour de `save()`, dans
+un `try/finally` (reglage global et statique). Les champs (sommaire,
+numerotation) ne sont pas affectes : ils passent par des appels XMLWriter
+directs, sans `writeText()`.
+
+Retrait du module page de garde (16 routes)
+- routes `cover-templates.*` et `documents.generate-cover*` retirees
+- 7 vues adaptees : navigation, `documents/show`, `documents/export`,
+  `templates/index` + initialisation Alpine orpheline (`coverExport`)
+- `TemplateController` nettoye de sa requete couverture
+- distinction respectee : la PAGE DE GARDE est retiree, le GABARIT de mise en
+  forme (coeur de R3) reste — les confondre aurait supprime la mise en forme
+
+`CoverTemplatePreviewSecurityTest` testait un durcissement reel (P1-3 : URL
+signee, header `X-Preview-Path`, traversee de repertoire) sur des routes
+disparues. Remplace par `CoverModuleRemovalInvariantTest`, qui CONSERVE LA
+TRACE : si les routes reviennent sans ces protections, l'invariant echoue.
+
+Autres defauts corriges en route
+- `toStructuralDocument()` n'existe pas : la methode s'appelle
+  `structuralDocument()` (500 silencieux qui aurait rendu le branchement inerte)
+- 7 vues appelaient encore les routes retirees -> 500 sur `documents.show`
+
+Verification
+- 51/51 exports reussis, 0 contenu de tableau modifie
+- 44/51 avec sommaire natif (les 7 sans sommaire sont les 7 sans titre)
+- 5 tests de garde sur l'echappement (validation XML par `DOMDocument::loadXML`)
+- suite complete : 1240 passes, 1 ignore, 0 echec

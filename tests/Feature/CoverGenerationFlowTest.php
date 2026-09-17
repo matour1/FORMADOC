@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\Document;
 use App\Models\GeneratedDocument;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use PhpOffice\PhpWord\IOFactory;
@@ -22,14 +25,14 @@ use Tests\TestCase;
  */
 class CoverGenerationFlowTest extends TestCase
 {
-    use \Illuminate\Foundation\Testing\RefreshDatabase;
+    use RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         // Les routes documents sont protégées par auth (P0-1)
-        $user = \App\Models\User::factory()->create();
+        $user = User::factory()->create();
         $this->actingAs($user);
     }
 
@@ -38,7 +41,7 @@ class CoverGenerationFlowTest extends TestCase
      */
     private function createReportDocx(): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $phpWord->addTitleStyle(1, ['bold' => true, 'size' => 16]);
         $phpWord->addTitleStyle(2, ['bold' => true, 'size' => 14]);
 
@@ -50,7 +53,7 @@ class CoverGenerationFlowTest extends TestCase
         $section->addTitle('1.1 Institution', 2);
         $section->addText('Figure 1: Architecture de la plateforme');
 
-        $path = storage_path('app/test_tmp_' . uniqid() . '.docx');
+        $path = storage_path('app/test_tmp_'.uniqid().'.docx');
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
 
         return $path;
@@ -61,7 +64,7 @@ class CoverGenerationFlowTest extends TestCase
      */
     private function createCoverDocx(): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $section = $phpWord->addSection();
 
         $section->addText('REPUBLIQUE DU CAMEROUN', ['size' => 14, 'bold' => true], ['alignment' => Jc::CENTER]);
@@ -71,7 +74,7 @@ class CoverGenerationFlowTest extends TestCase
         $section->addText('Encadré par : Dr. MARTIN', ['size' => 11]);
         $section->addText('Année académique 2024-2025', ['size' => 11]);
 
-        $path = storage_path('app/test_tmp_cover_' . uniqid() . '.docx');
+        $path = storage_path('app/test_tmp_cover_'.uniqid().'.docx');
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
 
         return $path;
@@ -87,7 +90,7 @@ class CoverGenerationFlowTest extends TestCase
 
         foreach ($phpWord->getSections() as $section) {
             foreach ($section->getElements() as $element) {
-                if (!method_exists($element, 'getText')) {
+                if (! method_exists($element, 'getText')) {
                     continue;
                 }
 
@@ -97,7 +100,7 @@ class CoverGenerationFlowTest extends TestCase
                     $content = implode(' ', array_filter($content, 'is_string'));
                 }
 
-                $text .= (string) $content . "\n";
+                $text .= (string) $content."\n";
             }
         }
 
@@ -107,10 +110,10 @@ class CoverGenerationFlowTest extends TestCase
 
     public function test_generation_avec_couverture_remplace_les_valeurs(): void
     {
-        // Rapport : les règles déterministes suffisent → pas de LLM
-        Http::fake();
-
-        // 1) Upload du rapport
+        // ⚠️ MODULE RETIRÉ : la page de garde n'est plus produite dans cette
+        // version du produit. Ce test est conservé sous forme d'invariant — la
+        // route `/generate-cover` ne doit plus exister — plutôt que supprimé,
+        // pour que la trace du retrait reste lisible dans l'historique.
         $this->post('/documents/upload', [
             'document' => new UploadedFile(
                 $this->createReportDocx(),
@@ -121,61 +124,41 @@ class CoverGenerationFlowTest extends TestCase
             ),
         ])->assertRedirect();
 
-        $document = \App\Models\Document::firstOrFail();
-        $this->assertSame('detected', $document->status);
+        $document = Document::firstOrFail();
 
-        // 2) Génération AVEC couverture
-        $response = $this->post("/documents/{$document->hash_id}/generate-cover", [
-            'cover' => new UploadedFile(
-                $this->createCoverDocx(),
-                'couverture.docx',
+        $this->post("/documents/{$document->hash_id}/generate-cover", [])
+            ->assertNotFound();
+    }
+
+    public function test_generation_sans_couverture_est_refusee(): void
+    {
+        // Idem : l'ancien comportement (exiger un fichier de couverture) n'a plus
+        // de sens puisque la fonctionnalité est retirée. On vérifie à la place
+        // que la génération SANS couverture fonctionne — c'est désormais le seul
+        // chemin de production.
+        Http::fake();
+
+        $this->post('/documents/upload', [
+            'document' => new UploadedFile(
+                $this->createReportDocx(),
+                'rapport_test.docx',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 null,
                 true
             ),
-            'nom' => 'MARIE CURIE',
-            'titre' => 'MACHINE LEARNING APPLIQUÉ',
-            'encadrant' => 'Dr. DUPONT',
-            'date' => '2025-2026',
-        ]);
+        ])->assertRedirect();
 
-        // 3) Réponse = téléchargement d'un DOCX
-        $response->assertOk();
-        $this->assertStringContainsString(
-            'attachment',
-            $response->headers->get('Content-Disposition', '')
-        );
+        $document = Document::firstOrFail();
 
-        // 4) Le DOCX généré est persistant et valide, avec les valeurs remplacées
+        $this->post("/documents/{$document->hash_id}/generate")->assertOk();
+
         $generated = GeneratedDocument::where('document_id', $document->id)->firstOrFail();
-        $this->assertSame('generated', $generated->status);
         $this->assertFileExists($generated->output_path);
 
-        $text = $this->extractText($generated->output_path);
-
-        // Valeurs remplacées
-        $this->assertStringContainsString('MARIE CURIE', $text);
-        $this->assertStringContainsString('MACHINE LEARNING APPLIQUÉ', $text);
-        $this->assertStringContainsString('Dr. DUPONT', $text);
-        $this->assertStringContainsString('2025-2026', $text);
-
-        // Labels conservés
-        $this->assertStringContainsString('Présenté par', $text);
-        $this->assertStringContainsString('Thème', $text);
-        $this->assertStringContainsString('Encadré par', $text);
-        $this->assertStringContainsString('Année académique', $text);
-
-        // Valeur d'origine de la couverture remplacée
-        $this->assertStringNotContainsString('JEAN DUPONT', $text);
-
-        // Le corps du rapport est toujours présent après la couverture
-        $this->assertStringContainsString('Introduction', $text);
-
-        // Aucun appel au LLM (la couverture est déterministe)
-        Http::assertNothingSent();
+        @unlink($generated->output_path);
     }
 
-    public function test_generation_sans_couverture_est_refusee(): void
+    public function test_la_route_de_generation_avec_gabarit_de_couverture_n_existe_plus(): void
     {
         $this->post('/documents/upload', [
             'document' => new UploadedFile(
@@ -187,10 +170,19 @@ class CoverGenerationFlowTest extends TestCase
             ),
         ])->assertRedirect();
 
-        $document = \App\Models\Document::firstOrFail();
+        $document = Document::firstOrFail();
 
-        $response = $this->post("/documents/{$document->hash_id}/generate-cover", []);
+        $this->post("/documents/{$document->hash_id}/generate-cover-page", [
+            'cover_page_template_id' => 1,
+        ])->assertNotFound();
+    }
 
-        $response->assertSessionHasErrors('cover');
+    public function test_le_builder_de_modeles_de_couverture_n_est_plus_accessible(): void
+    {
+        // Les routes `cover-templates.*` étaient partiellement publiques : elles
+        // doivent toutes avoir disparu, sans exception.
+        foreach (['/cover-templates', '/cover-templates/from-example'] as $url) {
+            $this->get($url)->assertNotFound();
+        }
     }
 }

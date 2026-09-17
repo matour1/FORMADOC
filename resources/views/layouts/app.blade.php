@@ -49,9 +49,6 @@
                 <i data-lucide="columns-2"></i> Comparer des gabarits
             </a>
             @auth
-                <a href="{{ route('cover-templates.index') }}" class="{{ request()->routeIs('cover-templates.*') ? 'active' : '' }}">
-                    <i data-lucide="book-open"></i> Pages de garde
-                </a>
                 <a href="{{ route('chat.index') }}" class="{{ request()->routeIs('chat.*') ? 'active' : '' }}">
                     <i data-lucide="message-circle"></i> Assistant IA
                 </a>

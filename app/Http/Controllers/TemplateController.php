@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CoverPageTemplate;
 use App\Models\Template;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -28,16 +27,8 @@ class TemplateController extends Controller
             ->orderBy('name')
             ->get();
 
-        // Pages de garde : publiques + personnelles
-        $coverTemplates = CoverPageTemplate::query()
-            ->where('is_public', true)
-            ->orWhere('user_id', $user->id)
-            ->orderBy('name')
-            ->get();
-
         return view('templates.index', [
             'formatTemplates' => $formatTemplates,
-            'coverTemplates' => $coverTemplates,
         ]);
     }
 

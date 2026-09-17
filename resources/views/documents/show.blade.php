@@ -354,51 +354,22 @@
                 </div>
             </section>
 
-            {{-- Couverture personnalisée (Phase 3, optionnel) --}}
+            {{-- Page de garde : RETIRÉE de cette version du produit.
+                 Ce n'est pas un oubli mais une décision de périmètre : l'objectif
+                 de la version est la MISE EN FORME du document (titres, styles,
+                 numérotation, sommaire, listes). Laisser un formulaire inerte
+                 serait pire que l'absence — l'utilisateur croirait pouvoir
+                 l'utiliser. On l'explique donc explicitement. --}}
             <section class="card" style="margin-bottom:1.25rem">
                 <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
-                    <i data-lucide="layout-template" style="width:19px;height:19px;color:var(--color-primary)"></i>
-                    <h2 class="card-title">Couverture personnalisée (optionnel)</h2>
+                    <i data-lucide="info" style="width:19px;height:19px;color:var(--color-text-muted)"></i>
+                    <h2 class="card-title">Page de garde</h2>
                 </div>
-                <p style="color:var(--color-text-secondary);font-size:.85rem;margin-bottom:1rem">
-                    Fournissez une couverture d'exemple (<code style="font-family:var(--font-mono);font-size:.78rem">.docx</code>) :
-                    FORMADOC détecte les zones (nom, titre, encadrant, date) et les remplace en
-                    conservant la structure et les styles.
+                <p style="color:var(--color-text-secondary);font-size:.85rem;margin:0">
+                    La génération de page de garde n'est pas disponible dans cette version.
+                    FORMADOC se concentre sur la <strong>mise en forme</strong> de votre document :
+                    titres, styles, numérotation des figures et tableaux, sommaire et listes.
                 </p>
-                <form method="POST" action="{{ route('documents.generate-cover', $document) }}" enctype="multipart/form-data">
-                    @csrf
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-                        <div style="grid-column:1 / -1">
-                            <label for="cover" style="display:block;font-size:.82rem;font-weight:600;margin-bottom:.35rem;color:var(--color-text-secondary)">Couverture d'exemple (.docx)</label>
-                            <input type="file" class="form-control @error('cover') is-invalid @enderror" id="cover" name="cover" accept=".docx" required>
-                            @error('cover')
-                                <span class="field-error">{{ $message }}</span>
-                            @enderror
-                        </div>
-                        <div>
-                            <label for="nom" style="display:block;font-size:.82rem;font-weight:600;margin-bottom:.35rem;color:var(--color-text-secondary)">Nom</label>
-                            <input type="text" class="form-control" id="nom" name="nom" maxlength="255" placeholder="Ex : JEAN DUPONT">
-                        </div>
-                        <div>
-                            <label for="titre" style="display:block;font-size:.82rem;font-weight:600;margin-bottom:.35rem;color:var(--color-text-secondary)">Titre</label>
-                            <input type="text" class="form-control" id="titre" name="titre" maxlength="255" placeholder="Ex : CONCEPTION D'UNE APPLICATION WEB">
-                        </div>
-                        <div>
-                            <label for="encadrant" style="display:block;font-size:.82rem;font-weight:600;margin-bottom:.35rem;color:var(--color-text-secondary)">Encadrant</label>
-                            <input type="text" class="form-control" id="encadrant" name="encadrant" maxlength="255" placeholder="Ex : Dr. MARTIN">
-                        </div>
-                        <div>
-                            <label for="date" style="display:block;font-size:.82rem;font-weight:600;margin-bottom:.35rem;color:var(--color-text-secondary)">Date / Année académique</label>
-                            <input type="text" class="form-control" id="date" name="date" maxlength="255" placeholder="Ex : 2025-2026">
-                        </div>
-                        <div style="grid-column:1 / -1;display:flex;justify-content:flex-end">
-                            <button type="submit" class="btn btn-secondary">
-                                <i data-lucide="layout-template" style="width:16px;height:16px"></i>
-                                Générer avec couverture
-                            </button>
-                        </div>
-                    </div>
-                </form>
             </section>
         @endif
 

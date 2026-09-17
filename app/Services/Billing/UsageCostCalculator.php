@@ -51,7 +51,7 @@ class UsageCostCalculator
      */
     public function usdToCredits(float $usd, ?float $rateFcfaPerUsd = null): int
     {
-        $rate = $rateFcfaPerUsd ?? (float) config('openrouter.rate_fcfa_per_usd', 620);
+        $rate = $rateFcfaPerUsd ?? (float) config('openrouter.rate_fcfa_per_usd', 630);
 
         $gross = max(0.0, $usd) * $this->profitabilityCoefficient();
 

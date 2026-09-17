@@ -9,6 +9,8 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Services/Chat/** | .ai/rules/chat.md |
 | app/Document/Classification/** | .ai/rules/classification.md |
 | app/Http/Controllers/ChatController.php | .ai/rules/controllers.md |
+| app/DocAnalyzer/** | .ai/rules/doc-analyzer.md |
+| app/Services/DocumentGeneration/** | .ai/rules/document-generation.md |
 | app/Document/**, app/Document/DocumentPipeline.php | .ai/rules/document.md |
 | resources/views/documents/** | .ai/rules/documents.md |
 | app/Document/Adapters/DocxOoxml/TableReader.php, app/Document/Adapters/DocxOoxml/XmlLoader.php | .ai/rules/docx-ooxml.md |

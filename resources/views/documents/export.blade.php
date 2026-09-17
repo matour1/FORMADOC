@@ -45,60 +45,21 @@
             <div style="display:flex;flex-direction:column;gap:1.4rem;min-width:0"
                  x-data="formatExport({{ $selectedTemplateId ?: 'null' }})">
 
-                {{-- Page de garde : sélection d'un modèle visuel (facultatif) --}}
+                {{-- Page de garde : RETIRÉE de cette version du produit.
+                     Le formulaire de sélection de modèle a été supprimé en même
+                     temps que ses routes. Un contrôle inerte serait plus trompeur
+                     qu'absent : l'utilisateur croirait pouvoir s'en servir.
+                     L'objectif de la version est la MISE EN FORME du document. --}}
                 <section class="card">
                     <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
-                        <i data-lucide="book-open" style="width:19px;height:19px;color:var(--color-primary)"></i>
-                        <h2 class="card-title">Ajouter une page de garde</h2>
+                        <i data-lucide="info" style="width:19px;height:19px;color:var(--color-text-muted)"></i>
+                        <h2 class="card-title">Page de garde</h2>
                     </div>
-                    <p style="color:var(--color-text-secondary);font-size:.85rem;margin-bottom:1.1rem">
-                        Choisissez un modèle visuel de couverture (facultatif). Les champs
-                        <code style="font-family:var(--font-mono);font-size:.78rem;background:var(--color-surface-2);padding:.1rem .35rem;border-radius:4px">&lcub;&lcub;placeholder&rcub;&rcub;</code>
-                        du modèle seront pré-remplis ci-dessous.
+                    <p style="color:var(--color-text-secondary);font-size:.85rem;margin:0">
+                        La génération de page de garde n'est pas disponible dans cette version.
+                        L'attention porte sur la <strong>mise en forme</strong> : titres, styles,
+                        numérotation des figures et tableaux, sommaire et listes.
                     </p>
-
-                    <form method="POST" action="{{ route('documents.generate-cover-page', $document) }}"
-                          style="display:flex;flex-direction:column;gap:1rem" x-data="coverExport({{ \Illuminate\Support\Js::from($coverTemplates) }})">
-                        @csrf
-
-                        <div>
-                            <label style="display:block;font-size:.82rem;font-weight:600;margin-bottom:.35rem;color:var(--color-text-secondary)">Modèle de page de garde</label>
-                            <select name="cover_page_template_id" x-model="selectedId" class="form-control">
-                                <option value="">— Aucune page de garde —</option>
-                                <template x-for="t in templates" :key="t.id">
-                                    <option :value="t.id" x-text="t.name"></option>
-                                </template>
-                            </select>
-                            @error('cover_page_template_id')
-                                <span class="field-error">{{ $message }}</span>
-                            @enderror
-                        </div>
-
-                        {{-- Champs des placeholders du modèle sélectionné --}}
-                        <template x-if="selected">
-                            <div>
-                                <p style="font-size:.85rem;font-weight:600;margin-bottom:.5rem">
-                                    Valeurs pour « <span x-text="selected.name"></span> »
-                                </p>
-                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
-                                    <template x-for="key in placeholderKeys(selected)" :key="key">
-                                        <div>
-                                            <label style="display:block;font-size:.75rem;font-weight:600;margin-bottom:.3rem;color:var(--color-text-muted)"
-                                                   x-text="key"></label>
-                                            <input type="text" :name="`values[${key}]`" class="form-control" style="font-size:.85rem"
-                                                   :placeholder="ph(key)">
-                                        </div>
-                                    </template>
-                                </div>
-                                <div style="display:flex;justify-content:flex-end;margin-top:1rem">
-                                    <button type="submit" class="btn btn-primary">
-                                        <i data-lucide="wand-2" style="width:16px;height:16px"></i>
-                                        Télécharger avec page de garde
-                                    </button>
-                                </div>
-                            </div>
-                        </template>
-                    </form>
                 </section>
 
                 {{-- Mise en forme : choix du gabarit + aperçu PDF --}}
@@ -340,33 +301,6 @@
 
 @push('scripts')
 <script>
-    function coverExport(templates) {
-        return {
-            templates: templates || [],
-            selectedId: '',
-            get selected() {
-                return this.templates.find(t => String(t.id) === String(this.selectedId)) || null;
-            },
-            placeholderKeys(t) {
-                if (!t || !t.elements) return [];
-                const set = new Set();
-                const walk = (blocks) => (blocks || []).forEach(b => {
-                    if (b.kind === 'text' && b.text) {
-                        (String(b.text).match(/\{\{\s*([\w\.]+)\s*\}\}/g) || []).forEach(m => {
-                            set.add(m.replace(/[{}\s]/g, ''));
-                        });
-                    }
-                });
-                (t.elements || []).forEach(r => (r.cells || []).forEach(c => walk(c.blocks)));
-                return [...set];
-            },
-            ph(key) {
-                // Évite les accolades littérales (interprétées par Blade)
-                return '{' + '{' + key + '}' + '}';
-            },
-        };
-    }
-
     function formatExport(selectedId) {
         return {
             templateId: selectedId || '',

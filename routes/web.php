@@ -48,17 +48,25 @@ Route::post('/feedback', [FeedbackController::class, 'store'])
     ->name('feedback.store')
     ->middleware('throttle:feedback');
 
-// Routes modèles de page de garde (builder visuel)
-Route::post('/cover-templates/check', [CoverPageTemplateController::class, 'exists'])
-    ->name('cover-templates.check');
-Route::post('/cover-templates/{coverTemplate}/preview', [CoverPageTemplateController::class, 'preview'])
-    ->name('cover-templates.preview');
-Route::get('/cover-templates/preview/{token}', [CoverPageTemplateController::class, 'previewFile'])
-    ->name('cover-templates.preview.file');
-Route::post('/cover-templates/{coverTemplate}/duplicate', [CoverPageTemplateController::class, 'duplicate'])
-    ->name('cover-templates.duplicate');
-Route::resource('cover-templates', CoverPageTemplateController::class)
-    ->parameters(['cover-templates' => 'coverTemplate']);
+// ⚠️ MODULE « PAGE DE GARDE » RETIRÉ DE CETTE VERSION.
+//
+// Les routes `cover-templates.*` (builder visuel) et `documents.generate-cover*`
+// ne sont plus déclarées : elles ont été retirées pour recentrer le produit sur
+// la MISE EN FORME de document, qui est l'objectif de cette version.
+//
+// Le code correspondant (`CoverPageTemplateController`, `CoverGenerationService`,
+// `CoverPageRenderer`, le modèle `CoverPageTemplate`, les vues
+// `resources/views/cover-templates/**`) est CONSERVÉ sur le disque, mais
+// inatteignable faute de route. Il n'est pas supprimé pour deux raisons :
+//
+//   1. le retour arrière reste possible sans reconstruction depuis l'historique ;
+//   2. `Documents::generateAndDownload()` n'appelle plus `prepareCover()`, donc
+//      aucune vue ne doit plus proposer l'option — le retrait des routes suffit
+//      à garantir qu'aucun utilisateur n'y accède.
+//
+// Pour réactiver : redéclarer les routes et rebrancher le paramètre `$cover` de
+// `generateAndDownload()`. Aucune donnée n'est perdue : les tables
+// `cover_page_templates` / `cover_templates` restent intactes.
 
 // Routes documents (upload + analyse de structure + génération DOCX).
 // P0-1 (audit sécurité) : ces routes étaient HORS du groupe auth → IDOR
@@ -66,14 +74,6 @@ Route::resource('cover-templates', CoverPageTemplateController::class)
 // devinant l'ID). Elles sont désormais protégées ET vérifient
 // l'appartenance via DocumentPolicy (owns) dans le contrôleur.
 Route::middleware(['auth'])->group(function () {
-    // Builder « à partir d'un exemple » (authentifié)
-    Route::get('/cover-templates/from-example', [CoverPageTemplateController::class, 'fromExample'])
-        ->name('cover-templates.from-example');
-    Route::post('/cover-templates/from-example', [CoverPageTemplateController::class, 'detectExample'])
-        ->name('cover-templates.detect-example');
-    Route::post('/cover-templates/from-example/store', [CoverPageTemplateController::class, 'storeFromExample'])
-        ->name('cover-templates.store-from-example');
-
     Route::group(['prefix' => 'documents'], function () {
         Route::get('/upload', [DocumentController::class, 'create'])->name('documents.create');
         Route::post('/upload', [DocumentController::class, 'upload'])->name('documents.upload');
@@ -90,8 +90,5 @@ Route::middleware(['auth'])->group(function () {
         // elle est soumise à la même vérification d'appartenance que le reste.
         Route::post('/{document}/undo-edit', [DocumentController::class, 'undoEdit'])->name('documents.undo-edit');
         Route::post('/{document}/generate', [DocumentController::class, 'generate'])->name('documents.generate');
-        Route::post('/{document}/generate-cover', [DocumentController::class, 'generateWithCover'])->name('documents.generate-cover');
-        Route::post('/{document}/generate-cover-page', [DocumentController::class, 'generateWithCoverPageTemplate'])
-            ->name('documents.generate-cover-page');
     });
 });

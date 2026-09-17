@@ -26,6 +26,7 @@ use App\Services\Detection\LegendDetectionService;
 use App\Services\Detection\StructureCorrectionService;
 use App\Services\Detection\TextExtractionService;
 use App\Services\DocumentGeneration\CoverDetectionService;
+use App\Services\DocumentGeneration\FormattedDocumentExporter;
 use App\Services\DocumentGeneration\PdfPreviewService;
 use App\Services\OpenRouter\OpenRouterService;
 use Exception;
@@ -60,7 +61,75 @@ class DocumentController extends Controller
         private readonly DocumentEditingService $editing,
         private readonly BlockClassifier $classifier,
         private readonly ClarificationService $clarifications,
+        private readonly FormattedDocumentExporter $exporter,
     ) {}
+
+    /**
+     * Écrit le DOCX du document : nouveau pipeline si possible, ancien sinon.
+     *
+     * **Pourquoi un repli plutôt qu'un remplacement.** Le nouveau pipeline
+     * (R1 → R4) est activé par le flag `document.pipeline.v2`. Tant que des
+     * documents n'ont pas de structure native (`structural_json`), ils doivent
+     * continuer d'être exportés comme avant : c'est le principe du strangleur,
+     * et il n'y a aucune raison de casser leur export pour un changement de
+     * moteur.
+     *
+     * **Ce que le nouveau chemin apporte.** Styles du gabarit (R3), numéros
+     * recalculés (R4), éditions faites par le chat (R6) : l'ancien chemin les
+     * ignorait tous, parce qu'il relisait `structure['titres'] + body_complet`,
+     * que R3 → R6 ne mettent pas à jour.
+     *
+     * @return string Chemin du fichier écrit
+     */
+    private function writeDocument(Document $document, string $outputPath, ?Template $template): string
+    {
+        $structural = $document->structure?->structuralDocument();
+
+        if ($structural !== null && app(DocumentPipeline::class)->isNativeEnabled()) {
+            try {
+                $resultat = $this->exporter->export(
+                    $structural,
+                    storage_path('uploads/'.$document->path),
+                    $outputPath,
+                    $template?->params,
+                );
+
+                return $resultat['path'];
+            } catch (Throwable $e) {
+                // Le repli est ESSENTIEL : perdre l'export complet pour un défaut
+                // du nouveau moteur serait bien plus grave que de livrer un
+                // document non restylé. On trace parce qu'un repli silencieux
+                // masquerait un défaut durable du nouveau pipeline.
+                Log::warning('Export natif échoué, repli sur l\'ancien pipeline', [
+                    'document_id' => $document->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $this->writeLegacyDocument($document, $outputPath, $template);
+    }
+
+    /**
+     * Écrit le DOCX avec l'ancien pipeline (lecture PHPWord).
+     *
+     * Chemin conservé tel quel : il sert de repli, et il reste la source de
+     * vérité pour les documents sans structure native.
+     */
+    private function writeLegacyDocument(Document $document, string $outputPath, ?Template $template): string
+    {
+        $structure = $document->structure?->structure;
+
+        if (empty($structure)) {
+            throw new \RuntimeException('Aucune structure détectée pour ce document.');
+        }
+
+        // Complète le binaire des images depuis l'archive source : sans cela les
+        // images du corps sont perdues à la reconstruction.
+        $structure = $this->enrichBodyImages($document, $structure);
+
+        return (new DocumentReconstructor)->reconstruct($structure, $outputPath, null, $template?->params);
+    }
 
     /**
      * Vérifie l'appartenance du document à l'utilisateur connecté (P0-1).
@@ -550,19 +619,10 @@ class DocumentController extends Controller
             }
 
             $generatedPath = $this->generateOutputPath($document);
-            $reconstructor = new DocumentReconstructor;
-            $structure = $document->structure?->structure;
 
-            if (empty($structure)) {
-                return back()->withErrors(['document' => 'Aucune structure détectée pour ce document.']);
-            }
-
-            // Phase 3 : complète les images du body_complet par leur binaire
-            // (extrait depuis l'archive DOCX source — voir DocumentParser::readImageData).
-            // Sans cela les images sont perdues à la reconstruction (défaut 3).
-            $structure = $this->enrichBodyImages($document, $structure);
-
-            $outputPath = $reconstructor->reconstruct($structure, $generatedPath, null, $template?->params);
+            // Écriture du DOCX : nouveau pipeline (styles R3 + numéros R4 +
+            // éditions R6) quand une structure native existe, ancien sinon.
+            $outputPath = $this->writeDocument($document, $generatedPath, $template);
 
             // Conversion PDF (LibreOffice) pour l'aperçu
             $pdfPath = (new PdfPreviewService)->convertToPdf($outputPath);
@@ -686,13 +746,11 @@ class DocumentController extends Controller
 
             $generatedPath = $this->generateOutputPath($document);
 
-            $reconstructor = new DocumentReconstructor;
-
-            // Phase 3 : mêmes complétions d'images que previewPdf (binaire
-            // extrait depuis le DOCX source — défaut 3).
-            $structure = $this->enrichBodyImages($document, $structure);
-
-            $outputPath = $reconstructor->reconstruct($structure, $generatedPath, $cover, $template?->params);
+            // Écriture du DOCX : nouveau pipeline (styles R3 + numéros R4 +
+            // éditions R6) quand une structure native existe, ancien sinon.
+            // `$cover` n'est plus transmis : la page de garde n'est plus produite
+            // dans cette version du produit.
+            $outputPath = $this->writeDocument($document, $generatedPath, $template);
 
             // Mémorise la génération (tableau de bord / historique)
             $generated = GeneratedDocument::updateOrCreate(

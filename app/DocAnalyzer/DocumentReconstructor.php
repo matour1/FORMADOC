@@ -7,11 +7,13 @@ namespace App\DocAnalyzer;
 use App\Models\CoverPageTemplate;
 use App\Services\DocumentGeneration\CoverGenerationService;
 use App\Services\DocumentGeneration\CoverPageRenderer;
+use App\Services\DocumentGeneration\TemplateStyleResolver;
 use DOMDocument;
 use DOMXPath;
 use PhpOffice\PhpWord\Element\Section;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
+use PhpOffice\PhpWord\Settings;
 use ZipArchive;
 
 /**
@@ -112,38 +114,37 @@ class DocumentReconstructor
     /**
      * Génère un DOCX complet à partir de la structure analysée.
      *
-     * @param array<string, mixed> $analysis   Résultat du DocAnalyzer (+ legends)
-     * @param string               $outputPath Chemin absolu du fichier à créer
-     * @param null|array<string, mixed> $cover  Couverture optionnelle :
-     *                                           - Phase 3 (fichier exemple) :
-     *                                             { detection, values }
-     *                                           - Builder visuel :
-     *                                             { cover_page_template: CoverPageTemplate,
-     *                                               values }
-     *                                           Si fournie, une section couverture
-     *                                           est préfixée.
-     *
+     * @param  array<string, mixed>  $analysis  Résultat du DocAnalyzer (+ legends)
+     * @param  string  $outputPath  Chemin absolu du fichier à créer
+     * @param  null|array<string, mixed>  $cover  Couverture optionnelle :
+     *                                            - Phase 3 (fichier exemple) :
+     *                                            { detection, values }
+     *                                            - Builder visuel :
+     *                                            { cover_page_template: CoverPageTemplate,
+     *                                            values }
+     *                                            Si fournie, une section couverture
+     *                                            est préfixée.
      * @return string Le chemin du fichier généré
      *
      * @throws \RuntimeException Si l'écriture du DOCX échoue
      */
     public function reconstruct(array $analysis, string $outputPath, ?array $cover = null, ?array $gabarit = null): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $phpWord->getSettings()->setUpdateFields(true);
 
         // Gabarit de mise en forme (params normalisés). null → défauts.
-        $this->gabarit = \App\Services\DocumentGeneration\TemplateStyleResolver::normalize($gabarit);
+        $this->gabarit = TemplateStyleResolver::normalize($gabarit);
         $this->registerTitleStyles($phpWord);
 
         // ── Section 0 : couverture (optionnelle) ──────────────────────────────
         // Sans pageNumberingStart : pas de numéro de page, pas d'en-tête/pied.
-        if (!empty($cover)) {
+        if (! empty($cover)) {
             $this->renderCover($phpWord, $cover);
         }
 
         // ── Section 1 : frontispice (numérotation romaine) ────────────────────
-        $sectionStyle = \App\Services\DocumentGeneration\TemplateStyleResolver::sectionStyle($this->gabarit);
+        $sectionStyle = TemplateStyleResolver::sectionStyle($this->gabarit);
         $frontSection = $phpWord->addSection(array_merge(['pageNumberingStart' => 1], $sectionStyle));
         $this->applyHeaderFooter($frontSection, $analysis, 'roman');
         $this->writeFrontispiece($frontSection, $analysis);
@@ -154,6 +155,30 @@ class DocumentReconstructor
         $this->writeBody($bodySection, $analysis);
 
         // ── Écriture du DOCX ───────────────────────────────────────────────────
+        //
+        // ÉCHAPPEMENT XML ACTIVÉ — défaut de production corrigé ici.
+        //
+        // PHPWord écrit le texte via `writeRaw()` quand l'échappement est
+        // désactivé, ce qui est son réglage PAR DÉFAUT (Settings::$outputEscaping
+        // = false). Un `&` ou un `<` présent dans le document source produisait
+        // donc un XML invalide : `xmlParseEntityRef: no name` pour le premier,
+        // `StartTag: invalid element name` pour le second.
+        //
+        // Conséquence concrète, mesurée sur les documents réels : 19 fichiers sur
+        // 51 étaient générés avec un XML invalide — que Word REFUSE d'ouvrir.
+        // Les caractères concernés sont banals dans un mémoire (« Hebergement &
+        // nom de Domaine », « Prix < 1 000 ») ; le défaut était donc latent pour
+        // tout document utilisateur, pas seulement pour le corpus de mesure.
+        //
+        // Les champs (sommaire, numérotation) ne sont PAS affectés : ils sont
+        // écrits via des appels XMLWriter directs (`startElement`/`text`), sans
+        // passer par `writeText()`.
+        //
+        // Le réglage est GLOBAL et statique : on le restaure dans un `finally`
+        // pour ne pas modifier le comportement du reste de l'application.
+        $escapingPrecedent = Settings::isOutputEscapingEnabled();
+        Settings::setOutputEscapingEnabled(true);
+
         try {
             $writer = IOFactory::createWriter($phpWord, 'Word2007');
             $writer->save($outputPath);
@@ -163,6 +188,8 @@ class DocumentReconstructor
                 0,
                 $e
             );
+        } finally {
+            Settings::setOutputEscapingEnabled($escapingPrecedent);
         }
 
         // ── Post-traitement : w:pgNumType w:fmt (romain/arabe) ────────────────
@@ -185,8 +212,8 @@ class DocumentReconstructor
      *   - builder visuel : CoverPageRenderer (ghost-table + placeholders)
      *   - fichier DOCX d'exemple : CoverGenerationService (détection de zones)
      *
-     * @param array<string, mixed> $cover { detection, values } ou
-     *                                     { cover_page_template, values }
+     * @param  array<string, mixed>  $cover  { detection, values } ou
+     *                                       { cover_page_template, values }
      */
     private function renderCover(PhpWord $phpWord, array $cover): void
     {
@@ -194,14 +221,14 @@ class DocumentReconstructor
 
         // Builder visuel (Phase 6) : un CoverPageTemplate tout prêt
         if (isset($cover['cover_page_template']) && $cover['cover_page_template'] instanceof CoverPageTemplate) {
-            (new CoverPageRenderer())->render($phpWord, $cover['cover_page_template'], $values);
+            (new CoverPageRenderer)->render($phpWord, $cover['cover_page_template'], $values);
 
             return;
         }
 
         // Fichier DOCX d'exemple (Phase 3) : détection de zones
-        if (!empty($cover['detection']) && is_array($cover['detection'])) {
-            (new CoverGenerationService())->addCoverSection($phpWord, $cover['detection'], $values);
+        if (! empty($cover['detection']) && is_array($cover['detection'])) {
+            (new CoverGenerationService)->addCoverSection($phpWord, $cover['detection'], $values);
         }
     }
 
@@ -214,7 +241,7 @@ class DocumentReconstructor
      */
     private function registerTitleStyles(PhpWord $phpWord): void
     {
-        $resolver = \App\Services\DocumentGeneration\TemplateStyleResolver::class;
+        $resolver = TemplateStyleResolver::class;
         $paragraphStyle = $resolver::titleParagraphStyle($this->gabarit);
 
         $phpWord->addTitleStyle(1, $resolver::fontStyle($this->gabarit, 'titre1'), $paragraphStyle);
@@ -227,7 +254,7 @@ class DocumentReconstructor
      * champ PAGE au format demandé (roman pour le frontispice, arabe pour le
      * corps).
      *
-     * @param array<string, mixed> $analysis
+     * @param  array<string, mixed>  $analysis
      */
     private function applyHeaderFooter(Section $section, array $analysis, string $pageFormat): void
     {
@@ -265,16 +292,16 @@ class DocumentReconstructor
      * Écrit la section frontispice : sommaire (TOC), liste des figures et
      * liste des tableaux (depuis les légendes). Rien si aucun titre.
      *
-     * @param array<string, mixed> $analysis
+     * @param  array<string, mixed>  $analysis
      */
     private function writeFrontispiece(Section $section, array $analysis): void
     {
-        $hasTitles = !empty($analysis['titres']) || !empty($analysis['sous_titres']);
-        if (!$hasTitles) {
+        $hasTitles = ! empty($analysis['titres']) || ! empty($analysis['sous_titres']);
+        if (! $hasTitles) {
             return;
         }
 
-        $resolver = \App\Services\DocumentGeneration\TemplateStyleResolver::class;
+        $resolver = TemplateStyleResolver::class;
 
         // Sommaire : le titre est un paragraphe STYLÉ (et non un addTitle) :
         // le champ TOC natif PhpWord liste UNE entrée par élément Title de
@@ -340,11 +367,11 @@ class DocumentReconstructor
      * servent uniquement de repli si `body_complet` est absent (anciens
      * documents analysés avant cette version).
      *
-     * @param array<string, mixed> $analysis
+     * @param  array<string, mixed>  $analysis
      */
     private function writeBody(Section $section, array $analysis): void
     {
-        $resolver = \App\Services\DocumentGeneration\TemplateStyleResolver::class;
+        $resolver = TemplateStyleResolver::class;
         $bodyComplet = $analysis['body_complet'] ?? [];
 
         // Map position → niveau de titre (titres + sous_titres détectés).
@@ -367,7 +394,7 @@ class DocumentReconstructor
                 // Word (Figure 1, 2, 3… ; Tableau 1, 2, 3…).
                 $texte = $this->resolveSeqFields($texte);
 
-                if ($texte === '' && !in_array($type, ['image', 'saut', 'tableau'], true)) {
+                if ($texte === '' && ! in_array($type, ['image', 'saut', 'tableau'], true)) {
                     continue;
                 }
 
@@ -436,11 +463,11 @@ class DocumentReconstructor
     /**
      * Restitue un élément unique du body complet selon son type.
      *
-     * @param array<string, mixed> $element
-     * @param class-string         $resolver
-     * @param null|string          $texteResolu Texte déjà résolu (champs
-     *                                          SEQ remplacés) par writeBody ;
-     *                                          null → texte de l'élément.
+     * @param  array<string, mixed>  $element
+     * @param  class-string  $resolver
+     * @param  null|string  $texteResolu  Texte déjà résolu (champs
+     *                                    SEQ remplacés) par writeBody ;
+     *                                    null → texte de l'élément.
      */
     private function writeElement(Section $section, array $element, string $resolver, ?string $texteResolu = null): void
     {
@@ -491,15 +518,16 @@ class DocumentReconstructor
      * Restitue un tableau avec son contenu (lignes → cellules) et le style
      * de gabarit (bordure, en-tête coloré).
      *
-     * @param array<string, mixed> $element
-     * @param class-string         $resolver
+     * @param  array<string, mixed>  $element
+     * @param  class-string  $resolver
      */
     private function writeTable(Section $section, array $element, string $resolver): void
     {
         $rows = $element['rows'] ?? [];
-        if (!is_array($rows) || $rows === []) {
+        if (! is_array($rows) || $rows === []) {
             // Tableau sans contenu extrait : on le signale sans le perdre
             $section->addText('[Tableau]', $resolver::fontStyle($this->gabarit, 'corps'));
+
             return;
         }
 
@@ -527,12 +555,12 @@ class DocumentReconstructor
     /**
      * Restitue une image depuis son binaire (base64 stocké dans la structure).
      *
-     * @param array<string, mixed> $element
+     * @param  array<string, mixed>  $element
      */
     private function writeImage(Section $section, array $element): void
     {
         $data = $element['image_data'] ?? null;
-        if (!is_string($data) || $data === '') {
+        if (! is_string($data) || $data === '') {
             $name = (string) ($element['image_name'] ?? 'image');
             $section->addText("[Image: {$name}]");
 
@@ -546,7 +574,7 @@ class DocumentReconstructor
         }
 
         // Extension correcte pour que PhpWord détecte le type MIME
-        $tmpPath = $tmpPath . '.' . $extension;
+        $tmpPath = $tmpPath.'.'.$extension;
         file_put_contents($tmpPath, base64_decode($data));
 
         try {
@@ -561,7 +589,7 @@ class DocumentReconstructor
             $this->tempImages[] = $tmpPath;
         } catch (\Throwable $e) {
             // Image illisible : on la signale sans bloquer la génération
-            $section->addText('[Image: ' . ($element['image_name'] ?? '') . ']');
+            $section->addText('[Image: '.($element['image_name'] ?? '').']');
             @unlink($tmpPath);
         }
     }
@@ -569,9 +597,8 @@ class DocumentReconstructor
     /**
      * Retourne les légendes d'un type donné (insensible à la casse).
      *
-     * @param array<string, mixed> $analysis
-     * @param string[]             $types
-     *
+     * @param  array<string, mixed>  $analysis
+     * @param  string[]  $types
      * @return array<int, array<string, mixed>>
      */
     private function legendsByType(array $analysis, array $types): array
@@ -597,11 +624,11 @@ class DocumentReconstructor
      * structures récentes (parse Phase 3) arrivent déjà résolues : le
      * motif ne matche plus, la méthode est sans effet.
      *
-     * @param string $text Texte d'un élément ou d'une légende
-     * @param bool   $global true → compteur persistant (corps du document,
-     *                       ordre d'apparition Word) ; false → compteur local
-     *                       jetable (listes du frontispice, qui ne doivent
-     *                       PAS consommer la numérotation du corps).
+     * @param  string  $text  Texte d'un élément ou d'une légende
+     * @param  bool  $global  true → compteur persistant (corps du document,
+     *                        ordre d'apparition Word) ; false → compteur local
+     *                        jetable (listes du frontispice, qui ne doivent
+     *                        PAS consommer la numérotation du corps).
      */
     private function resolveSeqFields(string $text, bool $global = true): string
     {
@@ -629,23 +656,22 @@ class DocumentReconstructor
      * Clé de position stable pour joindre les catégories détectées
      * (titres/sous_titres) aux éléments du body_complet.
      *
-     * @param null|array<string, mixed> $position
+     * @param  null|array<string, mixed>  $position
      */
     private static function positionKey(?array $position): string
     {
-        if (!is_array($position)) {
+        if (! is_array($position)) {
             return '';
         }
 
-        return (string) ($position['section_index'] ?? 0) . ':' . (string) ($position['element_index'] ?? 0);
+        return (string) ($position['section_index'] ?? 0).':'.(string) ($position['element_index'] ?? 0);
     }
 
     /**
      * Construit la map "section:element → niveau de titre" depuis les
      * catégories détectées (titres niveau 1, sous_titres niveaux 2-3).
      *
-     * @param array<string, mixed> $analysis
-     *
+     * @param  array<string, mixed>  $analysis
      * @return array<string, int>
      */
     private function titreLevelMap(array $analysis): array
@@ -666,8 +692,8 @@ class DocumentReconstructor
     /**
      * Compare deux positions (null = fin de liste).
      *
-     * @param mixed $a
-     * @param mixed $b
+     * @param  mixed  $a
+     * @param  mixed  $b
      */
     private static function comparePositions($a, $b): int
     {
@@ -706,7 +732,7 @@ class DocumentReconstructor
      */
     private function applyPageNumberingFormats(string $docxPath): void
     {
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         if ($zip->open($docxPath) !== true) {
             return;
         }
@@ -718,8 +744,8 @@ class DocumentReconstructor
             return;
         }
 
-        $dom = new DOMDocument();
-        if (!$dom->loadXML($xml)) {
+        $dom = new DOMDocument;
+        if (! $dom->loadXML($xml)) {
             $zip->close();
 
             return;
@@ -749,7 +775,7 @@ class DocumentReconstructor
                     continue;
                 }
 
-                if (!isset(self::PAGE_NUMBERING_FORMATS[$formatIndex])) {
+                if (! isset(self::PAGE_NUMBERING_FORMATS[$formatIndex])) {
                     break;
                 }
 
@@ -782,7 +808,7 @@ class DocumentReconstructor
     public function applyGridSpan(string $docxPath): void
     {
         try {
-            $zip = new ZipArchive();
+            $zip = new ZipArchive;
             if ($zip->open($docxPath) !== true) {
                 return;
             }
@@ -790,18 +816,21 @@ class DocumentReconstructor
             $xml = $zip->getFromName('word/document.xml');
             if ($xml === false) {
                 $zip->close();
+
                 return;
             }
 
             // Aucun marqueur → rien à faire (PhpWord natif a déjà écrit gridSpan)
             if (strpos($xml, 'gridspan') === false) {
                 $zip->close();
+
                 return;
             }
 
-            $dom = new DOMDocument();
-            if (!$dom->loadXML($xml)) {
+            $dom = new DOMDocument;
+            if (! $dom->loadXML($xml)) {
                 $zip->close();
+
                 return;
             }
 
@@ -813,7 +842,7 @@ class DocumentReconstructor
             $markerTcs = $xpath->query('//w:tc[contains(., "gridspan")]');
             if ($markerTcs !== false) {
                 foreach ($markerTcs as $tc) {
-                    if (!$tc instanceof \DOMElement) {
+                    if (! $tc instanceof \DOMElement) {
                         continue;
                     }
                     // Le marqueur est soit un commentaire XML, soit du texte échappé
@@ -823,11 +852,11 @@ class DocumentReconstructor
                     }
 
                     $tcPr = $xpath->query('./w:tcPr', $tc)->item(0);
-                    if (!$tcPr instanceof \DOMElement) {
+                    if (! $tcPr instanceof \DOMElement) {
                         $tcPr = $dom->createElementNS($ns, 'w:tcPr');
                         $tc->insertBefore($tcPr, $tc->firstChild);
                     }
-                    if (!$xpath->query('./w:gridSpan', $tcPr)->item(0) instanceof \DOMElement) {
+                    if (! $xpath->query('./w:gridSpan', $tcPr)->item(0) instanceof \DOMElement) {
                         $gridSpan = $dom->createElementNS($ns, 'w:gridSpan');
                         $gridSpan->setAttributeNS($ns, 'w:val', (string) $span);
                         $tcPr->appendChild($gridSpan);
@@ -847,7 +876,7 @@ class DocumentReconstructor
             if ($markerPs !== false) {
                 $toRemove = [];
                 foreach ($markerPs as $p) {
-                    if (!$p instanceof \DOMElement) {
+                    if (! $p instanceof \DOMElement) {
                         continue;
                     }
                     $clean = preg_replace('/<!--gridspan:\d+-->/', '', trim($p->textContent ?? '')) ?? '';
@@ -896,6 +925,7 @@ class DocumentReconstructor
         if (preg_match('/<!--\s*gridspan:\s*(\d+)\s*-->/', $tc->textContent ?? '', $m)) {
             return max(1, min(12, (int) $m[1]));
         }
+
         return 1;
     }
 }
