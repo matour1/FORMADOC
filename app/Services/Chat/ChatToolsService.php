@@ -8,13 +8,10 @@ use App\DocAnalyzer\DocAnalyzer;
 use App\DocAnalyzer\DocumentReconstructor;
 use App\Document\Editing\DocumentEditingService;
 use App\Document\Editing\ToolWhitelist;
-use App\Models\CoverPageTemplate;
 use App\Models\User;
 use App\Services\Anthropic\ClaudeSkillsService;
 use App\Services\Detection\StructureCorrectionService;
 use App\Services\Detection\TextExtractionService;
-use App\Services\DocumentGeneration\CoverGenerationService;
-use App\Services\DocumentGeneration\CoverPageRenderer;
 use App\Services\OpenRouter\OpenRouterService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -29,7 +26,6 @@ use PhpOffice\PhpWord\Settings;
  * d'actions concrètes au lieu de se contenter de répondre en texte :
  *
  * OUTILS INTERNES (exécution locale, PHPWord / LibreOffice) :
- *   - cover_page_generate : génère une page de garde DOCX depuis un gabarit
  *   - document_reconstruct : reconstruit un DOCX depuis une structure
  *                            détectée (reconstructeur)
  *   - table_of_contents    : génère un sommaire (champ TOC PhpWord)
@@ -47,8 +43,6 @@ class ChatToolsService
 {
     public function __construct(
         private readonly OpenRouterService $openRouter,
-        private readonly CoverGenerationService $coverGeneration,
-        private readonly CoverPageRenderer $coverPageRenderer,
         private readonly DocumentEditService $documentEditor,
         private readonly ?ClaudeSkillsService $claudeSkills = null,
         private readonly ?TextExtractionService $textExtraction = null,
@@ -90,25 +84,6 @@ class ChatToolsService
     public function schemas(): array
     {
         return [
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'cover_page_generate',
-                    'description' => 'Génère une page de garde professionnelle (DOCX) pour un rapport '
-                        .'de stage / mémoire à partir d\'un gabarit de couverture existant. '
-                        .'Arguments : template_id (identifiant du gabarit), et les valeurs à injecter '
-                        .'(school, department, title, author, supervisor, date, location, academic_year…).',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'template_id' => ['type' => 'integer', 'description' => 'ID du gabarit de couverture'],
-                            'values' => ['type' => 'object', 'description' => 'Valeurs à injecter dans les placeholders {{key}}'],
-                            'output_filename' => ['type' => 'string', 'description' => 'Nom du fichier DOCX généré (sans extension)'],
-                        ],
-                        'required' => ['template_id', 'values'],
-                    ],
-                ],
-            ],
             [
                 'type' => 'function',
                 'function' => [
@@ -341,7 +316,6 @@ class ChatToolsService
 
         try {
             $result = match ($name) {
-                'cover_page_generate' => $this->generateCoverPage($arguments, $user),
                 'document_reconstruct' => $this->reconstructDocument($arguments),
                 'structure_correct' => $this->correctStructure($arguments),
                 'table_of_contents' => $this->generateTableOfContents($arguments),
@@ -643,50 +617,6 @@ class ChatToolsService
     /* ------------------------------------------------------------------
      |  Outils internes
      | ------------------------------------------------------------------ */
-
-    /**
-     * Génère une page de garde DOCX via CoverPageRenderer.
-     *
-     * @param  array<string, mixed>  $arguments
-     * @return array{result: string}
-     */
-    private function generateCoverPage(array $arguments, ?User $user): array
-    {
-        $templateId = (int) ($arguments['template_id'] ?? 0);
-        $values = (array) ($arguments['values'] ?? []);
-        $filename = $this->safeFilename(
-            (string) ($arguments['output_filename'] ?? 'page_de_garde'),
-            'docx'
-        );
-
-        $query = CoverPageTemplate::query();
-
-        // SÉCURITÉ (P0-5) : l'argument `allow_any_template` envoyé par le LLM
-        // est IGNORÉ — le serveur décide. Sans cette garde, un prompt injecté
-        // pouvait faire générer une couverture à partir d'un gabarit privé
-        // appartenant à un autre utilisateur (ou un gabarit système réservé).
-        $query->where(function ($q) use ($user) {
-            $q->where('is_public', true);
-            if ($user) {
-                $q->orWhere('user_id', $user->id);
-            }
-        });
-        $template = $query->find($templateId);
-
-        if (! $template) {
-            return ['error' => 'Gabarit de couverture introuvable (id='.$templateId.'). '
-                .'Demandez à l\'utilisateur de créer ou sélectionner un gabarit.'];
-        }
-
-        $path = $this->storagePath($filename);
-        $this->ensureDirectory($path);
-        $phpWord = new PhpWord;
-        $this->coverPageRenderer->render($phpWord, $template, $values);
-        $writer = IOFactory::createWriter($phpWord, 'Word2007');
-        $writer->save(Storage::disk('local')->path($path));
-
-        return ['result' => 'Page de garde générée : '.$path];
-    }
 
     /**
      * Reconstruit un document DOCX complet.

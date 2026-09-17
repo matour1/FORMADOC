@@ -28,13 +28,13 @@ class DocumentReconstructorTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tempDir = sys_get_temp_dir() . '/formadoc_reconstruct_' . uniqid();
+        $this->tempDir = sys_get_temp_dir().'/formadoc_reconstruct_'.uniqid();
         mkdir($this->tempDir, 0777, true);
     }
 
     protected function tearDown(): void
     {
-        foreach (glob($this->tempDir . '/*') ?: [] as $file) {
+        foreach (glob($this->tempDir.'/*') ?: [] as $file) {
             @unlink($file);
         }
         @rmdir($this->tempDir);
@@ -129,7 +129,7 @@ class DocumentReconstructorTest extends TestCase
      */
     private function readPart(string $docxPath, string $partName): string
     {
-        $zip = new \ZipArchive();
+        $zip = new \ZipArchive;
         $this->assertTrue($zip->open($docxPath), 'Le DOCX généré doit être un ZIP valide');
         $xml = $zip->getFromName($partName);
         $zip->close();
@@ -154,16 +154,16 @@ class DocumentReconstructorTest extends TestCase
 
     public function test_genere_un_docx_valide(): void
     {
-        $outputPath = $this->tempDir . '/sortie.docx';
+        $outputPath = $this->tempDir.'/sortie.docx';
 
-        $reconstructor = new DocumentReconstructor();
+        $reconstructor = new DocumentReconstructor;
         $result = $reconstructor->reconstruct($this->sampleAnalysis(), $outputPath);
 
         $this->assertFileExists($outputPath);
         $this->assertSame($outputPath, $result);
 
         // Le fichier doit être un ZIP OOXML valide
-        $zip = new \ZipArchive();
+        $zip = new \ZipArchive;
         $this->assertTrue($zip->open($outputPath));
         $this->assertNotFalse($zip->getFromName('word/document.xml'));
         $this->assertNotFalse($zip->getFromName('[Content_Types].xml'));
@@ -174,8 +174,8 @@ class DocumentReconstructorTest extends TestCase
 
     public function test_les_titres_utilisent_les_styles_natifs_heading(): void
     {
-        $outputPath = $this->tempDir . '/titres.docx';
-        (new DocumentReconstructor())->reconstruct($this->sampleAnalysis(), $outputPath);
+        $outputPath = $this->tempDir.'/titres.docx';
+        (new DocumentReconstructor)->reconstruct($this->sampleAnalysis(), $outputPath);
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
 
@@ -196,8 +196,8 @@ class DocumentReconstructorTest extends TestCase
 
     public function test_la_premiere_section_est_en_romain_et_le_corps_en_arabe(): void
     {
-        $outputPath = $this->tempDir . '/sections.docx';
-        (new DocumentReconstructor())->reconstruct($this->sampleAnalysis(), $outputPath);
+        $outputPath = $this->tempDir.'/sections.docx';
+        (new DocumentReconstructor)->reconstruct($this->sampleAnalysis(), $outputPath);
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
 
@@ -214,8 +214,8 @@ class DocumentReconstructorTest extends TestCase
 
     public function test_le_champ_page_du_pied_utilise_le_bon_format(): void
     {
-        $outputPath = $this->tempDir . '/page.docx';
-        (new DocumentReconstructor())->reconstruct($this->sampleAnalysis(), $outputPath);
+        $outputPath = $this->tempDir.'/page.docx';
+        (new DocumentReconstructor)->reconstruct($this->sampleAnalysis(), $outputPath);
 
         $xml = $this->readPart($outputPath, 'word/footer1.xml');
 
@@ -228,8 +228,8 @@ class DocumentReconstructorTest extends TestCase
 
     public function test_le_sommaire_est_un_champ_toc_avec_mise_a_jour_automatique(): void
     {
-        $outputPath = $this->tempDir . '/toc.docx';
-        (new DocumentReconstructor())->reconstruct($this->sampleAnalysis(), $outputPath);
+        $outputPath = $this->tempDir.'/toc.docx';
+        (new DocumentReconstructor)->reconstruct($this->sampleAnalysis(), $outputPath);
 
         $documentXml = $this->readPart($outputPath, 'word/document.xml');
 
@@ -251,8 +251,8 @@ class DocumentReconstructorTest extends TestCase
 
     public function test_en_tete_et_pied_de_page_du_corps(): void
     {
-        $outputPath = $this->tempDir . '/entete.docx';
-        (new DocumentReconstructor())->reconstruct($this->sampleAnalysis(), $outputPath);
+        $outputPath = $this->tempDir.'/entete.docx';
+        (new DocumentReconstructor)->reconstruct($this->sampleAnalysis(), $outputPath);
 
         // En-tête : le texte détecté doit être présent
         $headerXml = $this->readPart($outputPath, 'word/header1.xml');
@@ -268,8 +268,8 @@ class DocumentReconstructorTest extends TestCase
 
     public function test_liste_des_figures_et_tableaux_generee_depuis_les_legendes(): void
     {
-        $outputPath = $this->tempDir . '/liste.docx';
-        (new DocumentReconstructor())->reconstruct($this->sampleAnalysis(), $outputPath);
+        $outputPath = $this->tempDir.'/liste.docx';
+        (new DocumentReconstructor)->reconstruct($this->sampleAnalysis(), $outputPath);
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
 
@@ -286,8 +286,8 @@ class DocumentReconstructorTest extends TestCase
 
     public function test_les_titres_de_frontispice_ne_s_incluent_pas_dans_le_toc(): void
     {
-        $outputPath = $this->tempDir . '/toc_hors_collection.docx';
-        (new DocumentReconstructor())->reconstruct($this->sampleAnalysis(), $outputPath);
+        $outputPath = $this->tempDir.'/toc_hors_collection.docx';
+        (new DocumentReconstructor)->reconstruct($this->sampleAnalysis(), $outputPath);
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
 
@@ -303,8 +303,8 @@ class DocumentReconstructorTest extends TestCase
         $analysis = $this->sampleAnalysis();
         $analysis['legends'] = [];
 
-        $outputPath = $this->tempDir . '/sans_legendes.docx';
-        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+        $outputPath = $this->tempDir.'/sans_legendes.docx';
+        (new DocumentReconstructor)->reconstruct($analysis, $outputPath);
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
         $this->assertStringNotContainsString('Liste des figures', $xml);
@@ -345,8 +345,8 @@ class DocumentReconstructorTest extends TestCase
             ['type' => 'Tableau', 'number' => '?', 'label' => '{ SEQ Tableau \* ARABIC } : Récapitulatif des besoins', 'line' => 2],
         ];
 
-        $outputPath = $this->tempDir . '/seq.docx';
-        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+        $outputPath = $this->tempDir.'/seq.docx';
+        (new DocumentReconstructor)->reconstruct($analysis, $outputPath);
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
 
@@ -371,8 +371,8 @@ class DocumentReconstructorTest extends TestCase
 
     public function test_genere_un_document_rechargeable_par_phpword(): void
     {
-        $outputPath = $this->tempDir . '/rechargeable.docx';
-        (new DocumentReconstructor())->reconstruct($this->sampleAnalysis(), $outputPath);
+        $outputPath = $this->tempDir.'/rechargeable.docx';
+        (new DocumentReconstructor)->reconstruct($this->sampleAnalysis(), $outputPath);
 
         // La relecture via PhpWord doit fonctionner (ZIP + XML valides)
         $phpWord = $this->reloadDocx($outputPath);
@@ -380,60 +380,46 @@ class DocumentReconstructorTest extends TestCase
         $this->assertNotEmpty($phpWord->getSections());
     }
 
-    // ── Couverture (Phase 3) ─────────────────────────────────────────────────
+    // ── Page de garde : RETIRÉE du produit ───────────────────────────────────
+    //
+    // Le reconstructeur n'accepte plus de paramètre `$cover` : le module page de
+    // garde a été retiré. Les tests qui vérifiaient la préfixation d'une section
+    // couverture sont remplacés par l'invariant ci-dessous, qui conserve la trace
+    // du retrait au lieu de le laisser silencieux.
 
-    public function test_prefixe_une_section_couverture_si_fournie(): void
+    public function test_le_reconstructeur_ne_produit_plus_de_section_couverture(): void
     {
-        $outputPath = $this->tempDir . '/avec_couverture.docx';
+        $outputPath = $this->tempDir.'/sans_couverture.docx';
 
-        $cover = [
-            'detection' => [
-                'lines' => [
-                    [
-                        'text' => 'UNIVERSITE EXEMPLE',
-                        'styles' => ['font' => null, 'paragraph' => null],
-                        'role' => null,
-                    ],
-                    [
-                        'text' => 'Présenté par : ANCIEN NOM',
-                        'styles' => ['font' => null, 'paragraph' => null],
-                        'role' => 'nom',
-                    ],
-                ],
-                'zones' => [
-                    [
-                        'type' => 'nom',
-                        'label' => 'Présenté par :',
-                        'value' => 'ANCIEN NOM',
-                        'line_index' => 1,
-                    ],
-                ],
-            ],
-            'values' => ['nom' => 'NOUVEAU NOM'],
-        ];
-
-        (new DocumentReconstructor())->reconstruct($this->sampleAnalysis(), $outputPath, $cover);
+        (new DocumentReconstructor)->reconstruct($this->sampleAnalysis(), $outputPath);
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
 
-        // La couverture est préfixée : lignes non-zones conservées, valeur remplacée
-        $this->assertStringContainsString('UNIVERSITE EXEMPLE', $xml);
-        $this->assertStringContainsString('NOUVEAU NOM', $xml);
-        $this->assertStringNotContainsString('ANCIEN NOM', $xml);
-
-        // Trois sections : couverture + frontispice + corps
-        $this->assertSame(3, substr_count($xml, '<w:sectPr'));
-
-        // La numérotation romaine/arabe reste appliquée aux sections numérotées
+        // Exactement deux sections : frontispice (romain) + corps (arabe).
+        // Une troisième section signalerait une couverture réintroduite.
+        $this->assertSame(2, substr_count($xml, '<w:sectPr'));
         $this->assertStringContainsString('w:fmt="lowerRoman"', $xml);
         $this->assertStringContainsString('w:fmt="decimal"', $xml);
     }
 
+    public function test_la_signature_ne_prend_plus_de_couverture(): void
+    {
+        // Garde-fou structurel : si `$cover` revenait dans la signature, le
+        // retrait serait annulé sans que rien ne le signale.
+        $noms = array_map(
+            static fn (\ReflectionParameter $p): string => $p->getName(),
+            (new \ReflectionMethod(DocumentReconstructor::class, 'reconstruct'))->getParameters(),
+        );
+
+        $this->assertNotContains('cover', $noms);
+        $this->assertSame(['analysis', 'outputPath', 'gabarit'], $noms);
+    }
+
     public function test_sans_couverture_le_document_reste_a_deux_sections(): void
     {
-        $outputPath = $this->tempDir . '/sans_couverture.docx';
+        $outputPath = $this->tempDir.'/sans_couverture.docx';
 
-        (new DocumentReconstructor())->reconstruct($this->sampleAnalysis(), $outputPath);
+        (new DocumentReconstructor)->reconstruct($this->sampleAnalysis(), $outputPath);
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
 
@@ -490,8 +476,8 @@ class DocumentReconstructorTest extends TestCase
             ],
         ];
 
-        $outputPath = $this->tempDir . '/body_complet.docx';
-        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+        $outputPath = $this->tempDir.'/body_complet.docx';
+        (new DocumentReconstructor)->reconstruct($analysis, $outputPath);
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
 
@@ -531,8 +517,8 @@ class DocumentReconstructorTest extends TestCase
             ],
         ];
 
-        $outputPath = $this->tempDir . '/frontispice.docx';
-        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+        $outputPath = $this->tempDir.'/frontispice.docx';
+        (new DocumentReconstructor)->reconstruct($analysis, $outputPath);
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
 
@@ -571,8 +557,8 @@ class DocumentReconstructorTest extends TestCase
             'tableau' => ['style' => 'TableGrid', 'header_couleur' => 'FF0000', 'header_texte' => 'FFFFFF', 'bordure' => true],
         ];
 
-        $outputPath = $this->tempDir . '/gabarit.docx';
-        (new DocumentReconstructor())->reconstruct($analysis, $outputPath, null, $gabarit);
+        $outputPath = $this->tempDir.'/gabarit.docx';
+        (new DocumentReconstructor)->reconstruct($analysis, $outputPath, null, $gabarit);
 
         // styles.xml : police Arial + taille 18 pour les titres
         $stylesXml = $this->readPart($outputPath, 'word/styles.xml');
@@ -596,8 +582,8 @@ class DocumentReconstructorTest extends TestCase
             ],
         ];
 
-        $outputPath = $this->tempDir . '/defauts.docx';
-        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+        $outputPath = $this->tempDir.'/defauts.docx';
+        (new DocumentReconstructor)->reconstruct($analysis, $outputPath);
 
         $stylesXml = $this->readPart($outputPath, 'word/styles.xml');
 
@@ -631,8 +617,8 @@ class DocumentReconstructorTest extends TestCase
             ],
         ];
 
-        $outputPath = $this->tempDir . '/majuscules.docx';
-        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+        $outputPath = $this->tempDir.'/majuscules.docx';
+        (new DocumentReconstructor)->reconstruct($analysis, $outputPath);
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
 
@@ -661,11 +647,11 @@ class DocumentReconstructorTest extends TestCase
             ],
         ];
 
-        $outputPath = $this->tempDir . '/image.docx';
-        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+        $outputPath = $this->tempDir.'/image.docx';
+        (new DocumentReconstructor)->reconstruct($analysis, $outputPath);
 
         // Le document contient une image embarquée (media)
-        $zip = new \ZipArchive();
+        $zip = new \ZipArchive;
         $this->assertTrue($zip->open($outputPath));
         $media = [];
         for ($i = 0; $i < $zip->numFiles; $i++) {
@@ -693,8 +679,8 @@ class DocumentReconstructorTest extends TestCase
             ],
         ];
 
-        $outputPath = $this->tempDir . '/image_placeholder.docx';
-        (new DocumentReconstructor())->reconstruct($analysis, $outputPath);
+        $outputPath = $this->tempDir.'/image_placeholder.docx';
+        (new DocumentReconstructor)->reconstruct($analysis, $outputPath);
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
         $this->assertStringContainsString('[Image: pixel.png]', $xml);

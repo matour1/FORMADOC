@@ -17,8 +17,6 @@ use App\Services\Billing\UsageLedger;
 use App\Services\Chat\ChatToolsService;
 use App\Services\Chat\DocumentEditService;
 use App\Services\Detection\TextExtractionService;
-use App\Services\DocumentGeneration\CoverGenerationService;
-use App\Services\DocumentGeneration\CoverPageRenderer;
 use App\Services\OpenRouter\DeepSeekFallbackService;
 use App\Services\OpenRouter\ModelRouter;
 use App\Services\OpenRouter\OpenRouterService;
@@ -126,8 +124,6 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(ChatToolsService::class, function ($app): ChatToolsService {
             return new ChatToolsService(
                 $app->make(OpenRouterService::class),
-                $app->make(CoverGenerationService::class),
-                $app->make(CoverPageRenderer::class),
                 $app->make(DocumentEditService::class),
                 $app->make(ClaudeSkillsService::class),
                 $app->make(TextExtractionService::class),

@@ -9,12 +9,9 @@ use App\Document\Clarification\ClarificationService;
 use App\Document\Classification\BlockClassifier;
 use App\Document\DocumentPipeline;
 use App\Document\Editing\DocumentEditingService;
-use App\Http\Requests\GenerateCoverRequest;
 use App\Http\Requests\StoreDocumentRequest;
 use App\Http\Requests\ValidateStructureRequest;
 use App\Jobs\LongFormattingJob;
-use App\Models\CoverPageTemplate;
-use App\Models\CoverTemplate;
 use App\Models\Document;
 use App\Models\DocumentStructure;
 use App\Models\GeneratedDocument;
@@ -25,7 +22,6 @@ use App\Services\Detection\AmbiguityDetectionService;
 use App\Services\Detection\LegendDetectionService;
 use App\Services\Detection\StructureCorrectionService;
 use App\Services\Detection\TextExtractionService;
-use App\Services\DocumentGeneration\CoverDetectionService;
 use App\Services\DocumentGeneration\FormattedDocumentExporter;
 use App\Services\DocumentGeneration\PdfPreviewService;
 use App\Services\OpenRouter\OpenRouterService;
@@ -532,11 +528,6 @@ class DocumentController extends Controller
     {
         $this->authorizeDocument($document);
 
-        $coverTemplates = CoverPageTemplate::query()
-            ->where('is_public', true)
-            ->orderBy('name')
-            ->get(['id', 'name', 'description', 'elements']);
-
         $templates = Template::query()
             ->where('is_public', true)
             ->orderBy('name')
@@ -545,33 +536,7 @@ class DocumentController extends Controller
         return view('documents.export', [
             'document' => $document,
             'structure' => $document->structure,
-            'coverTemplates' => $coverTemplates,
             'templates' => $templates,
-        ]);
-    }
-
-    /**
-     * Génère le DOCX reconstruit AVEC une page de garde issue du builder
-     * visuel (Phase 6).
-     *
-     * L'utilisateur sélectionne un modèle + fournit les valeurs des
-     * placeholders. La page de garde est rendue (ghost-table) puis préfixée
-     * au document reconstruit.
-     */
-    public function generateWithCoverPageTemplate(Request $request, Document $document): Response|RedirectResponse|BinaryFileResponse
-    {
-        $this->authorizeDocument($document);
-
-        $template = CoverPageTemplate::find($request->integer('cover_page_template_id'));
-
-        if (! $template) {
-            return back()->withErrors(['cover_page_template_id' => 'Modèle de page de garde introuvable.']);
-        }
-
-        return $this->generateAndDownload($document, [
-            'cover_page_template' => $template,
-            'values' => (array) $request->input('values', []),
-            'cover_page_template_id' => $template->id,
         ]);
     }
 
@@ -582,6 +547,9 @@ class DocumentController extends Controller
      * Phase 2 — Génération DOCX : le document généré reprend les styles
      * natifs de titres (Heading 1-3), la numérotation romaine/arabe, le
      * sommaire, les en-têtes/pieds de page et les listes de figures/tableaux.
+     *
+     * Note : la variante « avec page de garde » a été RETIRÉE de cette version
+     * du produit (voir `tests/Feature/CoverModuleRemovalInvariantTest.php`).
      */
     public function generate(Request $request, Document $document): Response|RedirectResponse|BinaryFileResponse
     {
@@ -709,23 +677,6 @@ class DocumentController extends Controller
     }
 
     /**
-     * Génère le DOCX reconstruit AVEC une couverture (Phase 3).
-     *
-     * L'étudiant fournit une couverture d'exemple (DOCX) + les valeurs à
-     * substituer (nom, titre, encadrant, date). Les zones sont détectées
-     * (déterministe), puis la couverture est préfixée au document reconstruit
-     * en conservant la structure et les styles de l'exemple.
-     */
-    public function generateWithCover(GenerateCoverRequest $request, Document $document): Response|RedirectResponse|BinaryFileResponse
-    {
-        $this->authorizeDocument($document);
-
-        $cover = $this->prepareCover($request);
-
-        return $this->generateAndDownload($document, $cover);
-    }
-
-    /**
      * Flux commun de génération + téléchargement (avec ou sans couverture).
      *
      * @param  null|array<string, mixed>  $cover  { detection, values, cover_template_id }
@@ -790,43 +741,6 @@ class DocumentController extends Controller
 
             return back()->withErrors(['document' => 'Erreur lors de la génération : '.$e->getMessage()]);
         }
-    }
-
-    /**
-     * Prépare la couverture : stocke l'exemple, détecte les zones et
-     * enregistre le gabarit de couverture.
-     *
-     * @return array{detection: array<string, mixed>, values: array<string, string>, cover_template_id: int}
-     */
-    private function prepareCover(GenerateCoverRequest $request): array
-    {
-        $file = $request->file('cover');
-
-        $coverPath = $file->store('cover_templates', 'storage');
-        $absoluteCoverPath = storage_path('uploads/'.$coverPath);
-
-        $detection = (new CoverDetectionService)->detect($absoluteCoverPath);
-
-        $values = array_filter([
-            'nom' => $request->input('nom'),
-            'titre' => $request->input('titre'),
-            'encadrant' => $request->input('encadrant'),
-            'date' => $request->input('date'),
-        ], static fn ($value) => is_string($value) && trim($value) !== '');
-
-        // Gabarit de couverture : zones détectées + mapping automatique (V1)
-        $coverTemplate = CoverTemplate::create([
-            'name' => 'Couverture — '.$file->getClientOriginalName(),
-            'example_docx_path' => $coverPath,
-            'detected_zones' => $detection['zones'],
-            'zone_mapping' => $detection['zones'],
-        ]);
-
-        return [
-            'detection' => $detection,
-            'values' => $values,
-            'cover_template_id' => $coverTemplate->id,
-        ];
     }
 
     /**

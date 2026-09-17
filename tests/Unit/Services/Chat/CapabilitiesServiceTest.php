@@ -7,8 +7,6 @@ namespace Tests\Unit\Services\Chat;
 use App\Services\Chat\CapabilitiesService;
 use App\Services\Chat\ChatToolsService;
 use App\Services\Chat\DocumentEditService;
-use App\Services\DocumentGeneration\CoverGenerationService;
-use App\Services\DocumentGeneration\CoverPageRenderer;
 use App\Services\OpenRouter\OpenRouterService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
@@ -35,13 +33,9 @@ class CapabilitiesServiceTest extends TestCase
         parent::setUp();
 
         $openRouter = Mockery::mock(OpenRouterService::class);
-        $coverGeneration = Mockery::mock(CoverGenerationService::class);
-        $coverPageRenderer = Mockery::mock(CoverPageRenderer::class);
 
         $tools = new ChatToolsService(
             $openRouter,
-            $coverGeneration,
-            $coverPageRenderer,
             new DocumentEditService,
         );
 
@@ -53,7 +47,6 @@ class CapabilitiesServiceTest extends TestCase
         $tools = $this->service->tools();
 
         $names = array_column($tools, 'name');
-        $this->assertContains('cover_page_generate', $names);
         $this->assertContains('document_reconstruct', $names);
         $this->assertContains('document_analyze', $names);
         $this->assertContains('document_to_docx', $names);
@@ -66,7 +59,9 @@ class CapabilitiesServiceTest extends TestCase
         $this->assertContains('rewrite_paragraph', $names);
         $this->assertContains('delete_block', $names);
 
-        $this->assertCount(17, $tools);
+        // 16 outils : le compte a baissé de 1 avec le retrait de
+        // `cover_page_generate` (module page de garde retiré du produit).
+        $this->assertCount(16, $tools);
 
         foreach ($tools as $tool) {
             $this->assertNotEmpty($tool['description']);

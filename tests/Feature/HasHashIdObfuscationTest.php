@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\ChatSession;
-use App\Models\CoverPageTemplate;
 use App\Models\Document;
 use App\Models\Invoice;
 use App\Models\User;
@@ -17,7 +16,10 @@ use Tests\TestCase;
  *
  * Les clés de route des modèles exposés dans les URLs doivent être des
  * hashs (jamais l'id auto-incrémenté brut) :
- *   - Document, ChatSession, Invoice, CoverPageTemplate
+ *   - Document, ChatSession, Invoice
+ *
+ * (CoverPageTemplate figurait dans cette liste avant le retrait du module
+ * page de garde ; le modèle ayant été supprimé, il n'est plus exposé.)
  *
  * Vérifications :
  *   - l'id brut n'apparaît JAMAIS dans l'URL générée par route()
@@ -30,7 +32,7 @@ class HasHashIdObfuscationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_les_clés_de_route_sont_des_hashs_pour_les_4_modeles(): void
+    public function test_les_clés_de_route_sont_des_hashs_pour_les_modeles_exposes(): void
     {
         $user = User::factory()->create();
 
@@ -62,25 +64,15 @@ class HasHashIdObfuscationTest extends TestCase
             'reference' => 'ref-1',
         ]);
 
-        $template = CoverPageTemplate::create([
-            'name' => 'Template',
-            'user_id' => $user->id,
-            'elements' => [],
-            'page_style' => [],
-            'is_public' => false,
-        ]);
-
         // Chaque modèle doit utiliser un hash comme clé de route
         $this->assertSame('hash_id', $document->getRouteKeyName());
         $this->assertSame('hash_id', $session->getRouteKeyName());
         $this->assertSame('hash_id', $invoice->getRouteKeyName());
-        $this->assertSame('hash_id', $template->getRouteKeyName());
 
         // L'id brut ne doit pas être devinable depuis le hash seul
         $this->assertNotSame((string) $document->id, $document->hash_id);
         $this->assertNotSame((string) $session->id, $session->hash_id);
         $this->assertNotSame((string) $invoice->id, $invoice->hash_id);
-        $this->assertNotSame((string) $template->id, $template->hash_id);
     }
 
     public function test_le_hash_est_deterministe_et_propre_a_chaque_modele(): void

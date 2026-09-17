@@ -5,13 +5,10 @@ declare(strict_types=1);
 namespace Tests\Unit\Services\Chat;
 
 use App\Document\Editing\ToolWhitelist;
-use App\Models\CoverPageTemplate;
 use App\Models\User;
 use App\Services\Anthropic\ClaudeSkillsService;
 use App\Services\Chat\ChatToolsService;
 use App\Services\Chat\DocumentEditService;
-use App\Services\DocumentGeneration\CoverGenerationService;
-use App\Services\DocumentGeneration\CoverPageRenderer;
 use App\Services\OpenRouter\OpenRouterService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -41,29 +38,22 @@ class ChatToolsServiceTest extends TestCase
 
     private OpenRouterService $openRouter;
 
-    private CoverPageRenderer $coverPageRenderer;
-
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->openRouter = Mockery::mock(OpenRouterService::class);
-        $coverGeneration = Mockery::mock(CoverGenerationService::class);
-        $this->coverPageRenderer = Mockery::mock(CoverPageRenderer::class);
 
         $this->service = new ChatToolsService(
             $this->openRouter,
-            $coverGeneration,
-            $this->coverPageRenderer,
             new DocumentEditService,
         );
     }
 
-    public function test_available_tools_liste_les_11_outils(): void
+    public function test_available_tools_liste_les_outils(): void
     {
         $tools = $this->service->availableTools();
 
-        $this->assertContains('cover_page_generate', $tools);
         $this->assertContains('document_reconstruct', $tools);
         $this->assertContains('document_analyze', $tools);
         $this->assertContains('document_to_docx', $tools);
@@ -85,7 +75,10 @@ class ChatToolsServiceTest extends TestCase
         $this->assertContains('regenerate_section', $tools);
         $this->assertContains('undo_last_action', $tools);
 
-        $this->assertCount(17, $tools);
+        // 16 outils : 10 historiques + 6 d'édition structurelle. Le compte a
+        // baissé de 1 avec le retrait de `cover_page_generate` (module page de
+        // garde retiré de cette version du produit).
+        $this->assertCount(16, $tools);
     }
 
     public function test_les_tools_d_edition_correspondent_a_la_liste_blanche(): void
@@ -215,65 +208,25 @@ class ChatToolsServiceTest extends TestCase
         $this->assertStringContainsString('.png', $result['result']);
     }
 
-    public function test_cover_page_generate_gabarit_introuvable_erreur(): void
+    public function test_l_outil_de_page_de_garde_a_ete_retire(): void
     {
+        // Invariant du retrait : le module page de garde n'est plus exposé au
+        // modèle. Sans cette assertion, une réintroduction accidentelle de
+        // l'outil passerait inaperçue — et le modèle se remettrait à proposer
+        // une fonctionnalité absente du produit.
+        $this->assertNotContains('cover_page_generate', $this->service->availableTools());
+
         $result = $this->service->execute(
             [
                 'name' => 'cover_page_generate',
-                'arguments' => json_encode(['template_id' => 999999, 'values' => []]),
+                'arguments' => json_encode(['template_id' => 1, 'values' => []]),
             ],
             null,
             'default',
         );
 
         $this->assertArrayHasKey('error', $result);
-        $this->assertStringContainsString('introuvable', $result['error']);
-    }
-
-    public function test_cover_page_generate_genere_le_docx(): void
-    {
-        Storage::fake('local');
-
-        $user = User::factory()->create();
-        $template = CoverPageTemplate::create([
-            'name' => 'Gabarit test',
-            'description' => 'Test',
-            'elements' => [
-                ['type' => 'row', 'cells' => [
-                    ['gridSpan' => 1, 'blocks' => [
-                        ['kind' => 'text', 'text' => '{{titre}}', 'align' => 'center', 'size' => 20],
-                    ]],
-                ]],
-            ],
-            'page_style' => ['format' => 'A4', 'orientation' => 'portrait', 'margins' => ['top' => 25, 'bottom' => 25, 'left' => 25, 'right' => 25]],
-            'is_public' => true,
-            'user_id' => $user->id,
-        ]);
-
-        // Le rendu de la page de garde est délégué au renderer (mocké)
-        $this->coverPageRenderer->shouldReceive('render')
-            ->once()
-            ->withArgs(function (PhpWord $phpWord, $tpl, array $values) {
-                return $tpl instanceof CoverPageTemplate
-                    && ($values['titre'] ?? null) === 'Mon rapport';
-            });
-
-        $result = $this->service->execute(
-            [
-                'name' => 'cover_page_generate',
-                'arguments' => json_encode([
-                    'template_id' => $template->id,
-                    'values' => ['titre' => 'Mon rapport'],
-                    'output_filename' => 'page_garde_test',
-                ]),
-            ],
-            $user,
-            'default',
-        );
-
-        $this->assertArrayHasKey('result', $result);
-        $this->assertStringContainsString('Page de garde générée', $result['result']);
-        $this->assertStringContainsString('.docx', $result['result']);
+        $this->assertStringContainsString('inconnu', $result['error']);
     }
 
     public function test_structure_correct_applique_les_corrections(): void
@@ -511,13 +464,9 @@ class ChatToolsServiceTest extends TestCase
         $user = User::factory()->create();
 
         $openRouter = Mockery::mock(OpenRouterService::class);
-        $coverGeneration = Mockery::mock(CoverGenerationService::class);
-        $coverPageRenderer = Mockery::mock(CoverPageRenderer::class);
 
         $service = new ChatToolsService(
             $openRouter,
-            $coverGeneration,
-            $coverPageRenderer,
             new DocumentEditService,
             $claudeSkills,
         );
@@ -550,13 +499,9 @@ class ChatToolsServiceTest extends TestCase
         $user = User::factory()->create();
 
         $openRouter = Mockery::mock(OpenRouterService::class);
-        $coverGeneration = Mockery::mock(CoverGenerationService::class);
-        $coverPageRenderer = Mockery::mock(CoverPageRenderer::class);
 
         $service = new ChatToolsService(
             $openRouter,
-            $coverGeneration,
-            $coverPageRenderer,
             new DocumentEditService,
             $claudeSkills,
         );

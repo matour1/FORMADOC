@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace App\DocAnalyzer;
 
-use App\Models\CoverPageTemplate;
-use App\Services\DocumentGeneration\CoverGenerationService;
-use App\Services\DocumentGeneration\CoverPageRenderer;
 use App\Services\DocumentGeneration\TemplateStyleResolver;
 use DOMDocument;
 use DOMXPath;
@@ -116,19 +113,12 @@ class DocumentReconstructor
      *
      * @param  array<string, mixed>  $analysis  Résultat du DocAnalyzer (+ legends)
      * @param  string  $outputPath  Chemin absolu du fichier à créer
-     * @param  null|array<string, mixed>  $cover  Couverture optionnelle :
-     *                                            - Phase 3 (fichier exemple) :
-     *                                            { detection, values }
-     *                                            - Builder visuel :
-     *                                            { cover_page_template: CoverPageTemplate,
-     *                                            values }
-     *                                            Si fournie, une section couverture
-     *                                            est préfixée.
+     * @param  null|array<string, mixed>  $gabarit  Gabarit de mise en forme (`null` → défauts)
      * @return string Le chemin du fichier généré
      *
      * @throws \RuntimeException Si l'écriture du DOCX échoue
      */
-    public function reconstruct(array $analysis, string $outputPath, ?array $cover = null, ?array $gabarit = null): string
+    public function reconstruct(array $analysis, string $outputPath, ?array $gabarit = null): string
     {
         $phpWord = new PhpWord;
         $phpWord->getSettings()->setUpdateFields(true);
@@ -136,12 +126,6 @@ class DocumentReconstructor
         // Gabarit de mise en forme (params normalisés). null → défauts.
         $this->gabarit = TemplateStyleResolver::normalize($gabarit);
         $this->registerTitleStyles($phpWord);
-
-        // ── Section 0 : couverture (optionnelle) ──────────────────────────────
-        // Sans pageNumberingStart : pas de numéro de page, pas d'en-tête/pied.
-        if (! empty($cover)) {
-            $this->renderCover($phpWord, $cover);
-        }
 
         // ── Section 1 : frontispice (numérotation romaine) ────────────────────
         $sectionStyle = TemplateStyleResolver::sectionStyle($this->gabarit);
@@ -195,7 +179,7 @@ class DocumentReconstructor
         // ── Post-traitement : w:pgNumType w:fmt (romain/arabe) ────────────────
         $this->applyPageNumberingFormats($outputPath);
 
-        // ── Post-traitement : w:gridSpan sur cellules fusionnées (page de garde)
+        // ── Post-traitement : w:gridSpan sur cellules fusionnées ─────────────
         $this->applyGridSpan($outputPath);
 
         // ── Nettoyage des fichiers temp d'images ──────────────────────────────
@@ -205,31 +189,6 @@ class DocumentReconstructor
         $this->tempImages = [];
 
         return $outputPath;
-    }
-
-    /**
-     * Rend la couverture selon son origine :
-     *   - builder visuel : CoverPageRenderer (ghost-table + placeholders)
-     *   - fichier DOCX d'exemple : CoverGenerationService (détection de zones)
-     *
-     * @param  array<string, mixed>  $cover  { detection, values } ou
-     *                                       { cover_page_template, values }
-     */
-    private function renderCover(PhpWord $phpWord, array $cover): void
-    {
-        $values = is_array($cover['values'] ?? null) ? $cover['values'] : [];
-
-        // Builder visuel (Phase 6) : un CoverPageTemplate tout prêt
-        if (isset($cover['cover_page_template']) && $cover['cover_page_template'] instanceof CoverPageTemplate) {
-            (new CoverPageRenderer)->render($phpWord, $cover['cover_page_template'], $values);
-
-            return;
-        }
-
-        // Fichier DOCX d'exemple (Phase 3) : détection de zones
-        if (! empty($cover['detection']) && is_array($cover['detection'])) {
-            (new CoverGenerationService)->addCoverSection($phpWord, $cover['detection'], $values);
-        }
     }
 
     /**
