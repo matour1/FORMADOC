@@ -166,7 +166,23 @@ class OpenRouterService
                 // R7 : chaque tour HTTP est enregistré séparément. C'est ce qui
                 // rend le coût recalculable depuis les lignes brutes : le total
                 // du registre est la somme des lignes, sans cumul opaque.
+                // (Enregistré AVANT le contrôle tool_choice : le tour a bien été
+                // facturé par le fournisseur, même si on rejette sa réponse.)
                 $this->recordSuccess($model, $parsed, turn: 0);
+
+                // Q-TOOLCHOICE : certains fournisseurs (DeepSeek via OpenRouter)
+                // IGNORENT « tool_choice: required » et répondent en texte libre.
+                // Le tour serait facturé sans qu'aucune action ne soit exécutée :
+                // on traite ce cas comme un échec du modèle pour laisser la main
+                // au candidat suivant (gpt-4o-mini, qui honore la contrainte).
+                if (($options['tool_choice'] ?? null) === 'required'
+                    && empty($parsed['tool_calls'])
+                    && is_callable($executor)) {
+                    throw new ToolChoiceIgnoredException(sprintf(
+                        'Le modèle %s a ignoré tool_choice=required (aucun appel d\'outil).',
+                        $model
+                    ));
+                }
 
                 // P1-2 : on cumule le coût de chaque tour
                 $totalUsd += $parsed['cost_usd'];
@@ -231,6 +247,66 @@ class OpenRouterService
                     $totalCredits += $parsed['cost_credits'];
                 }
 
+                // Q-SYNTHESE : quand le budget de tours est épuisé, le modèle a
+                // enchaîné des appels d'outils sans jamais rédiger sa réponse
+                // (content vide). L'utilisateur ne recevrait alors qu'un message
+                // neutre, sans analyse ni lien de téléchargement. On demande donc
+                // une synthèse FINALE sans outils (tool_choice: none) : le modèle
+                // rédige à partir des résultats déjà obtenus.
+                if ($turns >= $maxTurns && ! empty($parsed['tool_calls'])) {
+                    $messages[] = [
+                        'role' => 'assistant',
+                        'content' => null,
+                        'tool_calls' => $parsed['tool_calls'],
+                    ];
+
+                    foreach ($parsed['tool_calls'] as $toolCall) {
+                        $toolCall = $this->normalizeToolCall($toolCall);
+                        $result = $executor($toolCall, $turns);
+
+                        $messages[] = [
+                            'role' => 'tool',
+                            'tool_call_id' => $toolCall['id'] ?? 'call_'.Str::uuid(),
+                            'content' => $result['error'] ?? $result['result'],
+                        ];
+                    }
+
+                    $messages[] = [
+                        'role' => 'user',
+                        'content' => 'Toutes les actions sont terminées. Rédige maintenant ta réponse finale '
+                            .'en français : 1) le résumé de l\'analyse (structure, titres détectés, '
+                            .'ambiguïtés et titres mal définis repérés) ; 2) les corrections proposées ; '
+                            .'3) la liste des fichiers générés avec leur lien de téléchargement '
+                            .'(au format chat/generated/...). Ne demande pas de confirmation, réponds.',
+                    ];
+
+                    $summaryOptions = $options;
+                    unset($summaryOptions['tools'], $summaryOptions['tool_choice']);
+
+                    $this->lastInputCharCount = $this->inputChars($messages);
+
+                    $response = Http::withHeaders($this->headers())
+                        ->timeout($this->dynamicTimeout($this->lastInputCharCount, count($selection['all_candidates'])))
+                        ->retry(
+                            (int) config('openrouter.max_retries', 2),
+                            (int) config('openrouter.retry_delays_ms.0', 2000),
+                            fn ($exception, $request, $method) => $this->isRetryable($exception),
+                        )
+                        ->post(rtrim(config('openrouter.api_url', 'https://openrouter.ai/api/v1'), '/').'/chat/completions', $this->buildPayload($model, $messages, $summaryOptions));
+
+                    if ($response->successful()) {
+                        $summary = $this->parseResponse($response, $model, $selection['plan']);
+                        $this->recordSuccess($model, $summary, turn: $turns + 1);
+                        $totalUsd += $summary['cost_usd'];
+                        $totalCredits += $summary['cost_credits'];
+
+                        // On conserve le contenu rédigé et les outils déjà exécutés.
+                        $parsed['content'] = $summary['content'];
+                        $parsed['usage'] = $summary['usage'];
+                        $parsed['tool_calls'] = [];
+                    }
+                }
+
                 if ($turns > 0) {
                     $parsed['tool_turns'] = $turns;
                 }
@@ -264,11 +340,16 @@ class OpenRouterService
                 }
                 Log::warning('OpenRouter : échec du modèle, tentative du fallback', $context);
 
-                // R7 : un modèle candidat qui échoue a tout de même consommé des
-                // tokens d'entrée — le fournisseur les facture. Sans cet
-                // enregistrement, le coût des périodes d'instabilité serait
-                // systématiquement sous-estimé.
-                $this->recordFailure($model, $e);
+                // Q-TOOLCHOICE : le tour a DÉJÀ été enregistré en succès (le
+                // fournisseur l'a facturé et rapporté son usage). Un
+                // recordFailure ajouterait une estimation d'entrée en double.
+                if (! $e instanceof ToolChoiceIgnoredException) {
+                    // R7 : un modèle candidat qui échoue a tout de même consommé
+                    // des tokens d'entrée — le fournisseur les facture. Sans cet
+                    // enregistrement, le coût des périodes d'instabilité serait
+                    // systématiquement sous-estimé.
+                    $this->recordFailure($model, $e);
+                }
             }
         }
 

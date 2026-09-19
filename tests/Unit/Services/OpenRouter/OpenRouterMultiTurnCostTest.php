@@ -6,6 +6,7 @@ namespace Tests\Unit\Services\OpenRouter;
 
 use App\Services\OpenRouter\ModelRouter;
 use App\Services\OpenRouter\OpenRouterService;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -342,5 +343,184 @@ class OpenRouterMultiTurnCostTest extends TestCase
 
         $this->assertSame('Réponse finale', $result['content']);
         $this->assertSame(2, $appel);
+    }
+
+    /**
+     * Q-TOOLCHOICE : un modèle qui ignore tool_choice=required (constaté avec
+     * deepseek/deepseek-chat via OpenRouter) répond en texte au lieu d'appeler
+     * un outil. Sans détection, la demande restait sans effet (aucun fichier
+     * généré, aucun lien) tout en débitant des crédits.
+     *
+     * Comportement attendu : basculer sur le candidat suivant, qui honore la
+     * contrainte.
+     */
+    public function test_bascule_si_le_modele_ignore_tool_choice_required(): void
+    {
+        Config::set('openrouter.models.function_calling.default', [
+            'deepseek/deepseek-chat',
+            'openai/gpt-4o-mini',
+        ]);
+
+        $appel = 0;
+        Http::fake([
+            'openrouter.test/*' => function (Request $request) use (&$appel) {
+                $appel++;
+                $model = (string) (($request->data()['model'] ?? ''));
+
+                // Le modèle fautif répond en texte, sans aucun tool_call
+                if ($model === 'deepseek/deepseek-chat') {
+                    return Http::response($this->fakeResponse([
+                        'model' => $model,
+                        'choices' => [[
+                            'index' => 0,
+                            'message' => [
+                                'role' => 'assistant',
+                                'content' => 'Dites-moi ce que vous souhaitez faire !',
+                            ],
+                            'finish_reason' => 'stop',
+                        ]],
+                    ]), 200);
+                }
+
+                // Les autres modèles respectent la contrainte
+                return Http::response($this->fakeResponse([
+                    'model' => $model,
+                    'choices' => [[
+                        'index' => 0,
+                        'message' => [
+                            'role' => 'assistant',
+                            'content' => null,
+                            'tool_calls' => [[
+                                'id' => 'call_1',
+                                'type' => 'function',
+                                'function' => ['name' => 'document_analyze', 'arguments' => '{"source_path":"chat/attachments/1/a.docx"}'],
+                            ]],
+                        ],
+                        'finish_reason' => 'tool_calls',
+                    ]],
+                ]), 200);
+            },
+        ]);
+
+        $service = new OpenRouterService(new ModelRouter);
+
+        $executed = [];
+        $result = $service->chat('function_calling', [
+            ['role' => 'user', 'content' => 'Analyse ma pièce jointe'],
+        ], 'default', [
+            'tools' => [['type' => 'function', 'function' => ['name' => 'document_analyze']]],
+            'tool_choice' => 'required',
+            'executor' => function (array $toolCall) use (&$executed): array {
+                $executed[] = $toolCall['name'];
+
+                return ['result' => 'analyse ok'];
+            },
+        ]);
+
+        // L'outil a bien été exécuté malgré le premier modèle défaillant
+        $this->assertContains('document_analyze', $executed);
+        $this->assertNotSame('deepseek/deepseek-chat', $result['model']);
+        $this->assertGreaterThanOrEqual(2, $appel, 'Un autre modèle doit être tenté');
+    }
+
+    /**
+     * Sans la contrainte (mode auto), une réponse en texte reste valide : on ne
+     * doit PAS basculer inutilement sur un autre modèle.
+     */
+    public function test_ne_bascule_pas_sans_tool_choice_required(): void
+    {
+        $appel = 0;
+        Http::fake([
+            'openrouter.test/*' => function () use (&$appel) {
+                $appel++;
+
+                return Http::response($this->fakeResponse(), 200);
+            },
+        ]);
+
+        $service = new OpenRouterService(new ModelRouter);
+
+        $result = $service->chat('function_calling', [
+            ['role' => 'user', 'content' => 'Bonjour'],
+        ], 'default', [
+            'tools' => [['type' => 'function', 'function' => ['name' => 'document_analyze']]],
+            'executor' => fn (array $toolCall): array => ['result' => 'ok'],
+        ]);
+
+        $this->assertSame(1, $appel);
+        $this->assertSame('Réponse finale', $result['content']);
+    }
+
+    /**
+     * Q-SYNTHESE : quand le budget de tours d'outils est épuisé, le modèle a
+     * enchaîné des appels sans jamais rédiger de réponse. Sans appel de
+     * synthèse, l'utilisateur ne recevait qu'un message neutre — sans analyse
+     * ni lien de téléchargement. On vérifie qu'un appel SANS outils est fait
+     * pour obtenir la réponse finale.
+     */
+    public function test_une_synthese_finale_est_demandee_si_le_budget_de_tours_est_epuise(): void
+    {
+        Config::set('openrouter.max_retries', 0);
+
+        $appels = [];
+        Http::fake([
+            'openrouter.test/*' => function (Request $request) use (&$appels) {
+                $data = $request->data();
+                $appels[] = [
+                    'has_tools' => ! empty($data['tools']),
+                    'tool_choice' => $data['tool_choice'] ?? null,
+                ];
+
+                $dernier = end($appels);
+                $estSynthese = ! $dernier['has_tools'];
+
+                if (! $estSynthese) {
+                    return Http::response($this->fakeResponse([
+                        'choices' => [[
+                            'index' => 0,
+                            'message' => [
+                                'role' => 'assistant',
+                                'content' => null,
+                                'tool_calls' => [[
+                                    'id' => 'call_'.count($appels),
+                                    'type' => 'function',
+                                    'function' => ['name' => 'document_analyze', 'arguments' => '{}'],
+                                ]],
+                            ],
+                            'finish_reason' => 'tool_calls',
+                        ]],
+                    ]), 200);
+                }
+
+                return Http::response($this->fakeResponse([
+                    'choices' => [[
+                        'index' => 0,
+                        'message' => [
+                            'role' => 'assistant',
+                            'content' => "Voici l'analyse complète.\n- chat/generated/2026/09/19/document.docx",
+                        ],
+                        'finish_reason' => 'stop',
+                    ]],
+                ]), 200);
+            },
+        ]);
+
+        $service = new OpenRouterService(new ModelRouter);
+
+        $result = $service->chat('function_calling', [
+            ['role' => 'user', 'content' => 'Analyse'],
+        ], 'default', [
+            'tools' => [['type' => 'function', 'function' => ['name' => 'document_analyze']]],
+            'tool_choice' => 'required',
+            'tool_loop_max_turns' => 3,
+            'executor' => fn (array $toolCall): array => ['result' => 'ok'],
+        ]);
+
+        // Le dernier appel est une synthèse : aucun outil envoyé
+        $dernier = end($appels);
+        $this->assertFalse($dernier['has_tools'], 'La synthèse doit être demandée sans outils');
+        $this->assertStringContainsString("Voici l'analyse complète", (string) $result['content']);
+        $this->assertStringContainsString('chat/generated/', (string) $result['content']);
+        $this->assertSame(3, $result['tool_turns']);
     }
 }

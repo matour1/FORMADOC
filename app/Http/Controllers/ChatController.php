@@ -644,9 +644,18 @@ class ChatController extends Controller
         // exécutée(s)..." à l'utilisateur. On produit un message neutre et
         // clair, et le détail des actions est tracé dans les métadonnées
         // (tool_turns) pour l'UI (badge discret, pas de contenu exposé).
+        //
+        // Q-LIENS : si des fichiers ont été générés, on DOIT quand même
+        // fournir le lien de téléchargement — sans quoi l'utilisateur n'a
+        // aucun moyen de récupérer son document.
         $content = (string) ($response['content'] ?? '');
+        $sourceFiles = array_values(array_unique($generatedFiles));
+
         if ($content === '' && ! empty($response['tool_turns'])) {
-            $content = 'L\'action demandée a bien été effectuée.';
+            $content = $sourceFiles === []
+                ? 'L\'action demandée a bien été effectuée.'
+                : 'L\'action demandée a bien été effectuée.'
+                    ."\n\n".$this->downloadLinks($sourceFiles);
         }
         if ($content === '') {
             $content = 'Je n\'ai pas pu traiter votre demande. Veuillez reformuler.';
@@ -687,6 +696,26 @@ class ChatController extends Controller
         ]);
 
         return redirect()->route('chat.show', $chatSession);
+    }
+
+    /**
+     * Liens de téléchargement des fichiers générés, au format demandé
+     * (« chat/generated/... », visible dans le chat).
+     *
+     * Les chemins sont affichés tels quels : le rendu du chat les transforme en
+     * liens cliquables vers la route de téléchargement sécurisée (ownership
+     * vérifié), et l'utilisateur peut aussi les copier.
+     *
+     * @param  array<int, string>  $paths  Chemins relatifs des fichiers générés
+     */
+    private function downloadLinks(array $paths): string
+    {
+        $lines = ['Fichier(s) généré(s) — cliquez pour télécharger :'];
+        foreach ($paths as $path) {
+            $lines[] = '- '.$path;
+        }
+
+        return implode("\n", $lines);
     }
 
     /* ------------------------------------------------------------------

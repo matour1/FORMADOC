@@ -36,9 +36,9 @@ class DeepSeekAnalyzerTest extends TestCase
     private function contextText(): string
     {
         return "[POS:section_0,element_0,parent_body]Introduction\n"
-            . "[POS:section_0,element_1,parent_body]1. Contexte général\n"
-            . "[POS:section_0,element_2,parent_body]Paragraphe de contenu\n"
-            . "[POS:section_0,element_3,parent_header]EN-TÊTE FORMADOC";
+            ."[POS:section_0,element_1,parent_body]1. Contexte général\n"
+            ."[POS:section_0,element_2,parent_body]Paragraphe de contenu\n"
+            .'[POS:section_0,element_3,parent_header]EN-TÊTE FORMADOC';
     }
 
     /**
@@ -194,5 +194,139 @@ class DeepSeekAnalyzerTest extends TestCase
 
         $this->assertTrue(AnalyzerResult::isValid($result));
         Http::assertNothingSent();
+    }
+
+    /**
+     * Format COMPACT : le modèle ne renvoie que des triplets
+     * [section_index, element_index, parent] ; les textes sont reconstruits
+     * côté PHP depuis le texte positionné du parser.
+     */
+    public function test_hydrate_les_textes_du_format_compact(): void
+    {
+        $compact = json_encode([
+            'titres' => [[0, 0, 'body'], [0, 3, 'header']],
+            'sous_titres' => [[0, 1, 'body']],
+            'en_tetes' => [],
+            'pieds_de_page' => [],
+            'tableaux' => [],
+            'images' => [],
+            'elements_flottants' => [[0, 2, 'body']],
+        ]);
+
+        Http::fake([
+            'api.deepseek.com/*' => Http::response([
+                'choices' => [['message' => ['content' => $compact]]],
+            ], 200),
+        ]);
+
+        $result = $this->analyzer->analyze($this->contextText());
+
+        $this->assertTrue(AnalyzerResult::isValid($result));
+        $this->assertCount(2, $result['titres']);
+
+        // Texte reconstruit depuis [POS:...] du document source
+        $this->assertSame('Introduction', $result['titres'][0]['texte']);
+        $this->assertSame('EN-TÊTE FORMADOC', $result['titres'][1]['texte']);
+        $this->assertSame('header', $result['titres'][1]['position']['parent']);
+
+        $this->assertSame('1. Contexte général', $result['sous_titres'][0]['texte']);
+        $this->assertSame('Paragraphe de contenu', $result['elements_flottants'][0]['texte']);
+
+        // Les positions restent intactes
+        $this->assertSame(3, $result['titres'][1]['position']['element_index']);
+    }
+
+    /**
+     * Le prompt doit demander un format compact (positions seules) pour éviter
+     * de recopier tout le texte du document (réponse de ~150 K caractères,
+     * lente et souvent tronquée/invalide).
+     */
+    public function test_le_prompt_demande_le_format_compact(): void
+    {
+        Http::fake([
+            'api.deepseek.com/*' => Http::response([
+                'choices' => [['message' => ['content' => '{}']]],
+            ], 200),
+        ]);
+
+        $this->analyzer->analyze($this->contextText());
+
+        Http::assertSent(function (Request $request) {
+            $body = $request->data();
+            $system = $body['messages'][0]['content'] ?? '';
+
+            return str_contains($system, '[section_index, element_index, parent]')
+                && str_contains($system, 'NE RECOPIE JAMAIS le texte');
+        });
+    }
+
+    /**
+     * Un texte fourni par le modèle doit primer sur la carte de positions.
+     */
+    public function test_le_texte_du_modele_prime_sur_la_carte_de_positions(): void
+    {
+        $withText = json_encode([
+            'titres' => [
+                ['texte' => 'Titre reformulé par l\'IA', 'position' => ['section_index' => 0, 'element_index' => 0, 'parent' => 'body']],
+            ],
+            'sous_titres' => [],
+            'en_tetes' => [],
+            'pieds_de_page' => [],
+            'tableaux' => [],
+            'images' => [],
+            'elements_flottants' => [],
+        ]);
+
+        Http::fake([
+            'api.deepseek.com/*' => Http::response([
+                'choices' => [['message' => ['content' => $withText]]],
+            ], 200),
+        ]);
+
+        $result = $this->analyzer->analyze($this->contextText());
+
+        $this->assertSame('Titre reformulé par l\'IA', $result['titres'][0]['texte']);
+    }
+
+    /**
+     * Le format historique (items avec « texte ») doit rester supporté.
+     */
+    public function test_reste_compatible_avec_lancien_format(): void
+    {
+        Http::fake([
+            'api.deepseek.com/*' => Http::response([
+                'choices' => [['message' => ['content' => $this->validJsonResponse()]]],
+            ], 200),
+        ]);
+
+        $result = $this->analyzer->analyze($this->contextText());
+
+        $this->assertSame('Introduction', $result['titres'][0]['texte']);
+        $this->assertSame('EN-TÊTE FORMADOC', $result['en_tetes'][0]['texte']);
+    }
+
+    /**
+     * Un JSON complet mais contenant un caractère de contrôle non échappé
+     * (le modèle recopie parfois du texte « sale » du document Word) doit être
+     * nettoyé puis décodé au lieu de faire échouer toute l'analyse.
+     */
+    public function test_nettoie_les_caracteres_de_controle_invalides(): void
+    {
+        // \x0C (form feed) est interdit tel quel dans une chaîne JSON.
+        $raw = "{\"titres\": [[0, 0, \"body\"]]\x0C, \"sous_titres\": [], \"en_tetes\": [],"
+            .' "pieds_de_page": [], "tableaux": [], "images": [],'
+            .' "elements_flottants": []}';
+
+        Http::fake([
+            'api.deepseek.com/*' => Http::response([
+                'choices' => [['message' => ['content' => $raw]]],
+            ], 200),
+        ]);
+
+        $result = $this->analyzer->analyze($this->contextText());
+
+        $this->assertTrue(AnalyzerResult::isValid($result));
+        $this->assertCount(1, $result['titres']);
+        $this->assertSame('Introduction', $result['titres'][0]['texte']);
     }
 }

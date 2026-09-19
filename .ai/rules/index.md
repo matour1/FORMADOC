@@ -6,10 +6,10 @@ Before planning or editing, find the row whose globs match the file's path and r
 | --- | --- |
 | app/Document/Adapters/** | .ai/rules/adapters.md |
 | app/Http/Controllers/Admin/** | .ai/rules/admin.md |
-| app/Services/Billing/**, app/Console/Commands/BillingReport.php, app/Services/OpenRouter/** | .ai/rules/billing.md |
-| app/Console/Commands/** | .ai/rules/console.md |
+| app/Services/Billing/**, app/Console/Commands/BillingReport.php, app/Services/OpenRouter/**, app/Console/Commands/** | .ai/rules/billing.md |
 | app/Services/Chat/** | .ai/rules/chat.md |
 | app/Document/Classification/** | .ai/rules/classification.md |
+| app/Console/Commands/** | .ai/rules/console.md |
 | app/Http/Controllers/ChatController.php | .ai/rules/controllers.md |
 | app/DocAnalyzer/** | .ai/rules/doc-analyzer.md |
 | app/Services/DocumentGeneration/** | .ai/rules/document-generation.md |
@@ -19,6 +19,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Document/Editing/**, app/Document/Editing/ReExportCoordinator.php | .ai/rules/editing.md |
 | app/Document/Formatting/** | .ai/rules/formatting.md |
 | app/Document/Lists/** | .ai/rules/lists.md |
+| database/migrations/** | .ai/rules/migrations.md |
 | app/Document/Numbering/** | .ai/rules/numbering.md |
 | app/Services/OpenRouter/OpenRouterService.php | .ai/rules/open-router.md |
 | app/Providers/AppServiceProvider.php | .ai/rules/providers.md |

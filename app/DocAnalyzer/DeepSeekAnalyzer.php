@@ -101,7 +101,15 @@ class DeepSeekAnalyzer
                 return $empty;
             }
 
-            $result = AnalyzerResult::normalize($decoded);
+            // Format COMPACT : le modèle ne renvoie que les positions
+            // ([section_index, element_index, parent]). On reconstruit ici le
+            // texte de chaque élément depuis le document d'origine, ce qui
+            // évite au modèle de recopier ~150 K caractères (lent et fragile)
+            // et ne lui demande que ~10 K caractères de sortie.
+            $positionMap = $this->buildPositionMap($contextTextWithPositions);
+            $hydrated = $this->hydrate($decoded, $positionMap);
+
+            $result = AnalyzerResult::normalize($hydrated);
 
             Log::info('DeepSeekAnalyzer : analyse réussie', [
                 'counts' => array_map('count', $result),
@@ -318,6 +326,124 @@ class DeepSeekAnalyzer
     }
 
     /**
+     * Construit la table position → texte depuis le texte positionné du parser.
+     *
+     * Le parser produit des lignes du type :
+     *   [POS:section_0,element_4,parent_body]INTRODUCTION
+     * On en extrait une clé stable « section|element|parent » et le texte qui suit.
+     *
+     * @param  string  $contextTextWithPositions  Sortie du DocumentParser
+     * @return array<string, string> Clé de position → texte de l'élément
+     */
+    private function buildPositionMap(string $contextTextWithPositions): array
+    {
+        $map = [];
+
+        if (! preg_match_all(
+            '/\[POS:section_(\d+),element_(\d+),parent_([a-z_]+)\](.*)/',
+            $contextTextWithPositions,
+            $matches,
+            PREG_SET_ORDER
+        )) {
+            return $map;
+        }
+
+        foreach ($matches as $match) {
+            $key = $match[1].'|'.$match[2].'|'.$match[3];
+            $map[$key] = trim($match[4]);
+        }
+
+        return $map;
+    }
+
+    /**
+     * Reconstitue les textes manquants à partir des positions renvoyées par l'IA.
+     *
+     * Le modèle répond au format compact {(catégorie): [[s, e, parent], …]}.
+     * On accepte aussi l'ancien format (items avec « texte ») pour compatibilité.
+     *
+     * @param  array<string, mixed>  $decoded  Réponse JSON décodée
+     * @param  array<string, string>  $positionMap  Table position → texte
+     * @return array<string, mixed> Résultat avec « texte » renseigné
+     */
+    private function hydrate(array $decoded, array $positionMap): array
+    {
+        $hydrated = [];
+
+        foreach (AnalyzerResult::CATEGORIES as $category) {
+            $items = $decoded[$category] ?? [];
+            if (! is_array($items)) {
+                $items = [];
+            }
+
+            $hydrated[$category] = [];
+
+            foreach ($items as $item) {
+                $position = null;
+
+                // Format compact : [section_index, element_index, parent]
+                if (is_array($item) && array_is_list($item) && count($item) >= 2) {
+                    $position = [
+                        'section_index' => (int) $item[0],
+                        'element_index' => (int) $item[1],
+                        'parent' => (string) ($item[2] ?? 'body'),
+                    ];
+                    $item = ['position' => $position];
+                } elseif (is_array($item)) {
+                    $position = $item['position'] ?? null;
+                    if (! is_array($position)) {
+                        // Positions plates : {section_index, element_index, parent}
+                        if (isset($item['element_index'])) {
+                            $position = [
+                                'section_index' => (int) ($item['section_index'] ?? 0),
+                                'element_index' => (int) $item['element_index'],
+                                'parent' => (string) ($item['parent'] ?? 'body'),
+                            ];
+                        } else {
+                            $position = null;
+                        }
+                    }
+                } elseif (is_string($item)) {
+                    // Position fournie en chaîne : « 0,4,body »
+                    $bits = array_map('trim', explode(',', $item));
+                    if (count($bits) >= 2) {
+                        $position = [
+                            'section_index' => (int) $bits[0],
+                            'element_index' => (int) $bits[1],
+                            'parent' => (string) ($bits[2] ?? 'body'),
+                        ];
+                    }
+                    $item = ['position' => $position];
+                } else {
+                    continue;
+                }
+
+                if (! is_array($position)) {
+                    continue;
+                }
+
+                $key = $position['section_index'].'|'.$position['element_index'].'|'.$position['parent'];
+
+                // Le texte du modèle prime s'il est fourni ; sinon on le
+                // récupère depuis la carte de positions (format compact).
+                $text = (string) ($item['texte'] ?? $item['text'] ?? '');
+                if ($text === '') {
+                    $text = $positionMap[$key] ?? '';
+                }
+
+                $hydrated[$category][] = [
+                    'texte' => $text,
+                    'position' => $position,
+                    'styles' => $item['styles'] ?? [],
+                    'type' => (string) ($item['type'] ?? $category),
+                ];
+            }
+        }
+
+        return $hydrated;
+    }
+
+    /**
      * Prompt système : classification JSON STRICT des éléments positionnés.
      */
     private function systemPrompt(): string
@@ -345,27 +471,26 @@ Règles :
 1. Un élément de parent=header appartient TOUJOURS à en_tetes (sauf s'il s'agit
    manifestement d'un tableau ou d'une image, auquel cas priorité à ces derniers).
 2. Un élément de parent=footer appartient TOUJOURS à pieds_de_page.
-3. Les titres et sous_titres doivent conserver la position [POS:...] d'origine.
-4. Ne fusionne jamais deux éléments : chaque élément est classifié individuellement.
-5. Un élément déjà identifié comme titre par son style n'est pas du texte normal.
+3. Ne fusionne jamais deux éléments : chaque élément est classifié individuellement.
+4. Un élément déjà identifié comme titre par son style n'est pas du texte normal.
+5. NE RECOPIE JAMAIS le texte des éléments : indique uniquement leur position.
 
 Réponds UNIQUEMENT avec un objet JSON valide, sans markdown, sans commentaire,
-sans texte avant ou après. Format EXACT :
+sans texte avant ou après. Format EXACT (positions uniquement) :
 
 {
-  "titres": [
-    {"texte": "...", "position": {"section_index": 0, "element_index": 4, "parent": "body"}}
-  ],
-  "sous_titres": [...],
-  "en_tetes": [...],
-  "pieds_de_page": [...],
-  "tableaux": [...],
-  "images": [...],
-  "elements_flottants": [...]
+  "titres": [[0, 4, "body"], [0, 9, "body"]],
+  "sous_titres": [[0, 12, "body"]],
+  "en_tetes": [[0, 0, "header"]],
+  "pieds_de_page": [[0, 1, "footer"]],
+  "tableaux": [[0, 20, "body"]],
+  "images": [[0, 25, "body"]],
+  "elements_flottants": [[0, 30, "body"]]
 }
 
-Les catégories vides doivent être présentes avec []. Les positions (section_index,
-element_index, parent) doivent être copiées telles quelles depuis [POS:...].
+Chaque entrée est un triplet [section_index, element_index, parent] copié TELLEMENT
+QUEL depuis la balise [POS:section_X,element_Y,parent_Z] de l'élément.
+Les catégories vides doivent être présentes avec [].
 PROMPT;
     }
 }
