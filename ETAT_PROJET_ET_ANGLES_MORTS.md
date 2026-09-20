@@ -154,27 +154,24 @@ Le système lit déjà les en-têtes, pieds de page et numéros de page, et peut
 
 **Précision issue de l'audit** — le pipeline historique gère déjà un cas d'élément flottant, à ne pas confondre avec celui traité ici : `DocumentParser::preferXmlText()` récupère le texte des **textboxes** (`wps:txbx` / `v:textbox`) des en-têtes/pieds que PhpWord ignore, en comparant la richesse du texte XML à celle de l'extraction PhpWord (`isMoreInformative()`, seuil : plus de la moitié des mots significatifs manquants). Le cas non couvert est donc plus étroit qu'annoncé : il s'agit des éléments flottants **positionnés** (ancrage, habillage) dans ces zones, pas de leur texte.
 
-### 2.5 Scope de l'Assistant IA — risque de dérive de périmètre
+### 2.5 Scope de l'Assistant IA — décision close
 
-**Constat** : la description initiale de l'Assistant IA incluait des fonctionnalités génériques (recherche web sur le sujet du document, génération d'images à insérer) qui ne sont pas des différenciateurs du produit — ce sont des capacités de plateforme LLM générique, reproductibles par n'importe quel chatbot.
+**Constat initial** : la description de l'Assistant IA incluait des fonctionnalités génériques (recherche web sur le sujet du document, génération d'images à insérer) qui ne sont pas des différenciateurs du produit — ce sont des capacités de plateforme LLM générique, reproductibles par n'importe quel chatbot.
 
-**Décision actée** : recherche web et génération d'images sortent du scope **prioritaire**.
+**Décision prise : ils sont LIVRÉS et assumés comme tels (Option B).** Recherche web et génération d'images restent fonctionnels, exposés et facturés. Ce ne sont plus une dette écartée mais des fonctionnalités du produit, au même titre que les autres outils.
 
-**État réel dans le code — décision non appliquée** : les deux outils sont **toujours exposés et fonctionnels**.
+| Outil | Schéma | Exécution | Modèle | Test |
+|---|---|---|---|---|
+| `web_search` | `ChatToolsService:178` | `webSearch()` ligne 695 (`web_search_options`, `search_context_size: high`) | `web_search` (routage `ModelRouter`) | `ChatToolsServiceTest::test_web_search_delegue_a_openrouter_avec_citations` |
+| `image_generate` | `ChatToolsService:193` | `generateImage()` ligne 739 | `image_generation` (`gpt-image-*`) | `ChatToolsServiceTest::test_image_generate_stocke_le_fichier` |
 
-| Outil | Schéma | Exécution | Modèle |
-|---|---|---|---|
-| `web_search` | `ChatToolsService:178` | `webSearch()` ligne 695 (`web_search_options`, `search_context_size: high`) | `web_search` (routage `ModelRouter`) |
-| `image_generate` | `ChatToolsService:193` | `generateImage()` ligne 739 | `image_generation` (`gpt-image-*`) |
+**Conséquence sur la documentation** : la ligne « Recherche web et génération d'images » est **retirée de la dette assumée** (section 5). Elles apparaissent désormais dans `ChatToolsService`, dans `CapabilitiesService` (l'IA sait qu'elle peut les appeler) et dans les descriptions de plans — ce qui est cohérent avec leur statut réel.
 
-Ils sont donc appelables par le modèle et **facturés à l'utilisateur**, tout en étant réputés hors scope. Le module de page de garde, retiré du produit, l'a été « proprement » : classes supprimées et `CoverModuleRemovalInvariantTest` empêche leur retour. **Il faut trancher explicitement** :
+**Ce que cela implique à surveiller** : ces deux outils consomment des crédits et dépendent de fournisseurs externes (`web_search_options` OpenRouter, `gpt-image-*`). Il faut donc :
+- vérifier que le coût par appel est bien couvert par le coefficient de rentabilité (×1.84) dans `config/openrouter.php` (`pricing`) ;
+- surveiller les erreurs fournisseur dans les logs (une clé OpenRouter sans accès à `gpt-image-*` produirait un échec facturé).
 
-- **Option A — retirer** les schémas et le routage, et ajouter un test d'invariant comme pour le module de page de garde. Cohérent, et supprime une surface de coût non maîtrisée.
-- **Option B — assumer** qu'ils restent fonctionnels (capacité offerte, sans promotion). Il faut alors les sortir de la liste « dette écartée », puisqu'ils sont livrés.
-
-L'état actuel — présents mais documentés comme écartés — est le plus ambigu : ni retirés, ni assumés.
-
-**En revanche, le reste du scope est bien implémenté** :
+**En revanche, le cœur du scope est bien implémenté** :
 - Dialogue autour d'un document + application de la mise en forme à la demande → `document_analyze`, `document_edit`, `document_reconstruct`
 - Modification de blocs ciblés → 6 outils d'édition structurelle (`EditToolSchemas::all()`, `ToolWhitelist`, `EditOrchestrator`) : `rewrite_paragraph`, `insert_block`, `delete_block`, `modify_table`, `regenerate_section`, `undo_last_action`
 - Régénération du document / du sommaire → `document_reconstruct`, `table_of_contents`, et `RenderCoordinator` (pipeline v2)
@@ -236,10 +233,9 @@ Les questions **réellement ouvertes** :
 - Sommaire tapé manuellement par l'utilisateur (cas rare) — *couvert par le seuil 0,85, à confirmer (question 5)*
 - Gestion des marges mal définies par l'utilisateur — *fréquence inconnue (question 4)*
 - Éléments flottants dans en-têtes/pieds de page
-- Recherche web et génération d'images dans l'Assistant IA
 - Mécanisme de certification établissement (repoussé en Phase 7)
 
-> **Note sur la recherche web et la génération d'images.** Ces deux fonctionnalités sont bien écartées du **scope prioritaire** — mais elles restent **exposées comme outils actifs** dans `ChatToolsService` (`web_search` : ligne 178, `image_generate` : ligne 193), donc appelables par le modèle et facturées à l'utilisateur. « Dette assumée » avait été interprété comme « non prioritaire » ; il faut décider explicitement entre **retirer les outils** (comme le module de page de garde l'a été, avec test d'invariant) ou **les garder fonctionnels**. L'état actuel — présents mais réputés hors scope — est le plus ambigu des trois.
+> **Recherche web et génération d'images ont été RETIRÉES de cette liste.** Décision : elles sont livrées et assumées (voir §2.5). Elles ne sont donc plus une dette écartée.
 
 ---
 

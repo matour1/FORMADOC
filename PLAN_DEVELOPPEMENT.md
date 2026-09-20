@@ -150,8 +150,10 @@ Branche : `feature/evolutions-saas-phase3`. Cahier des charges v3.0 : `CAHIER_DE
 ### 8.1 — Chat IA actionnable (exigence A)
 
 - **`ChatToolsService`** (`app/Services/Chat/`) : outils actionnables exposés au chat.
-  - Internes : `cover_page.generate` (page de garde DOCX via `CoverGenerationService`/`CoverPageRenderer`), `document.reconstruct` (reconstructeur), `table_of_contents` (sommaire TOC PhpWord), `structure.correct` (corrections de structure).
-  - Externes : `web.search` (recherche web native OpenRouter), `image.generate` (gpt-image-*).
+  - Documents : `document_analyze`, `document_edit`, `document_reconstruct`, `document_create`, `document_to_pdf`, `document_to_docx`, `table_of_contents`, `structure_correct`.
+  - Édition structurelle (R6, sur document analysé et persisté) : `rewrite_paragraph`, `insert_block`, `modify_table`, `delete_block`, `regenerate_section`, `undo_last_action`.
+  - Externes : `web_search` (recherche web native OpenRouter), `image_generate` (gpt-image-*).
+  - ⚠️ `cover_page.generate` (page de garde via `CoverGenerationService`/`CoverPageRenderer`) a été **retiré du produit** : ces classes n'existent plus, et `CoverModuleRemovalInvariantTest` interdit leur retour.
 - **`OpenRouterService::chat()`** : support du function calling OpenAI (`tools[]`, `tool_choice`, `executor` callable, boucle bornée `tool_loop_max_turns` = 5).
 - **`ChatController::send`** : parcours en 13 étapes (estimation → solde/quota → débit → contexte → modèle → appel → exécution des outils → coût réel → remboursement différentiel → persistance → quota → journalisation → réponse).
 

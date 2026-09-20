@@ -1,0 +1,186 @@
+name: Déploiement
+
+# =============================================================================
+# Déploiement en production — FORMADOC
+# =============================================================================
+# ⚠️ CE WORKFLOW NE FONCTIONNE PAS TANT QUE L'HÉBERGEUR N'EST PAS CHOISI.
+#
+# Le déploiement dépend entièrement de la cible (SSH vers un VPS, plateforme
+# managée, conteneurs…). Écrire ici une méthode inventée serait pire que rien :
+# elle échouerait au premier déploiement réel, ou réussirait en laissant le
+# service à moitié fonctionnel.
+#
+# La procédure complète, y compris les étapes manuelles non automatisables
+# (workers de queue, cron), est décrite dans DEPLOIEMENT.md.
+#
+# POUR ACTIVER CE FICHIER, une fois l'hébergeur retenu :
+#   1. Renseigner les secrets du dépôt : Settings → Secrets and variables →
+#      Actions. La liste exacte est dans la section « Secrets » ci-dessous.
+#   2. Remplacer le job `deploy-ssh` par la méthode correspondant à l'hébergeur
+#      (exemples fournis en commentaire à la fin du fichier).
+#   3. Retirer la condition `if: false` du job de déploiement.
+#
+# Tant que `if: false` est présent, ce workflow est « vert » sans rien faire :
+# aucun risque de déploiement accidentel.
+# =============================================================================
+
+on:
+  # Déclenchement manuel uniquement : un déploiement ne doit jamais partir
+  # tout seul parce qu'un commit a été poussé sur main.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Référence à déployer (tag ou commit)'
+        required: true
+        default: 'main'
+      reason:
+        description: 'Motif du déploiement (tracé dans le résumé)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  # Un déploiement à la fois, jamais annulé en cours : interrompre une
+  # migration de base au milieu laisserait la production dans un état mixte.
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Garde-fou : refuser de déployer si la CI n'est pas passée sur cette ref
+  # ---------------------------------------------------------------------------
+  verify:
+    name: Vérifier la CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Installer PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, curl, libxml, mbstring, zip, fileinfo, pdo, sqlite3, gd
+          ini-values: memory_limit=512M
+          coverage: none
+          tools: composer:v2
+
+      - name: Dépendances (sans dev — ce qui sera réellement déployé)
+        run: composer install --no-dev --prefer-dist --no-interaction --no-progress
+
+      - name: Audit de sécurité (porte de sortie obligatoire)
+        # Le déploiement REFUSE de partir si une dépendance vulnérable est
+        # présente. C'est le point où l'audit devient bloquant : un scan qui ne
+        # bloque rien est un scan décoratif.
+        run: composer audit --locked --no-interaction
+
+      - name: Tests
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          php artisan test
+
+  # ---------------------------------------------------------------------------
+  # Déploiement (à adapter à l'hébergeur retenu)
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Déployer
+    runs-on: ubuntu-latest
+    needs: [verify]
+    environment: production
+    # ⚠️ PASSER À `true` APRÈS avoir configuré les secrets et adapté l'étape.
+    if: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Résumé du déploiement
+        run: |
+          echo "### Déploiement" >> $GITHUB_STEP_SUMMARY
+          echo "- Réf : \`${{ github.event.inputs.ref }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Motif : ${{ github.event.inputs.reason }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Déclenché par : ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+
+      # -----------------------------------------------------------------------
+      # ÉTAPE À REMPLACER — exemple pour un VPS accessible en SSH
+      # -----------------------------------------------------------------------
+      #
+      # Prérequis côté serveur (une seule fois, manuellement) :
+      #   - une clé de déploiement dont la partie publique est dans
+      #     ~/.ssh/authorized_keys ;
+      #   - les secrets DEVOPS_SSH_HOST / DEVOPS_SSH_USER / DEVOPS_SSH_KEY et
+      #     DEVOPS_DEPLOY_PATH renseignés dans les secrets du dépôt ;
+      #   - le fichier `.env` de production présent sur le serveur (il n'est
+      #     JAMAIS versionné, donc jamais transmis par le déploiement) ;
+      #   - un dossier `releases/` + un lien symbolique `current/` si l'on veut
+      #     un déploiement atomique avec retour arrière instantané.
+      #
+      # - name: Déployer par SSH
+      #   uses: appleboy/ssh-action@v1
+      #   with:
+      #     host: ${{ secrets.DEVOPS_SSH_HOST }}
+      #     username: ${{ secrets.DEVOPS_SSH_USER }}
+      #     key: ${{ secrets.DEVOPS_SSH_KEY }}
+      #     script: |
+      #       set -euo pipefail
+      #       cd ${{ secrets.DEVOPS_DEPLOY_PATH }}
+      #
+      #       # 1. Récupérer le code (fast-forward uniquement : jamais de merge
+      #       #    implicite en production).
+      #       git fetch --all --tags
+      #       git checkout ${{ github.event.inputs.ref }}
+      #       git pull --ff-only
+      #
+      #       # 2. Dépendances PHP sans les outils de développement.
+      #       composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+      #
+      #       # 3. Migrations. --force est OBLIGATOIRE : sans lui, Artisan
+      #       #    demande confirmation et le déploiement se bloque.
+      #       php artisan migrate --force
+      #
+      #       # 4. Caches de production. Ils DOIVENT être reconstruits à chaque
+      #       #    déploiement : un cache de config obsolète fait tourner
+      #       #    l'ancienne configuration, silencieusement.
+      #       php artisan config:cache
+      #       php artisan route:cache
+      #       php artisan view:cache
+      #       php artisan event:cache
+      #
+      #       # 5. Redémarrer les workers APRÈS que le nouveau code est en place :
+      #       #    un worker garde l'ancien code en mémoire jusqu'au redémarrage.
+      #       php artisan queue:restart
+      #
+      # Note : `npm run build` doit avoir été exécuté, car `public/build` est
+      # ignoré par git. Deux options — compiler dans ce job puis transmettre le
+      # dossier par rsync, ou compiler sur le serveur (voir DEPLOIEMENT.md).
+      #
+      # -----------------------------------------------------------------------
+      # Exemple pour une plateforme managée (Laravel Cloud, Ploi, Forge) :
+      # l'outil fournit généralement son propre script de build/déploiement ;
+      # dans ce cas, remplacer l'étape par l'appel à son action dédiée, en
+      # s'assurant que les étapes 3 à 5 ci-dessus (migrate, caches,
+      # queue:restart) sont bien exécutées — c'est le point que les scripts
+      # fournis oublient le plus souvent.
+      # -----------------------------------------------------------------------
+
+# =============================================================================
+# SECRETS À RENSEIGNER (Settings → Secrets and variables → Actions)
+# =============================================================================
+# Nom                     | Rôle
+# ------------------------|------------------------------------------------
+# DEVOPS_SSH_HOST         | Hôte du serveur de production
+# DEVOPS_SSH_USER         | Utilisateur de déploiement (pas root)
+# DEVOPS_SSH_KEY          | Clé privée de déploiement (éditeur de contenu)
+# DEVOPS_DEPLOY_PATH      | Chemin absolu du projet sur le serveur
+#
+# À créer aussi : un « environment » nommé `production` (Settings →
+# Environments) avec, si possible, une règle d'approbation manuelle. Le
+# déploiement ne doit pas pouvoir partir sans qu'un humain l'ait validé.
+#
+# ⚠️ Le fichier `.env` de production contient les clés d'API, les identifiants
+# de base et les secrets KPay. Il doit exister UNIQUEMENT sur le serveur et
+# ne jamais transiter par GitHub Actions ni par les artefacts du workflow.

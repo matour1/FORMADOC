@@ -1,0 +1,210 @@
+name: CI
+
+# =============================================================================
+# Intégration continue — FORMADOC
+# =============================================================================
+# Rôle : REFUSER toute modification qui casse le build, les tests, le style, ou
+# qui introduit une dépendance vulnérable connue.
+#
+# Ce workflow ne DÉPLOIE rien : il valide. Le déploiement est un job séparé
+# (`.github/workflows/deploy.yml`) qui s'exécute APRÈS celui-ci et qui doit
+# être configuré pour l'hébergeur retenu (voir DEPLOIEMENT.md).
+#
+# Pourquoi un audit de dépendances à CHAQUE exécution, et pas périodiquement :
+# une vulnérabilité est publiée dans l'avis de sécurité d'un paquet, pas dans
+# ce dépôt. Attendre un scan hebdomadaire signifie qu'un déploiement peut avoir
+# lieu pendant la fenêtre où la faille est publique et le correctif disponible.
+# Le job `security` interroge les bases d'avis à chaque push : une CVE publiée
+# hier fait échouer le build d'aujourd'hui, sans qu'aucun fichier ait changé.
+# =============================================================================
+
+on:
+  push:
+    branches: [main, 'feature/**', 'fix/**']
+  pull_request:
+    branches: [main]
+  # Permet de relancer l'audit sans toucher au code (nouvelle CVE publiée)
+  schedule:
+    - cron: '0 6 * * 1'  # lundi 06:00 UTC
+
+# Un seul cycle à la fois par branche : un push qui en suit un autre annule
+# l'exécution devenue inutile, au lieu de payer deux fois la suite complète.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # La suite complète (~1 280 tests) dépasse la limite PHP par défaut de 128 Mo
+  # et meurt sur « Premature end of PHP process » sans ce réglage. Ce n'est pas
+  # une précaution de confort : sans elle, la CI échoue sur un test qui passe
+  # isolément, ce qui enverrait chercher un défaut inexistant.
+  PHP_MEMORY_LIMIT: 512M
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Style de code (Pint)
+  # ---------------------------------------------------------------------------
+  style:
+    name: Style (Pint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, curl, libxml, mbstring, zip, fileinfo, pdo, sqlite3, gd
+          coverage: none
+
+      - name: Installer les dépendances (avec dev)
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Vérifier le style sans modifier
+        run: vendor/bin/pint --test --format agent
+
+  # ---------------------------------------------------------------------------
+  # 2. Sécurité des dépendances
+  # ---------------------------------------------------------------------------
+  security:
+    name: Sécurité des dépendances
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, curl, libxml, mbstring, zip, fileinfo
+          coverage: none
+          tools: composer:v2
+
+      - name: Audit Composer (vulnérabilités connues)
+        # --locked : audit le composer.lock, donc exactement ce qui sera déployé
+        # (un audit sur composer.json validerait des versions qu'on n'installe pas).
+        # Sans --no-dev : une vulnérabilité dans un outil de test reste une
+        # vulnérabilité — la dépendance est installée en local et en CI.
+        run: composer audit --locked --no-interaction
+
+      - name: Installer Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Installer les dépendances JS (lock strict)
+        # `npm ci` et non `npm install` : installe exactement le package-lock,
+        # et échoue si les deux fichiers divergent.
+        run: npm ci --ignore-scripts
+
+      - name: Audit npm (vulnérabilités connues)
+        # --audit-level=high : on échoue sur les failles élevées et critiques.
+        # Les avis « low » sur des outils de développement génèrent du bruit
+        # sans risque exploitable ; bloquer dessus rendrait la CI inutilisable.
+        run: npm audit --audit-level=high
+
+  # ---------------------------------------------------------------------------
+  # 3. Tests (matrice de versions PHP)
+  # ---------------------------------------------------------------------------
+  tests:
+    name: Tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 8.3 = version minimale déclarée dans composer.json (doit passer).
+        # 8.4 = version de développement et de production.
+        php: ['8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          # sqlite3 : la suite tourne sur SQLite en mémoire (voir phpunit.xml)
+          extensions: dom, curl, libxml, mbstring, zip, fileinfo, pdo, sqlite3, gd
+          ini-values: memory_limit=${{ env.PHP_MEMORY_LIMIT }}
+          coverage: none
+
+      - name: Installer les dépendances
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Préparer l'environnement de test
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Exécuter la suite
+        # Les paramètres de connexion viennent de phpunit.xml (SQLite en
+        # mémoire), donc aucun service externe n'est requis ici.
+        run: php artisan test
+
+  # ---------------------------------------------------------------------------
+  # 4. Build des assets front
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build des assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, curl, libxml, mbstring, zip, fileinfo
+          coverage: none
+
+      - name: Installer Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Installer les dépendances PHP
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Installer les dépendances JS
+        run: npm ci --ignore-scripts
+
+      - name: Compiler les assets
+        # `public/build` est ignoré par git : le build DOIT avoir lieu au
+        # déploiement, sinon `@vite` échoue avec « Unable to locate file in
+        # Vite manifest » sur tout le site. Ce job vérifie que la compilation
+        # passe avant d'arriver en production.
+        run: npm run build
+
+      - name: Vérifier que le manifeste a été produit
+        run: test -f public/build/manifest.json
+
+  # ---------------------------------------------------------------------------
+  # 5. Porte de sortie : résumé lisible
+  # ---------------------------------------------------------------------------
+  ci-status:
+    name: Statut global
+    runs-on: ubuntu-latest
+    # S'exécute même si un job précédent échoue, pour pouvoir rapporter
+    if: always()
+    needs: [style, security, tests, build]
+    steps:
+      - name: Vérifier les jobs requis
+        run: |
+          echo "style    : ${{ needs.style.result }}"
+          echo "security : ${{ needs.security.result }}"
+          echo "tests    : ${{ needs.tests.result }}"
+          echo "build    : ${{ needs.build.result }}"
+
+          # `skipped` est toléré (aucun job n'est conditionnel aujourd'hui, mais
+          # cela évite un faux échec si une condition est ajoutée plus tard).
+          # `cancelled` et `failure` bloquent.
+          for result in "${{ needs.style.result }}" "${{ needs.security.result }}" "${{ needs.tests.result }}" "${{ needs.build.result }}"; do
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              echo "::error::Un job requis a échoué ($result)."
+              exit 1
+            fi
+          done
+
+          echo "Tous les contrôles sont passés."

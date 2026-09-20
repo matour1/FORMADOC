@@ -60,10 +60,15 @@
 
             // Légendes : le libellé est le texte sans le préfixe « Figure 3 : »,
             // pour ne pas répéter le numéro déjà affiché dans sa colonne.
+            // La colonne « Type » affiche le mot-clé de l'élément (« Figure »,
+            // « Tableau ») et NON `listTitle()` : ce dernier renvoie l'intitulé
+            // de la section du frontispice (« LISTE DES FIGURES »), qui
+            // décrirait la liste au lieu de l'élément — l'écran annoncerait
+            // « LISTE DES FIGURES » comme type d'une légende.
             $legends = array_map(
                 static fn ($bloc): array => [
                     'line' => $bloc->positionY ?? '',
-                    'type' => $bloc->category?->listTitle() ?? 'Légende',
+                    'type' => $bloc->category?->keyword() ?? 'Légende',
                     'number' => $bloc->displayNumber() ?? '',
                     'label' => trim((string) preg_replace('/^[^:]{0,40}:\s*/u', '', $bloc->text)),
                 ],

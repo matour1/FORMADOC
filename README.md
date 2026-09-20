@@ -107,9 +107,11 @@ Avec `infra = 0.15` et `marge = 0.60` : `prix_public ≈ coût_API × 1.84 (≈ 
 - Page `/chat` : historique des sessions, nouvelle conversation.
 - Chaque message affiche le **modèle utilisé** et le **coût en crédits** réellement consommé.
 - Le coût est **estimé avant** envoi (crédits requis affichés), débité avant appel, et le **différentiel est remboursé** si le coût réel est inférieur.
-- **Outils actionnables** (function calling OpenRouter, boucle `tool_loop_max_turns` = 5) :
-  - Internes : `cover_page.generate` (page de garde DOCX), `document.reconstruct` (reconstructeur), `table_of_contents` (sommaire TOC), `structure.correct` (corrections de structure) — via `ChatToolsService`.
-  - Externes : `web.search` (recherche web native), `image.generate` (gpt-image-*).
+- **Outils actionnables** (function calling OpenRouter, boucle `tool_loop_max_turns` = 5), **16 outils** exposés :
+  - Documents : `document_analyze` (analyse de structure), `document_edit` (édition ciblée), `document_reconstruct`, `document_create`, `document_to_pdf`, `document_to_docx`, `table_of_contents`, `structure_correct`
+  - Édition structurelle (document analysé et persisté) : `rewrite_paragraph`, `insert_block`, `modify_table`, `delete_block`, `regenerate_section`, `undo_last_action`
+  - Externes : `web_search` (recherche web native, citations incluses), `image_generate` (gpt-image-*)
+  - ⚠️ Le module « page de garde » (`cover_page.generate`, `CoverPageRenderer`) a été **retiré du produit** ; un test d'invariant (`CoverModuleRemovalInvariantTest`) empêche son retour.
 
 ### Skills documentaires Claude — Standard+, ou pay-per-use ×1,5 (expérimental, exigence B)
 
