@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Detection;
 
 use App\DocAnalyzer\AnalyzerResult;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -60,9 +61,8 @@ class AiCorrectionService
      * Corrige une structure détectée de façon déterministe en s'appuyant sur
      * l'IA, UNIQUEMENT sur les parties ambiguës ou incertaines.
      *
-     * @param array<string, mixed> $structure     Structure canonique (sortie DocAnalyzer + body_complet)
-     * @param array<int, mixed>    $ambiguities   Sortie AmbiguityDetectionService
-     *
+     * @param  array<string, mixed>  $structure  Structure canonique (sortie DocAnalyzer + body_complet)
+     * @param  array<int, mixed>  $ambiguities  Sortie AmbiguityDetectionService
      * @return array<string, mixed> Structure éventuellement corrigée (sinon inchangée)
      */
     public function correct(array $structure, array $ambiguities = []): array
@@ -113,7 +113,7 @@ class AiCorrectionService
      * "s{section}e{element}p{parent}" ET un 'texte'. On extrait l'élément
      * depuis le pattern, ou depuis 'element_index' s'il est présent.
      *
-     * @param array<string, mixed> $ambiguity
+     * @param  array<string, mixed>  $ambiguity
      */
     private function ambiguityElementIndex(array $ambiguity): ?int
     {
@@ -135,9 +135,8 @@ class AiCorrectionService
      * Priorité : les ambiguïtés signalées par AmbiguityDetectionService, puis
      * les éléments non-titres (texte) proches d'un titre (potentiels listes).
      *
-     * @param array<string, mixed> $structure
-     * @param array<int, mixed>    $ambiguities
-     *
+     * @param  array<string, mixed>  $structure
+     * @param  array<int, mixed>  $ambiguities
      * @return array<int, array<string, mixed>>
      */
     private function extractAmbiguousItems(array $structure, array $ambiguities): array
@@ -187,6 +186,7 @@ class AiCorrectionService
                 if ($type === 'titre') {
                     $lastTitreKey = $key;
                 }
+
                 continue;
             }
 
@@ -198,7 +198,7 @@ class AiCorrectionService
             $procheTitre = $lastTitreKey !== null
                 && $this->distanceFrom($structure, $key, $lastTitreKey) <= 5;
 
-            if (($candidatListe || $procheTitre) && !isset($seen[$key])) {
+            if (($candidatListe || $procheTitre) && ! isset($seen[$key])) {
                 $seen[$key] = true;
                 $item = $this->findElementByKey($structure, $this->indexFromKey($key));
                 if ($item === null) {
@@ -223,14 +223,13 @@ class AiCorrectionService
      * Appelle l'API DeepSeek avec timeout dynamique, retries progressifs.
      * Ne lance JAMAIS d'exception fatale : retourne [] en cas d'échec.
      *
-     * @param array<int, array<string, mixed>> $items Éléments ambigus
-     *
+     * @param  array<int, array<string, mixed>>  $items  Éléments ambigus
      * @return array<int, array<string, mixed>> Corrections ciblées
      */
     private function callLlm(array $items): array
     {
         $apiUrl = rtrim((string) config('deepseek.api_url', 'https://api.deepseek.com/v1'), '/')
-            . '/chat/completions';
+            .'/chat/completions';
         $model = (string) config('deepseek.model', 'deepseek-v4-flash');
         $apiKey = (string) config('deepseek.api_key', '');
 
@@ -267,7 +266,7 @@ class AiCorrectionService
             try {
                 $response = Http::timeout($timeout)
                     ->withHeaders([
-                        'Authorization' => 'Bearer ' . $apiKey,
+                        'Authorization' => 'Bearer '.$apiKey,
                         'Content-Type' => 'application/json',
                     ])
                     ->post($apiUrl, [
@@ -280,7 +279,7 @@ class AiCorrectionService
                     ]);
 
                 if ($response->failed()) {
-                    throw new \Exception('DeepSeek API error: ' . $response->body());
+                    throw new \Exception('DeepSeek API error: '.$response->body());
                 }
 
                 $json = $response->json();
@@ -305,7 +304,7 @@ class AiCorrectionService
             } catch (\Throwable $e) {
                 $lastError = $e;
 
-                if ($attempt >= $maxAttempts || !$this->isRetryable($e)) {
+                if ($attempt >= $maxAttempts || ! $this->isRetryable($e)) {
                     break;
                 }
 
@@ -337,9 +336,8 @@ class AiCorrectionService
      *  - Si elle change `level` : le niveau est mis à jour.
      *  - Aucune correction ne crée de doublon (clé element_index+parent).
      *
-     * @param array<string, mixed> $structure
-     * @param array<int, array<string, mixed>> $corrections
-     *
+     * @param  array<string, mixed>  $structure
+     * @param  array<int, array<string, mixed>>  $corrections
      * @return array<string, mixed>
      */
     private function applyCorrections(array $structure, array $corrections): array
@@ -372,6 +370,7 @@ class AiCorrectionService
                 $newKind = (string) ($correction['kind'] ?? '');
                 if ($newKind !== '' && $newKind !== $category) {
                     unset($structure[$category][$key]);
+
                     continue;
                 }
 
@@ -428,14 +427,13 @@ class AiCorrectionService
     /**
      * Normalise les corrections IA (JSON potentiellement bruité).
      *
-     * @param array<string, mixed> $decoded
-     *
+     * @param  array<string, mixed>  $decoded
      * @return array<int, array<string, mixed>>
      */
     private function normalizeCorrections(array $decoded): array
     {
         $raw = $decoded['corrections'] ?? $decoded['elements'] ?? [];
-        if (!is_array($raw)) {
+        if (! is_array($raw)) {
             return [];
         }
 
@@ -443,7 +441,7 @@ class AiCorrectionService
         $allowedKinds = ['titre', 'sous_titre', 'texte', 'liste', 'tableau', 'image', 'en_tete', 'pied_de_page'];
 
         foreach ($raw as $item) {
-            if (!is_array($item)) {
+            if (! is_array($item)) {
                 continue;
             }
 
@@ -455,7 +453,7 @@ class AiCorrectionService
             $kind = strtolower((string) ($item['kind'] ?? $item['type'] ?? ''));
             // Normalisation : 'sous_titres' → 'sous_titre', 'en_tetes' → 'en_tete'…
             $kind = str_replace(['sous_titres', 'en_tetes', 'pieds_de_page', 'elements_flottants'], ['sous_titre', 'en_tete', 'pied_de_page', 'texte'], $kind);
-            if (!in_array($kind, $allowedKinds, true)) {
+            if (! in_array($kind, $allowedKinds, true)) {
                 $kind = '';
             }
 
@@ -489,7 +487,7 @@ class AiCorrectionService
      */
     private function isRetryable(\Throwable $e): bool
     {
-        return $e instanceof \Illuminate\Http\Client\ConnectionException
+        return $e instanceof ConnectionException
             || str_contains($e->getMessage(), 'cURL error');
     }
 
@@ -526,6 +524,7 @@ class AiCorrectionService
                 } elseif ($char === '"') {
                     $inString = false;
                 }
+
                 continue;
             }
             if ($char === '"') {
@@ -537,6 +536,7 @@ class AiCorrectionService
                 if ($depth === 0) {
                     $json = substr($content, $start, $i - $start + 1);
                     $decoded = json_decode($json, true);
+
                     return is_array($decoded) ? $decoded : null;
                 }
             }
@@ -593,9 +593,7 @@ PROMPT;
     /**
      * Retrouve un élément dans body_complet par sa clé de position.
      *
-     * @param array<string, mixed> $structure
-     * @param int                  $elementIndex
-     *
+     * @param  array<string, mixed>  $structure
      * @return null|array<string, mixed>
      */
     private function findElementByKey(array $structure, int $elementIndex): ?array
@@ -612,7 +610,7 @@ PROMPT;
     /**
      * Clé de position d'un élément body_complet.
      *
-     * @param array<string, mixed> $element
+     * @param  array<string, mixed>  $element
      */
     private function elementKey(array $element): string
     {
@@ -620,7 +618,7 @@ PROMPT;
         $section = (int) ($position['section_index'] ?? 0);
         $index = (int) ($position['element_index'] ?? $element['element_index'] ?? 0);
 
-        return $section . ':' . $index;
+        return $section.':'.$index;
     }
 
     /**
@@ -636,7 +634,7 @@ PROMPT;
     /**
      * Distance (en nombre d'éléments body_complet) entre deux éléments.
      *
-     * @param array<string, mixed> $structure
+     * @param  array<string, mixed>  $structure
      */
     private function distanceFrom(array $structure, string $key, ?string $fromKey): int
     {
@@ -663,8 +661,8 @@ PROMPT;
     /**
      * Extrait le contexte textuel (N lignes avant/après) d'un élément.
      *
-     * @param array<string, mixed> $structure
-     * @param array<string, mixed> $item
+     * @param  array<string, mixed>  $structure
+     * @param  array<string, mixed>  $item
      */
     private function extractContext(array $structure, array $item): string
     {
@@ -689,7 +687,7 @@ PROMPT;
 
         for ($i = $start; $i <= $end; $i++) {
             if ($i === $targetIndex) {
-                $lines[] = '>> ' . trim((string) ($body[$i]['text'] ?? ''));
+                $lines[] = '>> '.trim((string) ($body[$i]['text'] ?? ''));
             } else {
                 $lines[] = trim((string) ($body[$i]['text'] ?? ''));
             }

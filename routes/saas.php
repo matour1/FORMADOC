@@ -4,6 +4,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\KPayController;
 use App\Http\Controllers\SubscriptionController;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -54,4 +55,4 @@ Route::middleware(['web', 'auth'])->group(function () {
 Route::post('/kpay/webhook', [KPayController::class, 'webhook'])
     ->name('kpay.webhook')
     ->middleware('web')
-    ->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class);
+    ->withoutMiddleware(VerifyCsrfToken::class);

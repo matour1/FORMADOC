@@ -52,8 +52,6 @@ class DocumentParser
 {
     /**
      * Chemin absolu du fichier analysé.
-     *
-     * @var string
      */
     private string $filePath;
 
@@ -89,20 +87,20 @@ class DocumentParser
     private const TEXT_ELEMENT_TYPES = [Text::class, TextRun::class, Title::class];
 
     /**
-     * @param string $filePath Chemin absolu du fichier DOCX (doit exister)
+     * @param  string  $filePath  Chemin absolu du fichier DOCX (doit exister)
      *
      * @throws InvalidArgumentException Si le fichier n'existe pas ou est illisible
-     * @throws RuntimeException         Si le chargement PhpWord échoue
+     * @throws RuntimeException Si le chargement PhpWord échoue
      */
     public function __construct(string $filePath)
     {
-        if (!file_exists($filePath)) {
+        if (! file_exists($filePath)) {
             throw new InvalidArgumentException(
                 "DocumentParser : fichier introuvable : {$filePath}"
             );
         }
 
-        if (!is_readable($filePath)) {
+        if (! is_readable($filePath)) {
             throw new InvalidArgumentException(
                 "DocumentParser : fichier illisible : {$filePath}"
             );
@@ -269,7 +267,7 @@ class DocumentParser
             throw new RuntimeException('DocumentParser : fichier texte illisible.');
         }
 
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $section = $phpWord->addSection();
 
         foreach (preg_split('/\r?\n/', $content) ?: [] as $line) {
@@ -308,7 +306,7 @@ class DocumentParser
         }
 
         try {
-            $zip = new \ZipArchive();
+            $zip = new \ZipArchive;
             if ($zip->open($this->filePath) !== true) {
                 return $result;
             }
@@ -327,7 +325,7 @@ class DocumentParser
                 $target = basename((string) $rel[2]);
                 if (preg_match('/^(header|footer)\d+\.xml$/', $target, $m)) {
                     $rIdToFile[(string) $rel[1]] = [
-                        'file' => 'word/' . $target,
+                        'file' => 'word/'.$target,
                         'zone' => $m[1],
                     ];
                 }
@@ -336,8 +334,8 @@ class DocumentParser
             // 2. Lecture des sections dans l'ordre : chaque sectPr référence
             //    header/footer avec un rId (type default/even/first).
             $docXml = $zip->getFromName('word/document.xml') ?: '';
-            $dom = new DOMDocument();
-            if ($docXml === '' || !@$dom->loadXML($docXml)) {
+            $dom = new DOMDocument;
+            if ($docXml === '' || ! @$dom->loadXML($docXml)) {
                 return $result;
             }
 
@@ -359,9 +357,9 @@ class DocumentParser
                 $entry = ['header' => '', 'footer' => ''];
 
                 foreach (['headerReference' => 'header', 'footerReference' => 'footer'] as $tag => $zone) {
-                    $nodes = $xp->query('.//w:' . $tag, $sectPr);
+                    $nodes = $xp->query('.//w:'.$tag, $sectPr);
                     foreach ($nodes as $node) {
-                        if (!$node instanceof \DOMElement) {
+                        if (! $node instanceof \DOMElement) {
                             continue;
                         }
 
@@ -369,7 +367,7 @@ class DocumentParser
                             'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
                             'id'
                         );
-                        if (!isset($rIdToFile[$rId])) {
+                        if (! isset($rIdToFile[$rId])) {
                             continue;
                         }
 
@@ -403,8 +401,8 @@ class DocumentParser
      */
     private function extractTextsFromXml(string $xml): string
     {
-        $dom = new DOMDocument();
-        if (!@$dom->loadXML($xml)) {
+        $dom = new DOMDocument;
+        if (! @$dom->loadXML($xml)) {
             return '';
         }
 
@@ -461,8 +459,7 @@ class DocumentParser
      * Privilégie le texte XML complet des en-têtes/pieds lorsque PhpWord
      * n'a extrait qu'un artefact (ou rien).
      *
-     * @param array<int, array<string, mixed>> $parsedElements
-     *
+     * @param  array<int, array<string, mixed>>  $parsedElements
      * @return array<int, array<string, mixed>>
      */
     private function preferXmlText(array $parsedElements, string $xmlText, int $sectionIndex, string $parent): array
@@ -520,14 +517,14 @@ class DocumentParser
         $xmlWords = preg_split('/[\s\p{P}]+/u', $xmlText) ?: [];
         $meaningful = array_values(array_filter(
             $xmlWords,
-            static fn (string $w) => mb_strlen($w) > 2 && !preg_match('/^\d+$/', $w)
+            static fn (string $w) => mb_strlen($w) > 2 && ! preg_match('/^\d+$/', $w)
         ));
 
         $phpWordWords = preg_split('/[\s\p{P}]+/u', $phpWordText) ?: [];
 
         $missing = 0;
         foreach ($meaningful as $word) {
-            if (!in_array($word, $phpWordWords, true)) {
+            if (! in_array($word, $phpWordWords, true)) {
                 $missing++;
             }
         }
@@ -551,9 +548,8 @@ class DocumentParser
     /**
      * Analyse un élément et retourne sa représentation normalisée.
      *
-     * @param int    $sectionIndex Index de la section (0-based)
-     * @param string $parent       body|header|footer
-     *
+     * @param  int  $sectionIndex  Index de la section (0-based)
+     * @param  string  $parent  body|header|footer
      * @return null|array<string, mixed> null si l'élément ne porte pas de contenu pertinent
      */
     private function parseElement(AbstractElement $element, int $sectionIndex, string $parent): ?array
@@ -635,7 +631,7 @@ class DocumentParser
         if ($type === 'texte' && $element instanceof TextRun
             && preg_match('/^\[image:([^\]]+)\]$/u', trim($text), $m) === 1) {
             foreach ($element->getElements() as $child) {
-                if (!$child instanceof Image) {
+                if (! $child instanceof Image) {
                     continue;
                 }
 
@@ -665,13 +661,12 @@ class DocumentParser
      *  - source PhpWord Reader (DOCX)  : zip:///chemin/doc.docx#word/media/image1.png
      *    (le préfixe "word/" peut manquer selon la version : on le normalise)
      *
-     * @param mixed $source Source de l'image (Image::getSource())
-     *
+     * @param  mixed  $source  Source de l'image (Image::getSource())
      * @return null|string Binaire brut, ou null si illisible
      */
     public function readImageData($source): ?string
     {
-        if (!is_string($source) || $source === '') {
+        if (! is_string($source) || $source === '') {
             return null;
         }
 
@@ -682,13 +677,13 @@ class DocumentParser
 
             // La cible est relative à la racine du ZIP ; les chemins DOCX
             // commencent par "word/" (media sous word/media/).
-            $entry = (str_starts_with($target, 'word/') ? $target : 'word/' . $target);
+            $entry = (str_starts_with($target, 'word/') ? $target : 'word/'.$target);
 
-            $zip = new \ZipArchive();
+            $zip = new \ZipArchive;
             try {
                 if ($zip->open($docxPath) === true) {
                     $data = $zip->getFromName($entry);
-                    if (!is_string($data) || $data === '') {
+                    if (! is_string($data) || $data === '') {
                         // Repli par basename : le nom du média peut varier
                         // (ex: "section_image1.png" au lieu de "image1.png").
                         $basename = basename($target);
@@ -713,10 +708,10 @@ class DocumentParser
             // Repli : le fichier ZIP est peut-être le DOCX source du parser
             // (lecture directe de l'archive, sans passer par PhpWord).
             if (is_file($docxPath)) {
-                $fallbackZip = new \ZipArchive();
+                $fallbackZip = new \ZipArchive;
                 if ($fallbackZip->open($docxPath) === true) {
                     $data = $fallbackZip->getFromName($entry);
-                    if (!is_string($data) || $data === '') {
+                    if (! is_string($data) || $data === '') {
                         $basename = basename($target);
                         for ($i = 0; $i < $fallbackZip->numFiles; $i++) {
                             $name = $fallbackZip->getNameIndex($i);
@@ -756,7 +751,7 @@ class DocumentParser
      * quel dans le document généré (défaut 6). On le remplace par le numéro
      * réel, avec la même logique de compteur que LegendDetectionService.
      *
-     * @param string $text Texte brut d'un élément
+     * @param  string  $text  Texte brut d'un élément
      */
     public function resolveSeqFields(string $text): string
     {
@@ -785,7 +780,7 @@ class DocumentParser
      * Les champs SEQ sont traités séparément (resolveSeqFields) car ils
      * portent une information de numérotation exploitable.
      *
-     * @param string $text Texte brut d'un élément
+     * @param  string  $text  Texte brut d'un élément
      */
     public function stripFieldCodes(string $text): string
     {
@@ -920,7 +915,7 @@ class DocumentParser
         }
 
         // Seuls les éléments textuels exposent des styles font/paragraph
-        if (!method_exists($element, 'getFontStyle') || !method_exists($element, 'getParagraphStyle')) {
+        if (! method_exists($element, 'getFontStyle') || ! method_exists($element, 'getParagraphStyle')) {
             return $styles;
         }
 
@@ -949,7 +944,7 @@ class DocumentParser
         $registered = Style::getStyle($styleName);
 
         if ($registered === null && preg_match('/^Heading(\d)$/', $styleName, $m)) {
-            $registered = Style::getStyle('Heading_' . $m[1]);
+            $registered = Style::getStyle('Heading_'.$m[1]);
         }
 
         return $registered;
@@ -958,8 +953,7 @@ class DocumentParser
     /**
      * Normalise un style de police (objet ou nom de style).
      *
-     * @param Font|string|null $fontStyle
-     *
+     * @param  Font|string|null  $fontStyle
      * @return null|array<string, mixed>
      */
     private function normalizeFontStyle($fontStyle): ?array
@@ -983,8 +977,7 @@ class DocumentParser
     /**
      * Normalise un style de paragraphe (objet ou nom de style).
      *
-     * @param Paragraph|string|null $paragraphStyle
-     *
+     * @param  Paragraph|string|null  $paragraphStyle
      * @return null|array<string, mixed>
      */
     private function normalizeParagraphStyle($paragraphStyle): ?array
@@ -1028,7 +1021,7 @@ class DocumentParser
         $pos = $parsed['position'];
 
         return "[POS:section_{$pos['section_index']},element_{$pos['element_index']},parent_{$pos['parent']}]"
-            . $parsed['text'];
+            .$parsed['text'];
     }
 
     /**

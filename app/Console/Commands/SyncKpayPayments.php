@@ -50,6 +50,7 @@ class SyncKpayPayments extends Command
                 $payment->increment('sync_attempts');
                 $payment->update(['last_synced_at' => now()]);
                 $this->warn(sprintf('[ÉCHEC API] #%d %s — paiement introuvable', $payment->id, $payment->external_id));
+
                 continue;
             }
 
@@ -62,6 +63,7 @@ class SyncKpayPayments extends Command
                     'sync_attempts' => $payment->sync_attempts + 1,
                     'last_synced_at' => now(),
                 ]);
+
                 continue;
             }
 
@@ -80,6 +82,7 @@ class SyncKpayPayments extends Command
                     'last_synced_at' => now(),
                 ]);
                 $this->line(sprintf('[DÉJÀ TRAITÉ] #%d %s — webhook déjà reçu', $payment->id, $payment->external_id));
+
                 continue;
             }
 
@@ -87,6 +90,7 @@ class SyncKpayPayments extends Command
             if (! $user) {
                 $failed++;
                 $this->warn(sprintf('[UTILISATEUR INTROUVABLE] #%d %s', $payment->id, $payment->external_id));
+
                 continue;
             }
 
@@ -117,6 +121,7 @@ class SyncKpayPayments extends Command
                     if (! ($result['ok'] ?? false)) {
                         $failed++;
                         $this->warn(sprintf('[ÉCHEC CRÉDIT] #%d %s — %s', $payment->id, $payment->external_id, $result['reason'] ?? 'unknown'));
+
                         continue;
                     }
 

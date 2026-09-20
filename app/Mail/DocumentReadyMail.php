@@ -6,6 +6,7 @@ use App\Models\Document;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -23,8 +24,7 @@ class DocumentReadyMail extends Mailable
         public User $user,
         public Document $document,
         public ?string $templateName = null,
-    ) {
-    }
+    ) {}
 
     public function envelope(): Envelope
     {
@@ -46,7 +46,7 @@ class DocumentReadyMail extends Mailable
     }
 
     /**
-     * @return array<int, \Illuminate\Mail\Mailables\Attachment>
+     * @return array<int, Attachment>
      */
     public function attachments(): array
     {

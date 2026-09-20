@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Console\Commands\PurgeTempFiles;
 use App\Models\ChatMessage;
 use App\Models\ChatSession;
 use App\Models\User;

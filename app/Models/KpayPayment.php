@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -52,9 +53,8 @@ class KpayPayment extends Model
     /**
      * Paiements en attente dont le webhook n'est pas encore arrivé.
      */
-    public function scopePending(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    public function scopePending(Builder $query): Builder
     {
         return $query->whereIn('status', ['PENDING', 'PROCESSING']);
     }
 }
-

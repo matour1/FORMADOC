@@ -4,14 +4,19 @@ namespace App\Http\Controllers;
 
 use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentReceipt;
+use App\Models\KpayPayment;
+use App\Models\Subscription;
+use App\Models\User;
 use App\Services\Billing\CreditService;
 use App\Services\Billing\InvoiceService;
 use App\Services\Billing\KPayService;
+use App\Services\Billing\SubscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
@@ -32,8 +37,7 @@ class KPayController extends Controller
     public function __construct(
         private readonly KPayService $kpay,
         private readonly CreditService $credits,
-    ) {
-    }
+    ) {}
 
     /**
      * Initialise un achat de crédits et redirige vers la passerelle KPay.
@@ -81,7 +85,7 @@ class KPayController extends Controller
         ]);
 
         // Enregistrer le paiement pour la synchronisation de secours (fallback webhook)
-        \App\Models\KpayPayment::create([
+        KpayPayment::create([
             'user_id' => $user->id,
             'payment_id' => $result['paymentId'] ?? null,
             'external_id' => $externalId,
@@ -156,6 +160,7 @@ class KPayController extends Controller
                 'event' => $event,
                 'ip' => $request->ip(),
             ]);
+
             return response()->json(['error' => 'invalid_signature'], 401);
         }
 
@@ -180,10 +185,11 @@ class KPayController extends Controller
 
         // 3. Récupérer l'utilisateur depuis les métadonnées
         $userId = (int) ($metadata['user_id'] ?? 0);
-        $user = $userId > 0 ? \App\Models\User::find($userId) : null;
+        $user = $userId > 0 ? User::find($userId) : null;
 
         if (! $user) {
             Log::warning('KPay webhook : utilisateur introuvable', ['user_id' => $userId, 'paymentId' => $paymentId]);
+
             return response()->json(['status' => 'user_not_found'], 200);
         }
 
@@ -198,7 +204,7 @@ class KPayController extends Controller
         if ($status === 'completed') {
             // --- Abonnement (souscription ou renouvellement) ---
             if (in_array($purpose, ['subscription', 'subscription_renewal'], true)) {
-                $activated = app(\App\Services\Billing\SubscriptionService::class)
+                $activated = app(SubscriptionService::class)
                     ->activateFromWebhook($payload, $metadata);
 
                 Log::info('KPay webhook : abonnement traité', [
@@ -237,7 +243,7 @@ class KPayController extends Controller
                 ]);
 
                 // On met quand même à jour le registre local de fallback
-                \App\Models\KpayPayment::query()
+                KpayPayment::query()
                     ->where('external_id', $externalId)
                     ->update([
                         'status' => strtoupper($status),
@@ -271,7 +277,7 @@ class KPayController extends Controller
             // Chemin absolu du PDF pour la pièce jointe
             $pdfStoragePath = $invoiceService->downloadPath($invoice);
             $pdfPath = $pdfStoragePath
-                ? \Illuminate\Support\Facades\Storage::disk((string) config('billing.invoice_storage_disk', 'local'))
+                ? Storage::disk((string) config('billing.invoice_storage_disk', 'local'))
                     ->path($pdfStoragePath)
                 : null;
 
@@ -308,11 +314,11 @@ class KPayController extends Controller
             if (in_array($purpose, ['subscription', 'subscription_renewal'], true)) {
                 $subscriptionId = (int) ($metadata['subscription_id'] ?? 0);
                 $subscription = $subscriptionId > 0
-                    ? \App\Models\Subscription::find($subscriptionId)
+                    ? Subscription::find($subscriptionId)
                     : $user->activeSubscription;
 
                 if ($subscription) {
-                    app(\App\Services\Billing\SubscriptionService::class)
+                    app(SubscriptionService::class)
                         ->markFailedPayment($subscription);
                     $failedSubscription = $subscription;
                 }
@@ -349,7 +355,7 @@ class KPayController extends Controller
         }
 
         // Mise à jour du registre local de synchronisation (fallback webhook)
-        \App\Models\KpayPayment::query()
+        KpayPayment::query()
             ->where('external_id', $externalId)
             ->update([
                 'status' => strtoupper($status),

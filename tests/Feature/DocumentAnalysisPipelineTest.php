@@ -4,8 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\Document;
 use App\Models\DocumentStructure;
+use App\Models\GeneratedDocument;
+use App\Models\Plan;
+use App\Models\Subscription;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
 use Tests\TestCase;
@@ -19,20 +24,20 @@ use Tests\TestCase;
  */
 class DocumentAnalysisPipelineTest extends TestCase
 {
-    use \Illuminate\Foundation\Testing\RefreshDatabase;
+    use RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         // Les routes documents sont protégées par auth (P0-1)
-        $user = \App\Models\User::factory()->create();
+        $user = User::factory()->create();
         $this->actingAs($user);
     }
 
     private function createTestDocx(string $filename = 'rapport_test.docx'): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $phpWord->addTitleStyle(1, ['bold' => true, 'size' => 16]);
         $phpWord->addTitleStyle(2, ['bold' => true, 'size' => 14]);
 
@@ -47,8 +52,9 @@ class DocumentAnalysisPipelineTest extends TestCase
         $section->addText('Le schéma ci-dessus illustre l\'architecture.');
         $section->addText('Tableau 1: Résultats comparatifs');
 
-        $path = storage_path('app/test_tmp_' . uniqid() . '.docx');
+        $path = storage_path('app/test_tmp_'.uniqid().'.docx');
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
+
         return $path;
     }
 
@@ -62,7 +68,7 @@ class DocumentAnalysisPipelineTest extends TestCase
 
         // Upload simulé
         $response = $this->post('/documents/upload', [
-            'document' => new \Illuminate\Http\UploadedFile(
+            'document' => new UploadedFile(
                 $docxPath,
                 'rapport_test.docx',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -120,7 +126,7 @@ class DocumentAnalysisPipelineTest extends TestCase
     public function test_upload_fichier_non_word_est_refuse(): void
     {
         $response = $this->post('/documents/upload', [
-            'document' => \Illuminate\Http\UploadedFile::fake()->create('malware.exe', 10),
+            'document' => UploadedFile::fake()->create('malware.exe', 10),
         ]);
 
         $response->assertSessionHasErrors('document');
@@ -134,7 +140,7 @@ class DocumentAnalysisPipelineTest extends TestCase
         $docxPath = $this->createTestDocx();
 
         $response = $this->post('/documents/upload', [
-            'document' => new \Illuminate\Http\UploadedFile(
+            'document' => new UploadedFile(
                 $docxPath,
                 'rapport_regex.docx',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -179,7 +185,7 @@ class DocumentAnalysisPipelineTest extends TestCase
         $docxPath = $this->createTestDocx();
 
         $response = $this->post('/documents/upload', [
-            'document' => new \Illuminate\Http\UploadedFile(
+            'document' => new UploadedFile(
                 $docxPath,
                 'rapport_ia.docx',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -208,7 +214,7 @@ class DocumentAnalysisPipelineTest extends TestCase
         $docxPath = $this->createTestDocx();
 
         $response = $this->post('/documents/upload', [
-            'document' => new \Illuminate\Http\UploadedFile(
+            'document' => new UploadedFile(
                 $docxPath,
                 'rapport_sans_ai.docx',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -242,14 +248,14 @@ class DocumentAnalysisPipelineTest extends TestCase
         // NB : un quota IA > 0 est requis → l'utilisateur doit avoir un
         // abonnement payant (P0-1 : les routes sont désormais authentifiées,
         // un plan default aurait quota IA = 0 et forcerait use_ai=false).
-        $plan = \App\Models\Plan::factory()->create([
+        $plan = Plan::factory()->create([
             'slug' => 'standard',
             'is_active' => true,
             'quota_deterministic' => 10,
             'quota_ai' => 5,
         ]);
-        $subscriber = \App\Models\User::factory()->create();
-        \App\Models\Subscription::factory()->create([
+        $subscriber = User::factory()->create();
+        Subscription::factory()->create([
             'user_id' => $subscriber->id,
             'plan_id' => $plan->id,
             'status' => 'active',
@@ -267,7 +273,7 @@ class DocumentAnalysisPipelineTest extends TestCase
         $docxPath = $this->createTestDocx();
 
         $response = $this->post('/documents/upload', [
-            'document' => new \Illuminate\Http\UploadedFile(
+            'document' => new UploadedFile(
                 $docxPath,
                 'rapport_avec_ai.docx',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -299,7 +305,7 @@ class DocumentAnalysisPipelineTest extends TestCase
         $docxPath = $this->createTestDocx();
 
         $response = $this->post('/documents/upload', [
-            'document' => new \Illuminate\Http\UploadedFile(
+            'document' => new UploadedFile(
                 $docxPath,
                 'rapport_invalide.docx',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -319,11 +325,11 @@ class DocumentAnalysisPipelineTest extends TestCase
 
         // Fichier texte brut : pas de styles Word → la passe regex détecte
         // les titres numérotés, sans appel IA.
-        $txtPath = storage_path('app/test_tmp_txt_' . uniqid() . '.txt');
+        $txtPath = storage_path('app/test_tmp_txt_'.uniqid().'.txt');
         file_put_contents($txtPath, "RAPPORT DE STAGE\n\n1. Introduction\nCeci est un paragraphe.\n1.1 Contexte\nFin du rapport.\n");
 
         $response = $this->post('/documents/upload', [
-            'document' => new \Illuminate\Http\UploadedFile(
+            'document' => new UploadedFile(
                 $txtPath,
                 'rapport_texte.txt',
                 'text/plain',
@@ -357,7 +363,7 @@ class DocumentAnalysisPipelineTest extends TestCase
     public function test_upload_fichier_trop_gros_est_refuse(): void
     {
         $response = $this->post('/documents/upload', [
-            'document' => \Illuminate\Http\UploadedFile::fake()->create(
+            'document' => UploadedFile::fake()->create(
                 'gros.docx',
                 60 * 1024 // 60 Mo > 50 Mo max
             ),
@@ -374,7 +380,7 @@ class DocumentAnalysisPipelineTest extends TestCase
         // 1. Upload + analyse (structure sauvegardée)
         $docxPath = $this->createTestDocx();
         $this->post('/documents/upload', [
-            'document' => new \Illuminate\Http\UploadedFile(
+            'document' => new UploadedFile(
                 $docxPath,
                 'rapport_test.docx',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -391,12 +397,12 @@ class DocumentAnalysisPipelineTest extends TestCase
         $response->assertOk();
 
         // 3. Le fichier généré est un DOCX valide et rechargable
-        $generated = \App\Models\GeneratedDocument::where('document_id', $document->id)->first();
+        $generated = GeneratedDocument::where('document_id', $document->id)->first();
         $this->assertNotNull($generated);
         $this->assertSame('generated', $generated->status);
         $this->assertFileExists($generated->output_path);
 
         $reloaded = IOFactory::load($generated->output_path);
-        $this->assertInstanceOf(\PhpOffice\PhpWord\PhpWord::class, $reloaded);
+        $this->assertInstanceOf(PhpWord::class, $reloaded);
     }
 }

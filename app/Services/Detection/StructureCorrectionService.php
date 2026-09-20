@@ -17,9 +17,8 @@ namespace App\Services\Detection;
 class StructureCorrectionService
 {
     /**
-     * @param array<string, mixed> $structure
-     * @param array<string, string> $corrections clé de position → action
-     *
+     * @param  array<string, mixed>  $structure
+     * @param  array<string, string>  $corrections  clé de position → action
      * @return array<string, mixed>
      */
     public function apply(array $structure, array $corrections): array
@@ -44,10 +43,10 @@ class StructureCorrectionService
     /**
      * Répartit un item entre titres et sous-titres selon sa correction.
      *
-     * @param array<string, mixed> $item
-     * @param array<string, string> $corrections
-     * @param array<int, array<string, mixed>> $titres
-     * @param array<int, array<string, mixed>> $sousTitres
+     * @param  array<string, mixed>  $item
+     * @param  array<string, string>  $corrections
+     * @param  array<int, array<string, mixed>>  $titres
+     * @param  array<int, array<string, mixed>>  $sousTitres
      */
     private function repartir(
         array $item,
@@ -80,8 +79,7 @@ class StructureCorrectionService
     /**
      * Trie les items selon leur position d'origine (section puis élément).
      *
-     * @param array<int, array<string, mixed>> $items
-     *
+     * @param  array<int, array<string, mixed>>  $items
      * @return array<int, array<string, mixed>>
      */
     private function trier(array $items): array

@@ -12,7 +12,7 @@ class Feedback extends Model
         'note',
         'recommander',
         'problemes_rencontres',
-        'status'
+        'status',
     ];
 
     protected $casts = [

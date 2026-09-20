@@ -45,7 +45,6 @@ class LegendDetectionService
     /**
      * Détecte toutes les légendes dans un texte.
      *
-     * @param string $text
      * @return array<int, array{type: string, number: string, label: string, line: int, raw: string}>
      */
     public function execute(string $text): array
@@ -60,6 +59,7 @@ class LegendDetectionService
             $legends = $this->detect($text);
 
             Log::info('LegendDetectionService completed', ['count' => count($legends)]);
+
             return $legends;
         } catch (\Exception $e) {
             Log::error('LegendDetectionService failed', [
@@ -73,7 +73,6 @@ class LegendDetectionService
     /**
      * Parse le texte ligne par ligne et extrait les légendes.
      *
-     * @param string $text
      * @return array<int, array{type: string, number: string, label: string, line: int, raw: string}>
      */
     private function detect(string $text): array
@@ -88,8 +87,8 @@ class LegendDetectionService
         //  1. "Type N: libellé" — N entier simple ou numéroté par chapitre (2.3)
         //  2. "Type { SEQ Type \* ARABIC }: libellé" — champ Word auto-numéroté
         $number = '(?<number>\d+(?:\.\d+)*)';
-        $seqField = '\{\s*SEQ\s+(?<seqtype>' . $typesPattern . ')[^}]*\}';
-        $pattern = '/^(?<type>' . $typesPattern . ')\s*(?:' . $number . '|' . $seqField . ')\s*:\s*(?<label>.+)$/iu';
+        $seqField = '\{\s*SEQ\s+(?<seqtype>'.$typesPattern.')[^}]*\}';
+        $pattern = '/^(?<type>'.$typesPattern.')\s*(?:'.$number.'|'.$seqField.')\s*:\s*(?<label>.+)$/iu';
 
         $tocBoundaries = $this->findTocBoundaries($lines);
 
@@ -108,7 +107,7 @@ class LegendDetectionService
                 continue;
             }
 
-            if (!preg_match($pattern, $trimmed, $matches)) {
+            if (! preg_match($pattern, $trimmed, $matches)) {
                 continue;
             }
 
@@ -121,7 +120,7 @@ class LegendDetectionService
 
             // Numéro : soit explicite (Figure 2), soit résolu depuis le champ
             // SEQ (Word numérote automatiquement par type : 1, 2, 3…)
-            if (!empty($matches['number'])) {
+            if (! empty($matches['number'])) {
                 $number = $matches['number'];
             } else {
                 $seqType = ucfirst(mb_strtolower($matches['seqtype'] ?? $type));
@@ -146,19 +145,19 @@ class LegendDetectionService
      * matières générées par Word). On retourne une liste de plages
      * [start, end] (index 0-based) à ignorer lors de la détection.
      *
-     * @param string[] $lines
+     * @param  string[]  $lines
      * @return array<int, array{0: int, 1: int}>
      */
     private function findTocBoundaries(array $lines): array
     {
         $typesPattern = implode('|', array_map(fn ($t) => preg_quote($t, '/'), self::LEGEND_TYPES));
-        $tocTitle = '/^LISTE\s+DES\s+(' . $typesPattern . ')S?$/iu';
+        $tocTitle = '/^LISTE\s+DES\s+('.$typesPattern.')S?$/iu';
 
         $boundaries = [];
         $count = count($lines);
 
         for ($i = 0; $i < $count; $i++) {
-            if (!preg_match($tocTitle, trim($lines[$i]))) {
+            if (! preg_match($tocTitle, trim($lines[$i]))) {
                 continue;
             }
 
@@ -174,6 +173,7 @@ class LegendDetectionService
                     if ($consecutiveEmpty > self::TOC_GAP_TOLERANCE) {
                         break;
                     }
+
                     continue;
                 }
 
@@ -187,7 +187,7 @@ class LegendDetectionService
 
                 // Une entrée TOC ressemble à "Figure 2: libellé<TAB>17"
                 // ou "Tableau { SEQ Tableau \* ARABIC }: libellé".
-                if (preg_match('/^(?:' . $typesPattern . ')\s*(?:\d+(?:\.\d+)*|\{SEQ[^}]*\})\s*:/iu', $trimmed)) {
+                if (preg_match('/^(?:'.$typesPattern.')\s*(?:\d+(?:\.\d+)*|\{SEQ[^}]*\})\s*:/iu', $trimmed)) {
                     $end = $j;
                 }
             }
@@ -202,7 +202,7 @@ class LegendDetectionService
     /**
      * Vérifie si une ligne (index 0-based) tombe dans un bloc TOC.
      *
-     * @param array<int, array{0: int, 1: int}> $tocBoundaries
+     * @param  array<int, array{0: int, 1: int}>  $tocBoundaries
      */
     private function isInToc(int $lineIndex, array $tocBoundaries): bool
     {
@@ -242,7 +242,7 @@ class LegendDetectionService
      * conservées qu'une fois. La première occurrence (numéro de ligne le
      * plus bas) gagne.
      *
-     * @param array<int, array{type: string, number: string, label: string, line: int, raw: string}> $legends
+     * @param  array<int, array{type: string, number: string, label: string, line: int, raw: string}>  $legends
      * @return array<int, array{type: string, number: string, label: string, line: int, raw: string}>
      */
     private function deduplicate(array $legends): array
@@ -251,7 +251,7 @@ class LegendDetectionService
         $unique = [];
 
         foreach ($legends as $legend) {
-            $key = $this->normalizeDedupKey($legend['type'] . '|' . $legend['number'] . '|' . $legend['label']);
+            $key = $this->normalizeDedupKey($legend['type'].'|'.$legend['number'].'|'.$legend['label']);
 
             if (isset($seen[$key])) {
                 continue;

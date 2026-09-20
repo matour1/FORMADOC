@@ -16,7 +16,7 @@ class SampleDocumentController extends Controller
 {
     public function download(): BinaryFileResponse
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
 
         // Page 1 — avant mise en forme
         $sectionBefore = $phpWord->addSection();
@@ -69,7 +69,7 @@ class SampleDocumentController extends Controller
         );
 
         // Flux direct vers le navigateur
-        $tempPath = tempnam(sys_get_temp_dir(), 'formadoc_sample_') . '.docx';
+        $tempPath = tempnam(sys_get_temp_dir(), 'formadoc_sample_').'.docx';
         $writer = IOFactory::createWriter($phpWord, 'Word2007');
         $writer->save($tempPath);
 

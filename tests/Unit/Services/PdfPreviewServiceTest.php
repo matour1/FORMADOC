@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Unit\Services;
 
 use App\Services\DocumentGeneration\PdfPreviewService;
+use PhpOffice\PhpWord\IOFactory;
+use PhpOffice\PhpWord\PhpWord;
 use Tests\TestCase;
 
 /**
@@ -18,7 +20,7 @@ class PdfPreviewServiceTest extends TestCase
 {
     public function test_soffice_path_detecte_un_chemin_installe(): void
     {
-        $service = new PdfPreviewService();
+        $service = new PdfPreviewService;
 
         $path = $service->sofficePath();
 
@@ -31,23 +33,23 @@ class PdfPreviewServiceTest extends TestCase
 
     public function test_convertit_un_docx_en_pdf(): void
     {
-        $service = new PdfPreviewService();
+        $service = new PdfPreviewService;
         if ($service->sofficePath() === null) {
             $this->markTestSkipped('LibreOffice non installé — conversion ignorée.');
         }
 
         // Petit DOCX minimal généré via PhpWord
-        $tempDir = sys_get_temp_dir() . '/formadoc_pdf_' . uniqid();
+        $tempDir = sys_get_temp_dir().'/formadoc_pdf_'.uniqid();
         mkdir($tempDir, 0777, true);
 
         try {
-            $phpWord = new \PhpOffice\PhpWord\PhpWord();
+            $phpWord = new PhpWord;
             $section = $phpWord->addSection();
             $section->addText('Contenu de test pour l\'aperçu PDF.');
             $section->addTitle('Titre de test', 1);
 
-            $docxPath = $tempDir . '/test.docx';
-            \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007')->save($docxPath);
+            $docxPath = $tempDir.'/test.docx';
+            IOFactory::createWriter($phpWord, 'Word2007')->save($docxPath);
 
             $pdfPath = $service->convertToPdf($docxPath);
 
@@ -58,7 +60,7 @@ class PdfPreviewServiceTest extends TestCase
             $head = file_get_contents($pdfPath, false, null, 0, 5);
             $this->assertSame('%PDF-', $head, 'Le fichier doit commencer par %PDF-');
         } finally {
-            foreach (glob($tempDir . '/*') ?: [] as $file) {
+            foreach (glob($tempDir.'/*') ?: [] as $file) {
                 @unlink($file);
             }
             @rmdir($tempDir);

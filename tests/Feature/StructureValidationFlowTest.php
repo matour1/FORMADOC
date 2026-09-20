@@ -6,6 +6,8 @@ namespace Tests\Feature;
 
 use App\Models\Document;
 use App\Models\DocumentStructure;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use PhpOffice\PhpWord\IOFactory;
@@ -21,14 +23,14 @@ use Tests\TestCase;
  */
 class StructureValidationFlowTest extends TestCase
 {
-    use \Illuminate\Foundation\Testing\RefreshDatabase;
+    use RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         // Les routes documents sont protégées par auth (P0-1)
-        $user = \App\Models\User::factory()->create();
+        $user = User::factory()->create();
         $this->actingAs($user);
     }
 
@@ -40,7 +42,7 @@ class StructureValidationFlowTest extends TestCase
      */
     private function createReportDocx(): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $phpWord->addTitleStyle(1, ['bold' => true, 'size' => 16]);
         $phpWord->addTitleStyle(2, ['bold' => true, 'size' => 14]);
 
@@ -51,7 +53,7 @@ class StructureValidationFlowTest extends TestCase
         $section->addText('Le contexte institutionnel est le suivant.');
         $section->addTitle('2.1 Historique', 2);
 
-        $path = storage_path('app/test_tmp_' . uniqid() . '.docx');
+        $path = storage_path('app/test_tmp_'.uniqid().'.docx');
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
 
         return $path;
@@ -138,7 +140,7 @@ class StructureValidationFlowTest extends TestCase
             'corrections' => [$id => '99'],
         ]);
 
-        $response->assertSessionHasErrors('corrections.' . $id);
+        $response->assertSessionHasErrors('corrections.'.$id);
         $this->assertSame('detected', $document->refresh()->status);
     }
 }

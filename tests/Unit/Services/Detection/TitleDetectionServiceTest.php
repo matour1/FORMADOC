@@ -20,7 +20,7 @@ class TitleDetectionServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new TitleDetectionService();
+        $this->service = new TitleDetectionService;
 
         // Pas d'attente réelle entre les tentatives dans les tests
         config(['deepseek.retry_delays_ms' => [0, 0, 0, 0]]);
@@ -73,7 +73,7 @@ class TitleDetectionServiceTest extends TestCase
 
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('DeepSeek API error');
-        $this->service->execute("Un texte suffisamment long pour être analysé.");
+        $this->service->execute('Un texte suffisamment long pour être analysé.');
     }
 
     public function test_ne_relance_pas_sur_une_erreur_http_applicative(): void
@@ -83,7 +83,7 @@ class TitleDetectionServiceTest extends TestCase
         ]);
 
         try {
-            $this->service->execute("Un texte suffisamment long pour être analysé.");
+            $this->service->execute('Un texte suffisamment long pour être analysé.');
         } catch (\Exception $e) {
             // Ignoré : on vérifie juste le nombre de requêtes
         }
@@ -105,7 +105,7 @@ class TitleDetectionServiceTest extends TestCase
                 ], 200),
         ]);
 
-        $result = $this->service->execute("Un rapport de test suffisamment long.");
+        $result = $this->service->execute('Un rapport de test suffisamment long.');
 
         $this->assertStringContainsString('# Introduction', $result['markdown']);
 
@@ -120,7 +120,7 @@ class TitleDetectionServiceTest extends TestCase
         ]);
 
         $this->expectException(\Exception::class);
-        $this->service->execute("Un texte suffisamment long pour être analysé.");
+        $this->service->execute('Un texte suffisamment long pour être analysé.');
 
         // max_retries=2 → 3 tentatives au total
         Http::assertSentCount(3);
@@ -134,7 +134,7 @@ class TitleDetectionServiceTest extends TestCase
 
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('réponse sans contenu exploitable');
-        $this->service->execute("Un texte suffisamment long pour être analysé.");
+        $this->service->execute('Un texte suffisamment long pour être analysé.');
     }
 
     public function test_leve_une_exception_si_le_texte_est_trop_court(): void
@@ -154,11 +154,12 @@ class TitleDetectionServiceTest extends TestCase
             ], 200),
         ]);
 
-        $this->service->execute("Un rapport de test suffisamment long.");
+        $this->service->execute('Un rapport de test suffisamment long.');
 
         Http::assertSent(function (Request $request) {
             $messages = $request['messages'];
             $systemContent = $messages[0]['content'] ?? '';
+
             return $messages[0]['role'] === 'system'
                 && str_contains($systemContent, 'analyse de structure documentaire')
                 && $messages[1]['role'] === 'user';

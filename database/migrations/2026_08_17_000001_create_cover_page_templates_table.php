@@ -23,7 +23,7 @@ return new class extends Migration
         });
 
         // Lien optionnel depuis un document généré vers un modèle de page de garde
-        if (!Schema::hasColumn('generated_documents', 'cover_page_template_id')) {
+        if (! Schema::hasColumn('generated_documents', 'cover_page_template_id')) {
             Schema::table('generated_documents', function (Blueprint $table) {
                 $table->foreignId('cover_page_template_id')->nullable()
                     ->after('cover_template_id')

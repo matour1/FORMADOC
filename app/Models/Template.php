@@ -11,7 +11,7 @@ class Template extends Model
         'name',
         'description',
         'params',
-        'is_public'
+        'is_public',
     ];
 
     protected $casts = [

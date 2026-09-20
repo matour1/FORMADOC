@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\KpayPayment;
 use App\Models\Plan;
 use App\Services\Billing\CreditService;
 use App\Services\Billing\QuotaService;
@@ -9,6 +10,7 @@ use App\Services\Billing\SubscriptionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 /**
@@ -21,8 +23,7 @@ class AccountController extends Controller
         private readonly CreditService $credits,
         private readonly QuotaService $quotas,
         private readonly SubscriptionService $subscriptions,
-    ) {
-    }
+    ) {}
 
     /**
      * Affiche le compte utilisateur.
@@ -143,7 +144,7 @@ class AccountController extends Controller
         // collecte AVANT de supprimer les messages. En complément, on purge
         // récursivement le dossier chat/attachments/{sessionId} (P1-6 :
         // suppression cascade RGPD) pour couvrir les fichiers non tracés.
-        $chatStorage = \Illuminate\Support\Facades\Storage::disk('local');
+        $chatStorage = Storage::disk('local');
         $generatedPaths = [];
 
         foreach ($user->chatSessions as $session) {
@@ -197,13 +198,13 @@ class AccountController extends Controller
         $user->creditTransactions()->delete();
         $user->invoices()->delete();
         $user->subscriptions()->delete();
-        \App\Models\KpayPayment::where('user_id', $user->id)->delete();
+        KpayPayment::where('user_id', $user->id)->delete();
 
         // --- Fichiers de documents (disk 'storage' = storage/uploads) ---
         // P0-3 : disk explicite 'storage' — avant, le Storage::delete() par
         // défaut ciblait le disk 'local', laissant les fichiers de documents
         // uploadés sur le disque après suppression du compte.
-        $documentStorage = \Illuminate\Support\Facades\Storage::disk('storage');
+        $documentStorage = Storage::disk('storage');
         foreach ($documents as $document) {
             try {
                 $relativePath = str_replace('\\', '/', (string) $document->path);

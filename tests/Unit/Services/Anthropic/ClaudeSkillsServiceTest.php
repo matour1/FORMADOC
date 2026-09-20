@@ -10,8 +10,6 @@ use App\Models\User;
 use App\Services\Anthropic\ClaudeSkillsService;
 use App\Services\Billing\UsageCostCalculator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -39,7 +37,7 @@ class ClaudeSkillsServiceTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = new ClaudeSkillsService(new UsageCostCalculator());
+        $this->service = new ClaudeSkillsService(new UsageCostCalculator);
 
         // Configuration de test explicite
         config([

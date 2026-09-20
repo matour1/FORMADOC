@@ -5,6 +5,7 @@ namespace App\Mail;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -19,8 +20,7 @@ class WelcomeMail extends Mailable
 
     public function __construct(
         public User $user,
-    ) {
-    }
+    ) {}
 
     public function envelope(): Envelope
     {
@@ -40,7 +40,7 @@ class WelcomeMail extends Mailable
     }
 
     /**
-     * @return array<int, \Illuminate\Mail\Mailables\Attachment>
+     * @return array<int, Attachment>
      */
     public function attachments(): array
     {

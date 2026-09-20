@@ -18,8 +18,7 @@ use PhpOffice\PhpWord\Style\Spacing;
 class StyleMapper
 {
     /**
-     * @param null|array<string, mixed> $font Style imbriqué (sortie getStyleValues)
-     *
+     * @param  null|array<string, mixed>  $font  Style imbriqué (sortie getStyleValues)
      * @return array<string, mixed> Style plat pour addText (toujours un tableau)
      */
     public static function toFlatFont(?array $font): array
@@ -32,7 +31,7 @@ class StyleMapper
         $style = $font['style'] ?? [];
         $flat = [];
 
-        if (!empty($basic['name'])) {
+        if (! empty($basic['name'])) {
             $flat['name'] = $basic['name'];
         }
 
@@ -40,15 +39,15 @@ class StyleMapper
             $flat['size'] = (float) $basic['size'];
         }
 
-        if (!empty($basic['color'])) {
+        if (! empty($basic['color'])) {
             $flat['color'] = $basic['color'];
         }
 
-        if (!empty($style['bold'])) {
+        if (! empty($style['bold'])) {
             $flat['bold'] = true;
         }
 
-        if (!empty($style['italic'])) {
+        if (! empty($style['italic'])) {
             $flat['italic'] = true;
         }
 
@@ -61,8 +60,7 @@ class StyleMapper
     }
 
     /**
-     * @param null|array<string, mixed> $paragraph Style imbriqué (sortie getStyleValues)
-     *
+     * @param  null|array<string, mixed>  $paragraph  Style imbriqué (sortie getStyleValues)
      * @return array<string, mixed> Style plat pour addText (toujours un tableau)
      */
     public static function toFlatParagraph(?array $paragraph): array

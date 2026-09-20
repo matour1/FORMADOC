@@ -46,16 +46,16 @@ class AnalyzerResult
     /**
      * Vérifie qu'un tableau est un résultat conforme au contrat.
      *
-     * @param mixed $result
+     * @param  mixed  $result
      */
     public static function isValid($result): bool
     {
-        if (!is_array($result)) {
+        if (! is_array($result)) {
             return false;
         }
 
         foreach (self::CATEGORIES as $category) {
-            if (!isset($result[$category]) || !is_array($result[$category])) {
+            if (! isset($result[$category]) || ! is_array($result[$category])) {
                 return false;
             }
         }
@@ -69,8 +69,7 @@ class AnalyzerResult
      * Les catégories manquantes sont ajoutées vides, et chaque item est
      * ramené à un tableau (texte, position, styles, type).
      *
-     * @param array<string, mixed> $raw
-     *
+     * @param  array<string, mixed>  $raw
      * @return array<string, array<int, array<string, mixed>>>
      */
     public static function normalize(array $raw): array
@@ -79,7 +78,7 @@ class AnalyzerResult
 
         foreach (self::CATEGORIES as $category) {
             $items = $raw[$category] ?? [];
-            if (!is_array($items)) {
+            if (! is_array($items)) {
                 $items = [];
             }
 
@@ -98,8 +97,7 @@ class AnalyzerResult
     /**
      * Normalise un item unique d'une catégorie.
      *
-     * @param array<string, mixed> $item
-     *
+     * @param  array<string, mixed>  $item
      * @return array<string, mixed>
      */
     private static function normalizeItem(array $item, string $category): array
@@ -112,7 +110,7 @@ class AnalyzerResult
         ];
 
         // Raccourcis : positions plates (element_index direct) → position normalisée
-        if (isset($item['element_index']) && !is_array($normalized['position'])) {
+        if (isset($item['element_index']) && ! is_array($normalized['position'])) {
             $normalized['position'] = [
                 'section_index' => (int) ($item['section_index'] ?? 0),
                 'element_index' => (int) $item['element_index'],

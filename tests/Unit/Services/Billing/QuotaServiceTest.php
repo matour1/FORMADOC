@@ -36,7 +36,7 @@ class QuotaServiceTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = new QuotaService();
+        $this->service = new QuotaService;
     }
 
     private function makeUser(int $usedDet = 0, int $usedAi = 0, ?string $month = null): User

@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Tests\TestCase;
 
 class AuthFlowTest extends TestCase
@@ -105,7 +107,7 @@ class AuthFlowTest extends TestCase
     {
         $user = User::factory()->create(['email' => 'reset2@example.com']);
 
-        $token = \Illuminate\Support\Facades\Password::broker()->createToken($user);
+        $token = Password::broker()->createToken($user);
 
         $this->get(route('password.reset', $token))
             ->assertOk();
@@ -123,6 +125,6 @@ class AuthFlowTest extends TestCase
 
         // Le mot de passe doit avoir changé
         $fresh = User::where('email', 'reset2@example.com')->first();
-        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('nouveaupass123', $fresh->password));
+        $this->assertTrue(Hash::check('nouveaupass123', $fresh->password));
     }
 }

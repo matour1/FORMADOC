@@ -28,7 +28,7 @@ class DocAnalyzerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tempDir = sys_get_temp_dir() . '/formadoc_analyzer_' . uniqid();
+        $this->tempDir = sys_get_temp_dir().'/formadoc_analyzer_'.uniqid();
         mkdir($this->tempDir, 0777, true);
 
         config(['deepseek.retry_delays_ms' => [0, 0, 0, 0]]);
@@ -36,7 +36,7 @@ class DocAnalyzerTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (glob($this->tempDir . '/*') ?: [] as $file) {
+        foreach (glob($this->tempDir.'/*') ?: [] as $file) {
             @unlink($file);
         }
         @rmdir($this->tempDir);
@@ -48,7 +48,7 @@ class DocAnalyzerTest extends TestCase
      */
     private function createControlledDocx(string $filename = 'controle.docx'): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
 
         $phpWord->addTitleStyle(1, ['bold' => true, 'size' => 16]);
         $phpWord->addTitleStyle(2, ['bold' => true, 'size' => 14]);
@@ -61,7 +61,7 @@ class DocAnalyzerTest extends TestCase
         $section->addTitle('1.1 Sous-section', 2);
         $section->addText('Ceci est un paragraphe normal.', ['size' => 11]);
 
-        $path = $this->tempDir . '/' . $filename;
+        $path = $this->tempDir.'/'.$filename;
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
 
         return $path;
@@ -73,12 +73,12 @@ class DocAnalyzerTest extends TestCase
      */
     private function createDocxWithoutTitles(string $filename = 'sans_titres.docx'): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $section = $phpWord->addSection();
         $section->addText('Ceci est un paragraphe sans aucun titre.', ['size' => 11]);
         $section->addText('Un autre paragraphe.', ['size' => 11]);
 
-        $path = $this->tempDir . '/' . $filename;
+        $path = $this->tempDir.'/'.$filename;
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
 
         return $path;
@@ -233,7 +233,7 @@ class DocAnalyzerTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('fichier de règles introuvable');
 
-        $analyzer = new DocAnalyzer(sys_get_temp_dir() . '/inexistant.php');
+        $analyzer = new DocAnalyzer(sys_get_temp_dir().'/inexistant.php');
         $analyzer->analyze($this->createControlledDocx());
     }
 
@@ -262,13 +262,13 @@ class DocAnalyzerTest extends TestCase
      */
     private function createDocxWithNumberedTitles(string $filename = 'numerote.docx'): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $section = $phpWord->addSection();
         $section->addText('1. Introduction', ['size' => 11]);
         $section->addText('1.1 Contexte', ['size' => 11]);
         $section->addText('Ceci est un paragraphe normal.', ['size' => 11]);
 
-        $path = $this->tempDir . '/' . $filename;
+        $path = $this->tempDir.'/'.$filename;
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
 
         return $path;

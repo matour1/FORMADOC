@@ -38,7 +38,7 @@ class InvoiceServiceTest extends TestCase
             'billing.invoice_storage_disk' => 'local',
         ]);
 
-        $this->service = new InvoiceService();
+        $this->service = new InvoiceService;
     }
 
     /* ------------------------------------------------------------------

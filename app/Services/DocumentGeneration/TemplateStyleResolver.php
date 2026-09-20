@@ -73,15 +73,14 @@ class TemplateStyleResolver
     /**
      * Fusionne les params d'un gabarit avec les défauts.
      *
-     * @param null|array<string, mixed> $params
-     *
+     * @param  null|array<string, mixed>  $params
      * @return array<string, mixed>
      */
     public static function normalize(?array $params): array
     {
         $defaults = self::defaults();
 
-        if (!is_array($params)) {
+        if (! is_array($params)) {
             return $defaults;
         }
 
@@ -101,8 +100,7 @@ class TemplateStyleResolver
     /**
      * Style de police pour un rôle (titre1, titre2, titre3, corps).
      *
-     * @param array<string, mixed> $gabarit Gabarit normalisé (self::normalize)
-     *
+     * @param  array<string, mixed>  $gabarit  Gabarit normalisé (self::normalize)
      * @return array<string, mixed>
      */
     public static function fontStyle(array $gabarit, string $role): array
@@ -124,8 +122,7 @@ class TemplateStyleResolver
     /**
      * Style de paragraphe pour les titres (alignement + espacements).
      *
-     * @param array<string, mixed> $gabarit
-     *
+     * @param  array<string, mixed>  $gabarit
      * @return array<string, mixed>
      */
     public static function titleParagraphStyle(array $gabarit): array
@@ -143,8 +140,7 @@ class TemplateStyleResolver
     /**
      * Style de paragraphe pour le corps (interligne + espacement après).
      *
-     * @param array<string, mixed> $gabarit
-     *
+     * @param  array<string, mixed>  $gabarit
      * @return array<string, mixed>
      */
     public static function bodyParagraphStyle(array $gabarit): array
@@ -160,8 +156,7 @@ class TemplateStyleResolver
     /**
      * Marges de page (twips).
      *
-     * @param array<string, mixed> $gabarit
-     *
+     * @param  array<string, mixed>  $gabarit
      * @return array<string, mixed>
      */
     public static function sectionStyle(array $gabarit): array
@@ -181,8 +176,7 @@ class TemplateStyleResolver
     /**
      * Style d'en-tête de tableau (couleur de fond + texte).
      *
-     * @param array<string, mixed> $gabarit
-     *
+     * @param  array<string, mixed>  $gabarit
      * @return array<string, mixed>
      */
     public static function tableHeaderStyle(array $gabarit): array
@@ -199,14 +193,13 @@ class TemplateStyleResolver
     /**
      * Style de tableau (bordure + nom de style de base).
      *
-     * @param array<string, mixed> $gabarit
-     *
+     * @param  array<string, mixed>  $gabarit
      * @return array<string, mixed>
      */
     public static function tableStyle(array $gabarit): array
     {
         $table = $gabarit['tableau'] ?? [];
-        $border = !empty($table['bordure']);
+        $border = ! empty($table['bordure']);
 
         return [
             'borderSize' => $border ? 6 : 0,

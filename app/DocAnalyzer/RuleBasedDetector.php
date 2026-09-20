@@ -35,7 +35,7 @@ class RuleBasedDetector
     private array $rules;
 
     /**
-     * @param array<int, array<string, mixed>> $rules Règles issues du YAML
+     * @param  array<int, array<string, mixed>>  $rules  Règles issues du YAML
      *
      * @throws InvalidArgumentException Si les règles sont vides ou invalides
      */
@@ -47,8 +47,7 @@ class RuleBasedDetector
     /**
      * Détecte les éléments structurels du document analysé.
      *
-     * @param array<string, mixed> $parsedData Sortie de DocumentParser::parse()
-     *
+     * @param  array<string, mixed>  $parsedData  Sortie de DocumentParser::parse()
      * @return array<string, array<int, array<string, mixed>>>
      */
     public function detect(array $parsedData): array
@@ -86,8 +85,7 @@ class RuleBasedDetector
     /**
      * Valide et normalise les règles fournies.
      *
-     * @param array<int, array<string, mixed>> $rules
-     *
+     * @param  array<int, array<string, mixed>>  $rules
      * @return array<int, array<string, mixed>>
      *
      * @throws InvalidArgumentException
@@ -101,20 +99,20 @@ class RuleBasedDetector
         }
 
         foreach ($rules as $index => $rule) {
-            if (!is_array($rule) || !isset($rule['categorie'])) {
+            if (! is_array($rule) || ! isset($rule['categorie'])) {
                 throw new InvalidArgumentException(
                     "RuleBasedDetector : règle invalide à l'index {$index} (catégorie manquante)"
                 );
             }
 
             $categorie = (string) $rule['categorie'];
-            if (!in_array($categorie, AnalyzerResult::CATEGORIES, true)) {
+            if (! in_array($categorie, AnalyzerResult::CATEGORIES, true)) {
                 throw new InvalidArgumentException(
                     "RuleBasedDetector : catégorie inconnue \"{$categorie}\" (règle {$index})"
                 );
             }
 
-            if (!isset($rule['quand']) || !is_array($rule['quand']) || $rule['quand'] === []) {
+            if (! isset($rule['quand']) || ! is_array($rule['quand']) || $rule['quand'] === []) {
                 throw new InvalidArgumentException(
                     "RuleBasedDetector : règle {$index} sans condition (\"quand\")"
                 );
@@ -134,8 +132,7 @@ class RuleBasedDetector
      * Aplatit les éléments de toutes les sections (body/headers/footers)
      * en une liste unique, en conservant la position.
      *
-     * @param array<string, mixed> $parsedData
-     *
+     * @param  array<string, mixed>  $parsedData
      * @return array<int, array<string, mixed>>
      */
     private function flatten(array $parsedData): array
@@ -169,8 +166,8 @@ class RuleBasedDetector
     /**
      * Vérifie si un élément correspond à une règle.
      *
-     * @param array<string, mixed> $element
-     * @param array<string, mixed> $rule
+     * @param  array<string, mixed>  $element
+     * @param  array<string, mixed>  $rule
      */
     private function matchesRule(array $element, array $rule): bool
     {
@@ -212,7 +209,7 @@ class RuleBasedDetector
                     break;
 
                 case 'font_size':
-                    if (!$this->compareValue((float) $fontSize, $expected)) {
+                    if (! $this->compareValue((float) $fontSize, $expected)) {
                         return false;
                     }
                     break;
@@ -224,7 +221,7 @@ class RuleBasedDetector
                     break;
 
                 case 'texte_contient':
-                    if (!str_contains((string) ($element['text'] ?? ''), (string) $expected)) {
+                    if (! str_contains((string) ($element['text'] ?? ''), (string) $expected)) {
                         return false;
                     }
                     break;
@@ -255,8 +252,8 @@ class RuleBasedDetector
      *  - ['<=' => x]          → valeur <= x
      *  - ['<'  => x]          → valeur < x
      *
-     * @param mixed $value
-     * @param mixed $expected
+     * @param  mixed  $value
+     * @param  mixed  $expected
      */
     private function compareValue($value, $expected): bool
     {
@@ -280,9 +277,8 @@ class RuleBasedDetector
     /**
      * Construit l'item de résultat pour un élément matché.
      *
-     * @param array<string, mixed> $element
-     * @param array<string, mixed> $rule
-     *
+     * @param  array<string, mixed>  $element
+     * @param  array<string, mixed>  $rule
      * @return array<string, mixed>
      */
     private function buildItem(array $element, array $rule): array
@@ -311,8 +307,8 @@ class RuleBasedDetector
     /**
      * Compare deux positions (null = fin de liste).
      *
-     * @param mixed $a
-     * @param mixed $b
+     * @param  mixed  $a
+     * @param  mixed  $b
      */
     private static function comparePositions($a, $b): int
     {

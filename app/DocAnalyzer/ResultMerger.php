@@ -20,9 +20,8 @@ class ResultMerger
     /**
      * Fusionne le résultat des règles et celui de l'IA.
      *
-     * @param array<string, array<int, array<string, mixed>>> $rulesResult
-     * @param array<string, array<int, array<string, mixed>>> $iaResult
-     *
+     * @param  array<string, array<int, array<string, mixed>>>  $rulesResult
+     * @param  array<string, array<int, array<string, mixed>>>  $iaResult
      * @return array<string, array<int, array<string, mixed>>>
      */
     public function merge(array $rulesResult, array $iaResult): array
@@ -81,12 +80,12 @@ class ResultMerger
     /**
      * Clé de déduplication d'un item : (element_index, parent).
      *
-     * @param array<string, mixed> $item
+     * @param  array<string, mixed>  $item
      */
     private function itemKey(array $item): ?string
     {
         $position = $item['position'] ?? null;
-        if (!is_array($position)) {
+        if (! is_array($position)) {
             return null;
         }
 
@@ -97,6 +96,6 @@ class ResultMerger
             return null;
         }
 
-        return (int) $elementIndex . ':' . $parent;
+        return (int) $elementIndex.':'.$parent;
     }
 }

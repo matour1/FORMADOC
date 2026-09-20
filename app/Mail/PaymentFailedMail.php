@@ -6,6 +6,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -26,8 +27,7 @@ class PaymentFailedMail extends Mailable
         public string $currency = 'XAF',
         public string $reference = '',
         public ?Subscription $subscription = null,
-    ) {
-    }
+    ) {}
 
     public function envelope(): Envelope
     {
@@ -51,7 +51,7 @@ class PaymentFailedMail extends Mailable
     }
 
     /**
-     * @return array<int, \Illuminate\Mail\Mailables\Attachment>
+     * @return array<int, Attachment>
      */
     public function attachments(): array
     {

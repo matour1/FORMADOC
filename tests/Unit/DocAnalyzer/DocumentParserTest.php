@@ -25,13 +25,13 @@ class DocumentParserTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tempDir = sys_get_temp_dir() . '/formadoc_parser_' . uniqid();
+        $this->tempDir = sys_get_temp_dir().'/formadoc_parser_'.uniqid();
         mkdir($this->tempDir, 0777, true);
     }
 
     protected function tearDown(): void
     {
-        foreach (glob($this->tempDir . '/*') ?: [] as $file) {
+        foreach (glob($this->tempDir.'/*') ?: [] as $file) {
             @unlink($file);
         }
         @rmdir($this->tempDir);
@@ -44,7 +44,7 @@ class DocumentParserTest extends TestCase
      */
     private function createControlledDocx(string $filename = 'controle.docx'): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
 
         // Styles de titres connus
         $phpWord->addTitleStyle(1, ['bold' => true, 'size' => 16]);
@@ -78,7 +78,7 @@ class DocumentParserTest extends TestCase
         $section->addListItem('Premier item', 0);
         $section->addListItem('Sous-item imbriqué', 1);
 
-        $path = $this->tempDir . '/' . $filename;
+        $path = $this->tempDir.'/'.$filename;
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
 
         return $path;
@@ -88,12 +88,12 @@ class DocumentParserTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
 
-        new DocumentParser($this->tempDir . '/inexistant.docx');
+        new DocumentParser($this->tempDir.'/inexistant.docx');
     }
 
     public function test_parse_rejette_un_fichier_non_word(): void
     {
-        $path = $this->tempDir . '/faux.docx';
+        $path = $this->tempDir.'/faux.docx';
         file_put_contents($path, 'Ceci n\'est pas un DOCX valide.');
 
         $this->expectException(RuntimeException::class);
@@ -105,7 +105,7 @@ class DocumentParserTest extends TestCase
     {
         // Un .txt n'est pas une archive ZIP : le parser doit le traiter
         // comme un PhpWord virtuel (1 section, 1 paragraphe par ligne).
-        $path = $this->tempDir . '/rapport.txt';
+        $path = $this->tempDir.'/rapport.txt';
         file_put_contents($path, "RAPPORT DE STAGE\n\n1. Introduction\nCeci est un paragraphe.\n1.1 Contexte\nFin du rapport.\n");
 
         $result = (new DocumentParser($path))->parse();
@@ -288,7 +288,7 @@ class DocumentParserTest extends TestCase
     {
         $fixture = storage_path('test_scripts/reports/rapport_test_structure.docx');
 
-        if (!file_exists($fixture)) {
+        if (! file_exists($fixture)) {
             $this->markTestSkipped('Fixture rapport_test_structure.docx absent — générer via storage/test_scripts/generate_test_report.php');
         }
 
@@ -307,36 +307,36 @@ class DocumentParserTest extends TestCase
      */
     private function createDocxWithGraphicalHeader(string $filename = 'graphique.docx'): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $section = $phpWord->addSection();
         $header = $section->addHeader();
         $header->addText('480695'); // Artefact que PhpWord lit (coordonnée)
         $section->addText('Contenu du corps.');
 
-        $path = $this->tempDir . '/' . $filename;
+        $path = $this->tempDir.'/'.$filename;
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
 
         // Injecter une textbox dans header1.xml avec le texte du "thème"
-        $zip = new \ZipArchive();
+        $zip = new \ZipArchive;
         $zip->open($path);
         $headerXml = $zip->getFromName('word/header1.xml');
 
         $textboxXml = '<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-            . '<w:pPr><w:jc w:val="center"/></w:pPr>'
-            . '<w:r><w:t>THEME: ETAPE DE CONCEPTION DU PROJET MEDORIA</w:t></w:r>'
-            . '</w:p>';
+            .'<w:pPr><w:jc w:val="center"/></w:pPr>'
+            .'<w:r><w:t>THEME: ETAPE DE CONCEPTION DU PROJET MEDORIA</w:t></w:r>'
+            .'</w:p>';
 
         // Remplacer le dernier </w:hdr> par textbox + </w:hdr>
         $textboxWrapper = '<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
-            . '<mc:Choice Requires="wps"><w:drawing><wp:anchor xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">'
-            . '<wps:txbx xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">'
-            . '<w:txbxContent>' . $textboxXml . '</w:txbxContent></wps:txbx>'
-            . '</wp:anchor></w:drawing></mc:Choice>'
-            . '<mc:Fallback><w:pict><v:rect xmlns:v="urn:schemas-microsoft-com:vml">'
-            . '<v:textbox><w:txbxContent>' . $textboxXml . '</w:txbxContent></v:textbox>'
-            . '</v:rect></w:pict></mc:Fallback></mc:AlternateContent>';
+            .'<mc:Choice Requires="wps"><w:drawing><wp:anchor xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">'
+            .'<wps:txbx xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">'
+            .'<w:txbxContent>'.$textboxXml.'</w:txbxContent></wps:txbx>'
+            .'</wp:anchor></w:drawing></mc:Choice>'
+            .'<mc:Fallback><w:pict><v:rect xmlns:v="urn:schemas-microsoft-com:vml">'
+            .'<v:textbox><w:txbxContent>'.$textboxXml.'</w:txbxContent></v:textbox>'
+            .'</v:rect></w:pict></mc:Fallback></mc:AlternateContent>';
 
-        $headerXml = str_replace('</w:hdr>', $textboxWrapper . '</w:hdr>', $headerXml);
+        $headerXml = str_replace('</w:hdr>', $textboxWrapper.'</w:hdr>', $headerXml);
 
         $zip->addFromString('word/header1.xml', $headerXml);
         $zip->close();
@@ -368,20 +368,20 @@ class DocumentParserTest extends TestCase
      */
     private function createDocxWithImageAndSeq(string $filename = 'image_seq.docx'): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $section = $phpWord->addSection();
 
         // Petite image PNG 1×1 valide
         $png = base64_decode(
             'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
         );
-        $imgPath = $this->tempDir . '/pixel.png';
+        $imgPath = $this->tempDir.'/pixel.png';
         file_put_contents($imgPath, $png);
 
         $section->addImage($imgPath);
         $section->addText('Figure { SEQ Figure \* ARABIC } : Architecture générale');
 
-        $path = $this->tempDir . '/' . $filename;
+        $path = $this->tempDir.'/'.$filename;
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
 
         return $path;
@@ -394,7 +394,7 @@ class DocumentParserTest extends TestCase
 
         // Source au format du Reader PhpWord : zip:///chemin/doc.docx#word/media/section_image1.png
         // (le writer PhpWord nomme les images "section_imageN.ext")
-        $source = 'zip://' . str_replace('\\', '/', $path) . '#word/media/section_image1.png';
+        $source = 'zip://'.str_replace('\\', '/', $path).'#word/media/section_image1.png';
 
         $data = $parser->readImageData($source);
 
@@ -410,7 +410,7 @@ class DocumentParserTest extends TestCase
         $png = base64_decode(
             'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
         );
-        $imgPath = $this->tempDir . '/pixel.png';
+        $imgPath = $this->tempDir.'/pixel.png';
         file_put_contents($imgPath, $png);
 
         $parser = new DocumentParser($this->createDocxWithImageAndSeq());
@@ -427,7 +427,7 @@ class DocumentParserTest extends TestCase
 
         $this->assertNull($parser->readImageData(''));
         $this->assertNull($parser->readImageData('zip:///inexistant.docx#word/media/x.png'));
-        $this->assertNull($parser->readImageData($this->tempDir . '/inexistant.png'));
+        $this->assertNull($parser->readImageData($this->tempDir.'/inexistant.png'));
     }
 
     public function test_resolve_seq_fields_remplace_par_les_numeros(): void
@@ -435,8 +435,8 @@ class DocumentParserTest extends TestCase
         $parser = new DocumentParser($this->createDocxWithImageAndSeq());
 
         $text = "Figure { SEQ Figure \\* ARABIC } : Architecture\n"
-            . "Tableau { SEQ Tableau \\* ARABIC } : Résultats\n"
-            . "Figure { SEQ Figure \\* ARABIC } : Diagramme";
+            ."Tableau { SEQ Tableau \\* ARABIC } : Résultats\n"
+            .'Figure { SEQ Figure \\* ARABIC } : Diagramme';
 
         $resolved = $parser->resolveSeqFields($text);
 
@@ -467,7 +467,7 @@ class DocumentParserTest extends TestCase
     {
         $parser = new DocumentParser($this->createDocxWithImageAndSeq());
 
-        $text = "{ TOC \\o \"1-3\" \\h \\z \\u } Contenu { PAGE } et { REF _Toc123 \\h }";
+        $text = '{ TOC \\o "1-3" \\h \\z \\u } Contenu { PAGE } et { REF _Toc123 \\h }';
 
         $stripped = $parser->stripFieldCodes($text);
 

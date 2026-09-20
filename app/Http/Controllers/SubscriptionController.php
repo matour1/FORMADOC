@@ -9,7 +9,9 @@ use App\Services\Billing\SubscriptionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Abonnements récurrents (Phase 9).
@@ -27,8 +29,7 @@ class SubscriptionController extends Controller
     public function __construct(
         private readonly SubscriptionService $subscriptions,
         private readonly InvoiceService $invoices,
-    ) {
-    }
+    ) {}
 
     /**
      * Page checkout (conforme au template : méthode de paiement + récap).
@@ -159,7 +160,7 @@ class SubscriptionController extends Controller
     /**
      * Télécharge le PDF d'une facture.
      */
-    public function downloadInvoice(Request $request, Invoice $invoice): \Symfony\Component\HttpFoundation\StreamedResponse|RedirectResponse
+    public function downloadInvoice(Request $request, Invoice $invoice): StreamedResponse|RedirectResponse
     {
         if ($invoice->user_id !== $request->user()->id) {
             abort(403);
@@ -176,7 +177,7 @@ class SubscriptionController extends Controller
 
         return response()->streamDownload(
             function () use ($disk, $path) {
-                echo \Illuminate\Support\Facades\Storage::disk($disk)->get($path);
+                echo Storage::disk($disk)->get($path);
             },
             $filename,
             ['Content-Type' => 'application/pdf']

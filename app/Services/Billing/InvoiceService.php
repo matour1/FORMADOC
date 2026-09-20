@@ -11,11 +11,10 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
-use PhpOffice\PhpWord\Shared\Converter;
 use PhpOffice\PhpWord\Settings;
+use PhpOffice\PhpWord\Shared\Converter;
 
 /**
  * Facturation (Phase 9) : création de factures + génération PDF.
@@ -37,7 +36,7 @@ class InvoiceService
      * obtiennent TOUJOURS des numéros distincts — plus de doublon possible
      * sur la contrainte unique `invoices.number`.
      */
-    public function nextNumber(\DateTimeInterface $at = null): string
+    public function nextNumber(?\DateTimeInterface $at = null): string
     {
         $at ??= now();
         $year = (int) $at->format('Y');
@@ -181,7 +180,7 @@ class InvoiceService
             ]);
         }
 
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $section = $phpWord->addSection([
             'marginTop' => Converter::cmToTwip(2),
             'marginBottom' => Converter::cmToTwip(2),

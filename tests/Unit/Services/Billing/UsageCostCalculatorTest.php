@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Unit\Services\Billing;
 
 use App\Services\Billing\UsageCostCalculator;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
 
 /**
@@ -23,7 +25,7 @@ class UsageCostCalculatorTest extends TestCase
     {
         parent::setUp();
 
-        $this->calculator = new UsageCostCalculator();
+        $this->calculator = new UsageCostCalculator;
     }
 
     public function test_profitability_coefficient_est_184(): void
@@ -51,15 +53,15 @@ class UsageCostCalculatorTest extends TestCase
         // retire réellement la clé du tableau via Arr::except.
         $fullConfig = config('openrouter');
 
-        \Illuminate\Support\Facades\Config::set(
+        Config::set(
             'openrouter',
-            \Illuminate\Support\Arr::except((array) $fullConfig, 'cost_infrastructure')
+            Arr::except((array) $fullConfig, 'cost_infrastructure')
         );
 
         try {
             $this->assertEqualsWithDelta(1.84, $this->calculator->profitabilityCoefficient(), 1e-9);
         } finally {
-            \Illuminate\Support\Facades\Config::set('openrouter', $fullConfig);
+            Config::set('openrouter', $fullConfig);
         }
     }
 

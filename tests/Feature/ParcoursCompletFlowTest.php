@@ -6,6 +6,9 @@ namespace Tests\Feature;
 
 use App\Models\Document;
 use App\Models\Feedback;
+use App\Models\GeneratedDocument;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use PhpOffice\PhpWord\IOFactory;
@@ -20,14 +23,14 @@ use Tests\TestCase;
  */
 class ParcoursCompletFlowTest extends TestCase
 {
-    use \Illuminate\Foundation\Testing\RefreshDatabase;
+    use RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         // Les routes documents sont protégées par auth (P0-1)
-        $user = \App\Models\User::factory()->create();
+        $user = User::factory()->create();
         $this->actingAs($user);
     }
 
@@ -36,7 +39,7 @@ class ParcoursCompletFlowTest extends TestCase
      */
     private function createReportDocx(): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $phpWord->addTitleStyle(1, ['bold' => true, 'size' => 16]);
         $phpWord->addTitleStyle(2, ['bold' => true, 'size' => 14]);
 
@@ -50,7 +53,7 @@ class ParcoursCompletFlowTest extends TestCase
         $section->addText('Figure 1: Architecture de la plateforme');
         $section->addText('Tableau 1: Résultats comparatifs');
 
-        $path = storage_path('app/test_tmp_' . uniqid() . '.docx');
+        $path = storage_path('app/test_tmp_'.uniqid().'.docx');
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
 
         return $path;
@@ -110,7 +113,7 @@ class ParcoursCompletFlowTest extends TestCase
         $download = $this->post(route('documents.generate', $document));
         $download->assertOk();
 
-        $generated = \App\Models\GeneratedDocument::where('document_id', $document->id)->first();
+        $generated = GeneratedDocument::where('document_id', $document->id)->first();
         $this->assertNotNull($generated);
         $this->assertSame('generated', $generated->status);
         $this->assertFileExists($generated->output_path);

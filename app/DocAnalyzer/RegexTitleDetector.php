@@ -73,8 +73,7 @@ class RegexTitleDetector
     /**
      * Détecte les titres et sous-titres par motifs regex.
      *
-     * @param string $contextTextWithPositions Sortie context_text_with_positions du DocumentParser
-     *
+     * @param  string  $contextTextWithPositions  Sortie context_text_with_positions du DocumentParser
      * @return array<string, array<int, array<string, mixed>>> titres + sous_titres
      */
     public function detect(string $contextTextWithPositions): array
@@ -133,7 +132,7 @@ class RegexTitleDetector
 
         // Mots-clés de niveau 1
         $motsCles = implode('|', self::MOTS_CLES_NIVEAU_1);
-        if (preg_match('/^(?:' . $motsCles . ')(?:\s|[:.\-—]|$)/iu', $text) === 1) {
+        if (preg_match('/^(?:'.$motsCles.')(?:\s|[:.\-—]|$)/iu', $text) === 1) {
             return 1;
         }
 

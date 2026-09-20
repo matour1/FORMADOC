@@ -36,10 +36,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class Invoice extends Model
 {
-    use HasHashId;
-
     /** @use HasFactory<InvoiceFactory> */
     use HasFactory;
+
+    use HasHashId;
 
     protected function casts(): array
     {

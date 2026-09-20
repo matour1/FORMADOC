@@ -12,6 +12,7 @@ use App\Models\DocumentStructure;
 use App\Models\GeneratedDocument;
 use App\Models\Invoice;
 use App\Models\KpayPayment;
+use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -86,7 +87,7 @@ class AccountDeletionPurgeTest extends TestCase
         ]);
 
         // --- Données SaaS ---
-        $plan = \App\Models\Plan::factory()->create();
+        $plan = Plan::factory()->create();
         CreditTransaction::create([
             'user_id' => $user->id,
             'type' => 'purchase',

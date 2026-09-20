@@ -51,6 +51,7 @@ class RemindSubscriptionRenewal extends Command
 
             if (! $user || ! $plan || ! $user->email) {
                 $this->warn(sprintf('[SAUT] Abonnement #%d — utilisateur ou plan manquant', $subscription->id));
+
                 continue;
             }
 

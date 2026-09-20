@@ -3,6 +3,7 @@
 namespace App\Models\Concerns;
 
 use Hashids\Hashids;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Obfusque l'identifiant de base de données exposé dans les URLs.
@@ -17,7 +18,7 @@ use Hashids\Hashids;
  * ce qui empêche toute corrélation d'un hash entre deux environnements
  * et toute attaque par énumération de l'id réel.
  *
- * @mixin \Illuminate\Database\Eloquent\Model
+ * @mixin Model
  */
 trait HasHashId
 {
@@ -42,7 +43,7 @@ trait HasHashId
      *
      * @param  mixed  $value
      * @param  string|null  $field
-     * @return \Illuminate\Database\Eloquent\Model|null
+     * @return Model|null
      */
     public function resolveRouteBinding($value, $field = null)
     {

@@ -58,9 +58,9 @@ class SubscriptionServiceTest extends TestCase
         ]);
 
         $this->service = new SubscriptionService(
-            new KPayService(),
-            new CreditService(),
-            new InvoiceService(),
+            new KPayService,
+            new CreditService,
+            new InvoiceService,
         );
     }
 

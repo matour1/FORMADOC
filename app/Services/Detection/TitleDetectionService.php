@@ -3,6 +3,7 @@
 namespace App\Services\Detection;
 
 use Exception;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -21,8 +22,9 @@ class TitleDetectionService
     /**
      * Analyse un texte et retourne l'arborescence des titres.
      *
-     * @param string $text Texte intégral du rapport
+     * @param  string  $text  Texte intégral du rapport
      * @return array{markdown: string, raw: string} Arborescence Markdown + réponse brute LLM
+     *
      * @throws Exception Si l'API échoue après les retries
      */
     public function execute(string $text): array
@@ -53,13 +55,13 @@ class TitleDetectionService
     /**
      * Appelle l'API DeepSeek avec le prompt validé et parse la réponse.
      *
-     * @param string $text
      * @return array{markdown: string, raw: string}
+     *
      * @throws Exception
      */
     private function analyzeWithLlm(string $text): array
     {
-        $apiUrl = rtrim(config('deepseek.api_url'), '/') . '/chat/completions';
+        $apiUrl = rtrim(config('deepseek.api_url'), '/').'/chat/completions';
 
         // Nombre total de tentatives (1 + retries)
         $maxAttempts = 1 + (int) config('deepseek.max_retries', 2);
@@ -82,7 +84,7 @@ class TitleDetectionService
             try {
                 $response = Http::timeout($timeout)
                     ->withHeaders([
-                        'Authorization' => 'Bearer ' . config('deepseek.api_key'),
+                        'Authorization' => 'Bearer '.config('deepseek.api_key'),
                         'Content-Type' => 'application/json',
                     ])
                     ->post($apiUrl, [
@@ -94,7 +96,7 @@ class TitleDetectionService
                     ]);
 
                 if ($response->failed()) {
-                    throw new Exception('DeepSeek API error: ' . $response->body());
+                    throw new Exception('DeepSeek API error: '.$response->body());
                 }
 
                 $json = $response->json();
@@ -121,7 +123,7 @@ class TitleDetectionService
                 // tentative (le serveur n'a peut-être pas reçu/terminé la requête).
                 // Une erreur HTTP applicative (429/500/…) ne sera pas résolue
                 // en relançant : on remonte immédiatement.
-                if (!$this->isRetryable($e)) {
+                if (! $this->isRetryable($e)) {
                     throw $e;
                 }
 
@@ -149,7 +151,7 @@ class TitleDetectionService
      */
     private function isRetryable(Exception $e): bool
     {
-        return $e instanceof \Illuminate\Http\Client\ConnectionException
+        return $e instanceof ConnectionException
             || str_contains($e->getMessage(), 'cURL error');
     }
 
@@ -162,9 +164,8 @@ class TitleDetectionService
      * dispose d'un timeout plus large (× growth) pour laisser le modèle
      * terminer son raisonnement.
      *
-     * @param string $text
-     * @param int $attempt Numéro de tentative (1 = première)
-     * @param float $growth Multiplicateur par tentative
+     * @param  int  $attempt  Numéro de tentative (1 = première)
+     * @param  float  $growth  Multiplicateur par tentative
      * @return float Nombre de secondes (arrondi à l'entier supérieur)
      */
     private function dynamicTimeout(string $text, int $attempt = 1, float $growth = 1.5): float

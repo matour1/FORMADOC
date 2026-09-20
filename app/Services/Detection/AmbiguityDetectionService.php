@@ -26,8 +26,7 @@ class AmbiguityDetectionService
     /**
      * Parcourt les titres détectés et retourne la liste des ambiguïtés.
      *
-     * @param array<string, mixed> $structure
-     *
+     * @param  array<string, mixed>  $structure
      * @return array<int, array<string, mixed>>
      */
     public function detect(array $structure): array
@@ -70,7 +69,7 @@ class AmbiguityDetectionService
     /**
      * Construit une clé stable identifiant un item par sa position.
      *
-     * @param array<string, mixed> $item
+     * @param  array<string, mixed>  $item
      */
     public static function itemKey(array $item): string
     {
@@ -94,7 +93,7 @@ class AmbiguityDetectionService
     {
         // Numérotation romaine : « II. » → chapitre de niveau 1.
         if (preg_match('/^([IVXLC]+)\.\s+/u', $texte, $matches) === 1) {
-            return ['niveau' => 1, 'token' => $matches[1] . '.'];
+            return ['niveau' => 1, 'token' => $matches[1].'.'];
         }
 
         // Numérotation décimale : « 1. », « 1.1 », « 1.1.1 » → niveau = nombre de segments.

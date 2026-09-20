@@ -123,7 +123,7 @@ class AiCorrectionServiceTest extends TestCase
         Http::fake();
 
         $structure = $this->structureAvecCandidatListe();
-        $service = new AiCorrectionService();
+        $service = new AiCorrectionService;
 
         $result = $service->correct($structure, []);
 
@@ -138,7 +138,7 @@ class AiCorrectionServiceTest extends TestCase
         Http::fake();
 
         $structure = $this->structureBase();
-        $service = new AiCorrectionService();
+        $service = new AiCorrectionService;
 
         $result = $service->correct($structure, []);
 
@@ -157,7 +157,7 @@ class AiCorrectionServiceTest extends TestCase
         ]);
 
         $structure = $this->structureAvecCandidatListe();
-        $service = new AiCorrectionService();
+        $service = new AiCorrectionService;
 
         $result = $service->correct($structure, []);
 
@@ -175,7 +175,7 @@ class AiCorrectionServiceTest extends TestCase
         ]);
 
         $structure = $this->structureAvecCandidatListe();
-        $service = new AiCorrectionService();
+        $service = new AiCorrectionService;
 
         $result = $service->correct($structure, []);
 
@@ -208,7 +208,7 @@ class AiCorrectionServiceTest extends TestCase
             ],
         ];
 
-        $service = new AiCorrectionService();
+        $service = new AiCorrectionService;
         $result = $service->correct($structure, $ambiguities);
 
         // body_complet : le type devient 'sous_titre' et la profondeur 2
@@ -224,7 +224,7 @@ class AiCorrectionServiceTest extends TestCase
         $method = $reflection->getMethod('ambiguityElementIndex');
         $method->setAccessible(true);
 
-        $service = new AiCorrectionService();
+        $service = new AiCorrectionService;
         $this->assertSame(1, $method->invoke($service, ['id' => 's0e1pbody']));
         $this->assertSame(12, $method->invoke($service, ['id' => 's2e12pbody']));
         $this->assertSame(5, $method->invoke($service, ['element_index' => 5, 'id' => 's0e99pbody']));
@@ -242,7 +242,7 @@ class AiCorrectionServiceTest extends TestCase
         ]);
 
         $structure = $this->structureAvecCandidatListe();
-        $service = new AiCorrectionService();
+        $service = new AiCorrectionService;
 
         $result = $service->correct($structure, []);
 
@@ -255,7 +255,7 @@ class AiCorrectionServiceTest extends TestCase
             $body = $request->data();
             $elements = $body['messages'][1]['content'] ?? '';
             $decoded = json_decode($elements, true);
-            if (!is_array($decoded) || !isset($decoded['elements'])) {
+            if (! is_array($decoded) || ! isset($decoded['elements'])) {
                 return false;
             }
 

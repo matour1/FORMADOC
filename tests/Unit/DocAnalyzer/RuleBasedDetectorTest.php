@@ -30,7 +30,7 @@ class RuleBasedDetectorTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tempDir = sys_get_temp_dir() . '/formadoc_rules_' . uniqid();
+        $this->tempDir = sys_get_temp_dir().'/formadoc_rules_'.uniqid();
         mkdir($this->tempDir, 0777, true);
 
         // Règles identiques à config/analyzer.php (réduites pour le test)
@@ -79,7 +79,7 @@ class RuleBasedDetectorTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (glob($this->tempDir . '/*') ?: [] as $file) {
+        foreach (glob($this->tempDir.'/*') ?: [] as $file) {
             @unlink($file);
         }
         @rmdir($this->tempDir);
@@ -92,7 +92,7 @@ class RuleBasedDetectorTest extends TestCase
      */
     private function createControlledDocx(string $filename = 'controle.docx'): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
 
         $phpWord->addTitleStyle(1, ['bold' => true, 'size' => 16]);
         $phpWord->addTitleStyle(2, ['bold' => true, 'size' => 14]);
@@ -117,7 +117,7 @@ class RuleBasedDetectorTest extends TestCase
         $table->addCell()->addText('Cellule A');
         $table->addCell()->addText('Cellule B');
 
-        $path = $this->tempDir . '/' . $filename;
+        $path = $this->tempDir.'/'.$filename;
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
 
         return $path;
@@ -256,7 +256,7 @@ class RuleBasedDetectorTest extends TestCase
     {
         $fixture = storage_path('test_scripts/reports/rapport_test_structure.docx');
 
-        if (!file_exists($fixture)) {
+        if (! file_exists($fixture)) {
             $this->markTestSkipped('Fixture absent — générer via storage/test_scripts/generate_test_report.php');
         }
 

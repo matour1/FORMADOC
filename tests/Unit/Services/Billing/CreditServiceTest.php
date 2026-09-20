@@ -27,7 +27,7 @@ class CreditServiceTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = new CreditService();
+        $this->service = new CreditService;
     }
 
     private function makeUser(int $credits = 0): User

@@ -23,7 +23,7 @@ class ModelRouterTest extends TestCase
     {
         parent::setUp();
 
-        $this->router = new ModelRouter();
+        $this->router = new ModelRouter;
     }
 
     public function test_selection_chat_text_default(): void

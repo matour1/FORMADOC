@@ -24,7 +24,7 @@ class QuotaService
     /**
      * Détermine si l'utilisateur a un quota restant pour un type d'usage.
      *
-     * @param string $usageType 'deterministic' | 'ai'
+     * @param  string  $usageType  'deterministic' | 'ai'
      */
     public function canUse(User $user, string $usageType): bool
     {
@@ -48,7 +48,7 @@ class QuotaService
      * Consomme une unité du quota mensuel (sans vérification préalable).
      * Retourne false si le quota est dépassé (compteur non incrémenté).
      *
-     * @param string $usageType 'deterministic' | 'ai'
+     * @param  string  $usageType  'deterministic' | 'ai'
      * @return array{ok: bool, used: int, quota: int|null, reason?: string}
      */
     public function consume(User $user, string $usageType): array
@@ -91,7 +91,7 @@ class QuotaService
     /**
      * Rembourse une unité de quota (annulation d'une opération).
      *
-     * @param string $usageType 'deterministic' | 'ai'
+     * @param  string  $usageType  'deterministic' | 'ai'
      */
     public function refund(User $user, string $usageType): void
     {

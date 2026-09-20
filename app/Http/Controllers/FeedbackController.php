@@ -4,8 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Feedback;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class FeedbackController extends Controller
 {
@@ -38,7 +38,7 @@ class FeedbackController extends Controller
                 'avis' => 'required|string|min:10|max:2000',
                 'note' => 'required|integer|min:1|max:5',
                 'recommander' => 'nullable|boolean',
-                'problemes_rencontres' => 'nullable|string|max:1000'
+                'problemes_rencontres' => 'nullable|string|max:1000',
             ]);
 
             // Créer le feedback
@@ -53,6 +53,7 @@ class FeedbackController extends Controller
                 ->with('success', 'Merci pour votre avis ! Nous l\'avons bien reçu.');
         } catch (\Exception $e) {
             Log::error('Error storing feedback', ['error' => $e->getMessage()]);
+
             return redirect()->back()
                 ->with('error', 'Une erreur s\'est produite. Veuillez réessayer.');
         }
@@ -64,21 +65,21 @@ class FeedbackController extends Controller
     private function sendFeedbackEmail(Feedback $feedback)
     {
         $ownerEmail = config('app.project_owner_email', 'owner@formadoc.dev');
-        
+
         $emailContent = "Nouvel avis reçu sur FORMADOC\n\n";
         $emailContent .= "Email : {$feedback->email}\n";
         $emailContent .= "Note : {$feedback->note}/5 ⭐\n";
-        $emailContent .= "Recommande FORMADOC : " . ($feedback->recommander ? 'Oui' : 'Non') . "\n\n";
+        $emailContent .= 'Recommande FORMADOC : '.($feedback->recommander ? 'Oui' : 'Non')."\n\n";
         $emailContent .= "Avis :\n{$feedback->avis}\n\n";
-        
+
         if ($feedback->problemes_rencontres) {
             $emailContent .= "Problèmes rencontrés :\n{$feedback->problemes_rencontres}\n\n";
         }
-        
-        $emailContent .= "Reçu le : " . $feedback->created_at->format('d/m/Y H:i') . "\n";
+
+        $emailContent .= 'Reçu le : '.$feedback->created_at->format('d/m/Y H:i')."\n";
 
         try {
-            Mail::raw($emailContent, function($msg) use ($ownerEmail, $feedback) {
+            Mail::raw($emailContent, function ($msg) use ($ownerEmail, $feedback) {
                 $msg->to($ownerEmail)
                     ->subject("Nouvel avis FORMADOC - Note {$feedback->note}/5 de {$feedback->email}");
             });

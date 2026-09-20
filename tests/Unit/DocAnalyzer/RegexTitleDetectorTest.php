@@ -22,7 +22,7 @@ class RegexTitleDetectorTest extends TestCase
 {
     private function detect(string ...$lines): array
     {
-        return (new RegexTitleDetector())->detect(implode("\n", $lines));
+        return (new RegexTitleDetector)->detect(implode("\n", $lines));
     }
 
     /** Ligne au format DocumentParser : [POS:section_X,element_Y,parent_Z]TEXTE */

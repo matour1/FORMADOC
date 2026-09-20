@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Anthropic;
 
+use App\Models\User;
+use App\Services\Billing\UsageCostCalculator;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -59,9 +62,8 @@ class ClaudeSkillsService
     ];
 
     public function __construct(
-        private readonly \App\Services\Billing\UsageCostCalculator $costCalculator,
-    ) {
-    }
+        private readonly UsageCostCalculator $costCalculator,
+    ) {}
 
     /**
      * Vérifie que l'intégration est configurée et disponible.
@@ -77,7 +79,7 @@ class ClaudeSkillsService
      * Q4 : abonnement payant ≥ skills_min_plan (inclus) OU solde de crédits
      * suffisant pour le pay-per-use (×1,5 sans abonnement).
      */
-    public function isEligible(?\App\Models\User $user): bool
+    public function isEligible(?User $user): bool
     {
         if ($user === null || ! $this->isConfigured()) {
             return false;
@@ -90,7 +92,7 @@ class ClaudeSkillsService
     /**
      * L'utilisateur a-t-il un abonnement payant (≥ skills_min_plan) actif ?
      */
-    public function hasPaidSubscription(\App\Models\User $user): bool
+    public function hasPaidSubscription(User $user): bool
     {
         $minRank = $this->planRank((string) config('billing.skills_min_plan', 'standard'));
 
@@ -120,16 +122,15 @@ class ClaudeSkillsService
     /**
      * Génère un document natif (docx/xlsx/pptx/pdf) via le skill Claude.
      *
-     * @param \App\Models\User $user       Utilisateur Pro (éligibilité vérifiée avant)
-     * @param string           $skill      'docx' | 'xlsx' | 'pptx' | 'pdf'
-     * @param string           $prompt     Instructions de génération
-     * @param string           $outputName Nom du fichier de sortie (sans extension)
-     *
+     * @param  User  $user  Utilisateur Pro (éligibilité vérifiée avant)
+     * @param  string  $skill  'docx' | 'xlsx' | 'pptx' | 'pdf'
+     * @param  string  $prompt  Instructions de génération
+     * @param  string  $outputName  Nom du fichier de sortie (sans extension)
      * @return array{path: string, filename: string, cost_credits: int, model: string}
      *
      * @throws \RuntimeException Si la génération échoue (l'appelant gère le fallback)
      */
-    public function generate(\App\Models\User $user, string $skill, string $prompt, string $outputName = 'document'): array
+    public function generate(User $user, string $skill, string $prompt, string $outputName = 'document'): array
     {
         if (! in_array($skill, self::SKILLS, true)) {
             throw new \RuntimeException("Skill documentaire inconnu : {$skill}");
@@ -218,9 +219,9 @@ class ClaudeSkillsService
      *   - abonnement payant actif → coût de base (inclus dans l'abonnement)
      *   - pay-per-use (sans abonnement) → × skills_no_subscription_multiplier
      *
-     * @param array<string, mixed> $responseData Réponse API (tokens réels)
+     * @param  array<string, mixed>  $responseData  Réponse API (tokens réels)
      */
-    public function effectiveCost(array $responseData, string $skill, ?\App\Models\User $user = null): int
+    public function effectiveCost(array $responseData, string $skill, ?User $user = null): int
     {
         $base = $this->estimateCredits($responseData, $skill);
 
@@ -236,7 +237,7 @@ class ClaudeSkillsService
     /**
      * Estimation du coût en crédits d'une génération Skill Claude.
      *
-     * @param array<string, mixed> $responseData Réponse API (pour tokens réels)
+     * @param  array<string, mixed>  $responseData  Réponse API (pour tokens réels)
      */
     public function estimateCredits(array $responseData, string $skill): int
     {
@@ -282,8 +283,7 @@ class ClaudeSkillsService
      | ------------------------------------------------------------------ */
 
     /**
-     * @param array<int, array{role: string, content: string}> $messages
-     *
+     * @param  array<int, array{role: string, content: string}>  $messages
      * @return array<string, mixed>
      */
     private function buildPayload(string $skill, array $messages): array
@@ -310,7 +310,7 @@ class ClaudeSkillsService
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     private function extractFileId(array $data): ?string
     {
@@ -377,9 +377,9 @@ class ClaudeSkillsService
     /**
      * POST avec retry backoff exponentiel sur 429 / 529 / erreurs réseau.
      *
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      */
-    private function postWithRetry(string $endpoint, array $payload): \Illuminate\Http\Client\Response
+    private function postWithRetry(string $endpoint, array $payload): Response
     {
         $backoffs = config('anthropic.retry_backoff_ms', [1000, 2000, 4000]);
         $attempt = 0;

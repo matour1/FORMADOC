@@ -17,16 +17,16 @@ class LegendDetectionServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new LegendDetectionService();
+        $this->service = new LegendDetectionService;
     }
 
     public function test_detecte_figure_tableau_annexe(): void
     {
         $text = "Introduction du rapport\n"
-            . "Figure 1: Architecture du système\n"
-            . "Le schéma ci-dessus présente...\n"
-            . "Tableau 2: Résultats comparatifs\n"
-            . "Annexe 3: Questionnaire distribué\n";
+            ."Figure 1: Architecture du système\n"
+            ."Le schéma ci-dessus présente...\n"
+            ."Tableau 2: Résultats comparatifs\n"
+            ."Annexe 3: Questionnaire distribué\n";
 
         $legends = $this->service->execute($text);
 
@@ -43,7 +43,7 @@ class LegendDetectionServiceTest extends TestCase
         $types = ['Figure', 'Tableau', 'Annexe', 'Image', 'Planche', 'Schéma'];
 
         $text = implode("\n", array_map(
-            fn ($t, $i) => "$t " . ($i + 1) . ": Légende $t",
+            fn ($t, $i) => "$t ".($i + 1).": Légende $t",
             $types,
             array_keys($types)
         ));
@@ -60,10 +60,10 @@ class LegendDetectionServiceTest extends TestCase
     public function test_ignore_le_texte_normal(): void
     {
         $text = "Ceci est un paragraphe ordinaire.\n"
-            . "Figure 1: Légende valide\n"
-            . "Le mot Figure sans numéro n'est pas une légende.\n"
-            . "Figure 1 sans deux-points n'est pas détectée\n"
-            . "Une phrase qui parle d'un tableau 5 mais sans format.\n";
+            ."Figure 1: Légende valide\n"
+            ."Le mot Figure sans numéro n'est pas une légende.\n"
+            ."Figure 1 sans deux-points n'est pas détectée\n"
+            ."Une phrase qui parle d'un tableau 5 mais sans format.\n";
 
         $legends = $this->service->execute($text);
 
@@ -114,9 +114,9 @@ class LegendDetectionServiceTest extends TestCase
         // Même légende écrite différemment (accents, apostrophes, espaces)
         // → une seule occurrence doit être conservée.
         $text = "Tableau 4: critere evaluation d un project\n"
-            . "Tableau 4: critère évaluation d'un Project\n"
-            . "Figure 2: Tableau de bord\n"
-            . "Figure 2: tableau de bord\n";
+            ."Tableau 4: critère évaluation d'un Project\n"
+            ."Figure 2: Tableau de bord\n"
+            ."Figure 2: tableau de bord\n";
 
         $legends = $this->service->execute($text);
 
@@ -132,9 +132,9 @@ class LegendDetectionServiceTest extends TestCase
         // "bilan des charge" (légende du corps) vs "bilan des charges"
         // (référence en annexe) : même légende → une seule occurrence.
         $text = "Tableau 5: bilan des charge\n"
-            . "Tableau 5: bilan des charges\n"
-            . "Tableau 6: organisation des tache\n"
-            . "Tableau 6: organisation des taches\n";
+            ."Tableau 5: bilan des charges\n"
+            ."Tableau 6: organisation des tache\n"
+            ."Tableau 6: organisation des taches\n";
 
         $legends = $this->service->execute($text);
 

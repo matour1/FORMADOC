@@ -41,7 +41,7 @@ class AmbiguityDetectionServiceTest extends TestCase
     public function test_signale_un_titre_dont_la_numerotation_contredit_le_niveau(): void
     {
         // « 1.1 Contexte » est classé niveau 1, mais la numérotation suggère 2.
-        $result = (new AmbiguityDetectionService())->detect($this->structure(
+        $result = (new AmbiguityDetectionService)->detect($this->structure(
             [$this->item('1.1 Contexte', 1, 0)]
         ));
 
@@ -53,7 +53,7 @@ class AmbiguityDetectionServiceTest extends TestCase
 
     public function test_ne_signale_pas_une_numerotation_coherente(): void
     {
-        $result = (new AmbiguityDetectionService())->detect($this->structure(
+        $result = (new AmbiguityDetectionService)->detect($this->structure(
             [$this->item('1. Introduction', 1, 0)],
             [$this->item('1.1 Contexte', 2, 1)]
         ));
@@ -64,7 +64,7 @@ class AmbiguityDetectionServiceTest extends TestCase
     public function test_detecte_une_numerotation_a_trois_niveaux(): void
     {
         // « 1.2.3 Détail » classé niveau 2, mais la numérotation suggère 3.
-        $result = (new AmbiguityDetectionService())->detect($this->structure(
+        $result = (new AmbiguityDetectionService)->detect($this->structure(
             [],
             [$this->item('1.2.3 Détail', 2, 0)]
         ));
@@ -76,7 +76,7 @@ class AmbiguityDetectionServiceTest extends TestCase
     public function test_detecte_la_numerotation_romaine_comme_niveau_1(): void
     {
         // « II. Contexte » classé niveau 2, mais « II. » est un chapitre (niveau 1).
-        $result = (new AmbiguityDetectionService())->detect($this->structure(
+        $result = (new AmbiguityDetectionService)->detect($this->structure(
             [],
             [$this->item('II. Contexte', 2, 0)]
         ));
@@ -87,7 +87,7 @@ class AmbiguityDetectionServiceTest extends TestCase
 
     public function test_ignore_un_texte_sans_numerotation(): void
     {
-        $result = (new AmbiguityDetectionService())->detect($this->structure(
+        $result = (new AmbiguityDetectionService)->detect($this->structure(
             [$this->item('Introduction', 1, 0)]
         ));
 
@@ -97,7 +97,7 @@ class AmbiguityDetectionServiceTest extends TestCase
     public function test_une_annee_en_debut_de_titre_n_est_pas_une_numerotation(): void
     {
         // « 2025 Rapport annuel » : l'année ne doit pas être lue comme « 2. » + « 025 ».
-        $result = (new AmbiguityDetectionService())->detect($this->structure(
+        $result = (new AmbiguityDetectionService)->detect($this->structure(
             [$this->item('2025 Rapport annuel', 1, 0)]
         ));
 
@@ -115,7 +115,7 @@ class AmbiguityDetectionServiceTest extends TestCase
 
     public function test_retourne_un_resultat_vide_sans_titres(): void
     {
-        $result = (new AmbiguityDetectionService())->detect($this->structure());
+        $result = (new AmbiguityDetectionService)->detect($this->structure());
 
         $this->assertSame([], $result);
     }

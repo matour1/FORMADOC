@@ -51,7 +51,7 @@ class PdfPreviewService
         $which = DIRECTORY_SEPARATOR === '\\' ? 'where.exe' : 'which';
         $output = [];
         $code = 1;
-        exec($which . ' soffice 2>NUL', $output, $code);
+        exec($which.' soffice 2>NUL', $output, $code);
         if ($code === 0 && isset($output[0]) && $output[0] !== '') {
             return trim($output[0]);
         }
@@ -87,7 +87,7 @@ class PdfPreviewService
      */
     public function converterScriptPath(): string
     {
-        return __DIR__ . DIRECTORY_SEPARATOR . 'convert_pdf_cli.php';
+        return __DIR__.DIRECTORY_SEPARATOR.'convert_pdf_cli.php';
     }
 
     /**
@@ -103,7 +103,7 @@ class PdfPreviewService
         if (DIRECTORY_SEPARATOR === '\\' && stripos(basename($binary), 'php') !== false) {
             // Sur Windows, PHP_BINARY peut pointer vers php-cgi.exe ou un autre
             // binaire ; on préfère php.exe (CLI) qui est côte à côte.
-            $cli = dirname($binary) . DIRECTORY_SEPARATOR . 'php.exe';
+            $cli = dirname($binary).DIRECTORY_SEPARATOR.'php.exe';
             if (is_file($cli)) {
                 return $cli;
             }
@@ -115,8 +115,7 @@ class PdfPreviewService
     /**
      * Convertit un DOCX en PDF (dans le même dossier, extension .pdf).
      *
-     * @param string $docxPath Chemin absolu du DOCX source
-     *
+     * @param  string  $docxPath  Chemin absolu du DOCX source
      * @return string Chemin absolu du PDF généré
      *
      * @throws RuntimeException Si LibreOffice est introuvable ou la conversion échoue
@@ -130,12 +129,12 @@ class PdfPreviewService
             );
         }
 
-        if (!is_file($docxPath)) {
+        if (! is_file($docxPath)) {
             throw new RuntimeException("DOCX introuvable : {$docxPath}");
         }
 
         $outputDir = dirname($docxPath);
-        $pdfPath = preg_replace('/\.docx$/i', '.pdf', $docxPath) ?? $docxPath . '.pdf';
+        $pdfPath = preg_replace('/\.docx$/i', '.pdf', $docxPath) ?? $docxPath.'.pdf';
 
         // En CLI pur (tests, artisan), on peut lancer la conversion en direct :
         // c'est fiable et rapide. En contexte HTTP (php artisan serve), on
@@ -157,7 +156,7 @@ class PdfPreviewService
         // (ou tout serveur mono-process), getmypid() est constant → le profil
         // serait réutilisé entre requêtes et se corromprait. uniqid garantit
         // un profil vierge à chaque conversion.
-        $userProfile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'formadoc_lo_profile_' . uniqid('', true);
+        $userProfile = sys_get_temp_dir().DIRECTORY_SEPARATOR.'formadoc_lo_profile_'.uniqid('', true);
 
         // Démarre toujours avec un profil vierge (élimine les verrous résiduels)
         $this->removeTree($userProfile);
@@ -176,7 +175,7 @@ class PdfPreviewService
                 $soffice,
                 '--headless',
                 '--norestore',
-                '-env:UserInstallation=file:///' . str_replace('\\', '/', $userProfile),
+                '-env:UserInstallation=file:///'.str_replace('\\', '/', $userProfile),
                 '--convert-to',
                 'pdf:writer_pdf_Export',
                 '--outdir',
@@ -192,8 +191,8 @@ class PdfPreviewService
                 return $pdfPath;
             }
 
-            $lastError = $process->getErrorOutput() . $process->getOutput()
-                . ' (exit ' . var_export($process->getExitCode(), true) . ')';
+            $lastError = $process->getErrorOutput().$process->getOutput()
+                .' (exit '.var_export($process->getExitCode(), true).')';
 
             if ($attempt < 3) {
                 usleep(500_000); // 500 ms avant nouvelle tentative
@@ -203,7 +202,7 @@ class PdfPreviewService
         // Nettoyage du profil temporaire
         $this->removeTree($userProfile);
 
-        throw new RuntimeException('Échec de la conversion PDF (LibreOffice) : ' . $lastError);
+        throw new RuntimeException('Échec de la conversion PDF (LibreOffice) : '.$lastError);
     }
 
     /**
@@ -216,7 +215,7 @@ class PdfPreviewService
         if (is_file($pdfPath)) {
             @unlink($pdfPath);
         }
-        $errFile = $pdfPath . '.err';
+        $errFile = $pdfPath.'.err';
         if (is_file($errFile)) {
             @unlink($errFile);
         }
@@ -224,12 +223,12 @@ class PdfPreviewService
         $php = $this->phpBinaryPath();
         $script = $this->converterScriptPath();
 
-        if (!is_file($script)) {
-            throw new RuntimeException('Script de conversion introuvable : ' . $script);
+        if (! is_file($script)) {
+            throw new RuntimeException('Script de conversion introuvable : '.$script);
         }
 
         // Commande : php convert_pdf_cli.php <docx> <outDir> <pdfPath>
-        $cmd = '"' . $php . '" "' . $script . '" "' . $docxPath . '" "' . $outputDir . '" "' . $pdfPath . '"';
+        $cmd = '"'.$php.'" "'.$script.'" "'.$docxPath.'" "'.$outputDir.'" "'.$pdfPath.'"';
 
         // Lancement DÉTACHÉ : WScript.Shell->Run (fenêtre cachée, non bloquant)
         $launched = false;
@@ -244,10 +243,10 @@ class PdfPreviewService
             }
         }
 
-        if (!$launched) {
+        if (! $launched) {
             throw new RuntimeException(
                 'Impossible de lancer la conversion PDF (COM/WScript.Shell indisponible) : '
-                . ($launchError ?? 'COM absent')
+                .($launchError ?? 'COM absent')
             );
         }
 
@@ -260,13 +259,13 @@ class PdfPreviewService
             if (is_file($errFile)) {
                 $error = trim((string) file_get_contents($errFile));
                 @unlink($errFile);
-                throw new RuntimeException('Échec de la conversion PDF (LibreOffice) : ' . $error);
+                throw new RuntimeException('Échec de la conversion PDF (LibreOffice) : '.$error);
             }
             usleep((int) (self::POLL_INTERVAL * 1_000_000));
         }
 
         throw new RuntimeException(
-            'Délai dépassé : la conversion PDF n\'a pas abouti en ' . self::POLL_TIMEOUT . ' secondes.'
+            'Délai dépassé : la conversion PDF n\'a pas abouti en '.self::POLL_TIMEOUT.' secondes.'
         );
     }
 
@@ -275,7 +274,7 @@ class PdfPreviewService
      */
     private function removeTree(string $dir): void
     {
-        if (!is_dir($dir)) {
+        if (! is_dir($dir)) {
             return;
         }
 

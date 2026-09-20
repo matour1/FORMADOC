@@ -22,8 +22,9 @@ class TextExtractionService
     /**
      * Extraits le texte brut d'un fichier.
      *
-     * @param string $absolutePath Chemin absolu du fichier (doit exister)
+     * @param  string  $absolutePath  Chemin absolu du fichier (doit exister)
      * @return string Texte brut normalisé (\n pour les fins de ligne)
+     *
      * @throws Exception Si le fichier est introuvable, illisible ou d'un type non supporté
      */
     public function execute(string $absolutePath): string
@@ -31,12 +32,12 @@ class TextExtractionService
         try {
             Log::info('TextExtractionService started', ['path' => $absolutePath]);
 
-            if (!file_exists($absolutePath)) {
-                throw new Exception('TextExtractionService : fichier introuvable : ' . $absolutePath);
+            if (! file_exists($absolutePath)) {
+                throw new Exception('TextExtractionService : fichier introuvable : '.$absolutePath);
             }
 
-            if (!is_readable($absolutePath)) {
-                throw new Exception('TextExtractionService : fichier illisible : ' . $absolutePath);
+            if (! is_readable($absolutePath)) {
+                throw new Exception('TextExtractionService : fichier illisible : '.$absolutePath);
             }
 
             $extension = strtolower(pathinfo($absolutePath, PATHINFO_EXTENSION));
@@ -45,7 +46,7 @@ class TextExtractionService
                 'docx', 'doc' => $this->extractFromWord($absolutePath),
                 'txt' => $this->extractFromPlainText($absolutePath),
                 default => throw new Exception(
-                    'TextExtractionService : extension non supportée "' . $extension . '"'
+                    'TextExtractionService : extension non supportée "'.$extension.'"'
                 ),
             };
 
@@ -79,7 +80,7 @@ class TextExtractionService
 
             foreach ($phpWord->getSections() as $section) {
                 foreach ($section->getElements() as $element) {
-                    $text .= $this->elementToText($element) . "\n";
+                    $text .= $this->elementToText($element)."\n";
                 }
             }
 
@@ -87,7 +88,7 @@ class TextExtractionService
             return $this->normalize($text);
         } catch (Exception $e) {
             throw new Exception(
-                'TextExtractionService : échec de lecture du document Word (' . $e->getMessage() . ')'
+                'TextExtractionService : échec de lecture du document Word ('.$e->getMessage().')'
             );
         }
     }
@@ -104,6 +105,7 @@ class TextExtractionService
             if (is_array($text)) {
                 return implode('', array_map(fn ($chunk) => $chunk ?? '', $text));
             }
+
             return (string) ($text ?? '');
         }
 
@@ -113,11 +115,12 @@ class TextExtractionService
             foreach ($element->getRows() as $row) {
                 foreach ($row->getCells() as $cell) {
                     foreach ($cell->getElements() as $cellElement) {
-                        $out .= $this->elementToText($cellElement) . "\t";
+                        $out .= $this->elementToText($cellElement)."\t";
                     }
                 }
                 $out .= "\n";
             }
+
             return $out;
         }
 
@@ -125,8 +128,9 @@ class TextExtractionService
         if (method_exists($element, 'getElements')) {
             $out = '';
             foreach ($element->getElements() as $child) {
-                $out .= $this->elementToText($child) . "\n";
+                $out .= $this->elementToText($child)."\n";
             }
+
             return $out;
         }
 
@@ -144,7 +148,7 @@ class TextExtractionService
         }
 
         // Détection UTF-8 : sinon tenter l'ISO-8859-1 (courant pour les fichiers Windows)
-        if (!mb_check_encoding($content, 'UTF-8')) {
+        if (! mb_check_encoding($content, 'UTF-8')) {
             $content = mb_convert_encoding($content, 'UTF-8', 'ISO-8859-1');
         }
 

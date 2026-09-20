@@ -3,6 +3,7 @@
 namespace App\Services\Billing;
 
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -24,7 +25,7 @@ class KPayService
     /**
      * Initialise un paiement via passerelle (carte/PayPal).
      *
-     * @param array<string, mixed> $metadata métadonnées métier (user_id, purpose…)
+     * @param  array<string, mixed>  $metadata  métadonnées métier (user_id, purpose…)
      * @return array{ok: bool, gatewayUrl?: string, externalId?: string, paymentId?: string, expiresAt?: string, message?: string}
      */
     public function initGatewayPayment(
@@ -76,6 +77,7 @@ class KPayService
         // Erreur 409 = externalId déjà actif (idempotence KPay)
         if ($status === 409) {
             Log::warning('KPay : externalId déjà actif', ['externalId' => $externalId]);
+
             return ['ok' => false, 'message' => 'Un paiement identique est déjà en cours.'];
         }
 
@@ -102,6 +104,7 @@ class KPayService
 
         if (! $response || ! $response->successful()) {
             Log::warning('KPay : getPayment échec', ['paymentId' => $paymentId]);
+
             return null;
         }
 
@@ -111,8 +114,8 @@ class KPayService
     /**
      * Vérifie la signature HMAC-SHA256 d'un webhook KPay.
      *
-     * @param string $rawBody corps BRUT de la requête (sans modification)
-     * @param string $signature en-tête X-KPAY-Signature
+     * @param  string  $rawBody  corps BRUT de la requête (sans modification)
+     * @param  string  $signature  en-tête X-KPAY-Signature
      */
     public function verifyWebhookSignature(string $rawBody, string $signature): bool
     {
@@ -133,7 +136,7 @@ class KPayService
      * Chaîne signée : "status|reference|externalId|ts"
      * Rejette si ts > 10 min (anti-rejeu).
      *
-     * @param array<string, string> $query
+     * @param  array<string, string>  $query
      */
     public function verifyReturnSignature(array $query): bool
     {
@@ -168,7 +171,7 @@ class KPayService
     /**
      * Envoi POST avec retry sur erreurs réseau et 429 (backoff 1s/2s/4s).
      */
-    private function post(string $path, array $payload): ?\Illuminate\Http\Client\Response
+    private function post(string $path, array $payload): ?Response
     {
         return $this->send('post', $path, $payload);
     }
@@ -176,7 +179,7 @@ class KPayService
     /**
      * Envoi GET avec retry.
      */
-    private function get(string $path): ?\Illuminate\Http\Client\Response
+    private function get(string $path): ?Response
     {
         return $this->send('get', $path);
     }
@@ -184,7 +187,7 @@ class KPayService
     /**
      * Envoi HTTP avec gestion des retries et du backoff exponentiel.
      */
-    private function send(string $method, string $path, array $payload = []): ?\Illuminate\Http\Client\Response
+    private function send(string $method, string $path, array $payload = []): ?Response
     {
         $maxRetries = (int) config('kpay.retries', 3);
         $delay = 1; // secondes
@@ -204,6 +207,7 @@ class KPayService
                     $retryAfter = (int) ($response->header('Retry-After') ?: $delay);
                     sleep(min($retryAfter, $delay));
                     $delay *= 2;
+
                     continue;
                 }
 
@@ -217,6 +221,7 @@ class KPayService
                 if ($attempt < $maxRetries - 1) {
                     sleep($delay);
                     $delay *= 2;
+
                     continue;
                 }
             } catch (\Throwable $e) {
@@ -224,6 +229,7 @@ class KPayService
                     'path' => $path,
                     'error' => $e->getMessage(),
                 ]);
+
                 return null;
             }
         }

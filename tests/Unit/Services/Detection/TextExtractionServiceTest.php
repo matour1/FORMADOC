@@ -13,20 +13,21 @@ use Tests\TestCase;
 class TextExtractionServiceTest extends TestCase
 {
     private TextExtractionService $service;
+
     private string $tempDir;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new TextExtractionService();
-        $this->tempDir = sys_get_temp_dir() . '/formadoc_tests_' . uniqid();
+        $this->service = new TextExtractionService;
+        $this->tempDir = sys_get_temp_dir().'/formadoc_tests_'.uniqid();
         mkdir($this->tempDir, 0777, true);
     }
 
     protected function tearDown(): void
     {
         // Nettoyage des fichiers temporaires
-        foreach (glob($this->tempDir . '/*') ?: [] as $file) {
+        foreach (glob($this->tempDir.'/*') ?: [] as $file) {
             @unlink($file);
         }
         @rmdir($this->tempDir);
@@ -35,12 +36,13 @@ class TextExtractionServiceTest extends TestCase
 
     private function createDocx(string $content, string $filename = 'test.docx'): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $section = $phpWord->addSection();
         $section->addText($content);
 
-        $path = $this->tempDir . '/' . $filename;
+        $path = $this->tempDir.'/'.$filename;
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
+
         return $path;
     }
 
@@ -56,7 +58,7 @@ class TextExtractionServiceTest extends TestCase
 
     public function test_extrait_le_texte_d_un_txt(): void
     {
-        $path = $this->tempDir . '/test.txt';
+        $path = $this->tempDir.'/test.txt';
         file_put_contents($path, "Chapitre 1\nCeci est un test.");
 
         $text = $this->service->execute($path);
@@ -67,7 +69,7 @@ class TextExtractionServiceTest extends TestCase
 
     public function test_normalise_les_fins_de_ligne(): void
     {
-        $path = $this->tempDir . '/test.txt';
+        $path = $this->tempDir.'/test.txt';
         file_put_contents($path, "Ligne 1\r\nLigne 2\rLigne 3");
 
         $text = $this->service->execute($path);
@@ -79,9 +81,9 @@ class TextExtractionServiceTest extends TestCase
 
     public function test_convertit_iso_8859_1_en_utf8(): void
     {
-        $path = $this->tempDir . '/test.txt';
+        $path = $this->tempDir.'/test.txt';
         // "Étude" en ISO-8859-1
-        $content = mb_convert_encoding("Étude de cas", 'ISO-8859-1', 'UTF-8');
+        $content = mb_convert_encoding('Étude de cas', 'ISO-8859-1', 'UTF-8');
         file_put_contents($path, $content);
 
         $text = $this->service->execute($path);
@@ -98,7 +100,7 @@ class TextExtractionServiceTest extends TestCase
 
     public function test_extension_non_supportee_leve_une_exception(): void
     {
-        $path = $this->tempDir . '/test.pdf';
+        $path = $this->tempDir.'/test.pdf';
         file_put_contents($path, 'fake pdf content');
 
         $this->expectException(\Exception::class);
@@ -108,9 +110,9 @@ class TextExtractionServiceTest extends TestCase
 
     public function test_docx_sans_texte_leve_une_exception(): void
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $phpWord->addSection();
-        $path = $this->tempDir . '/vide.docx';
+        $path = $this->tempDir.'/vide.docx';
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);
 
         $this->expectException(\Exception::class);

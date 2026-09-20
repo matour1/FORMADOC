@@ -15,31 +15,30 @@
  * Écrit <pdfPath> si succès, sinon <pdfPath>.err avec le message d'erreur.
  * N'utilise PAS Laravel : exécutable tel quel avec `php convert_pdf_cli.php`.
  */
-
 $docxPath = $argv[1] ?? null;
-$outDir   = $argv[2] ?? null;
-$pdfPath  = $argv[3] ?? null;
-$prefix   = $argv[4] ?? 'formadoc_lo_cli';
+$outDir = $argv[2] ?? null;
+$pdfPath = $argv[3] ?? null;
+$prefix = $argv[4] ?? 'formadoc_lo_cli';
 
-$errFile = $pdfPath . '.err';
+$errFile = $pdfPath.'.err';
 @unlink($pdfPath);
 @unlink($errFile);
 
 $fail = function (string $message) use ($errFile, $pdfPath) {
-    file_put_contents($errFile, $message . PHP_EOL);
+    file_put_contents($errFile, $message.PHP_EOL);
     if (is_file($pdfPath)) {
         @unlink($pdfPath);
     }
     exit(1);
 };
 
-if (!$docxPath || !$outDir || !$pdfPath) {
+if (! $docxPath || ! $outDir || ! $pdfPath) {
     $fail('Arguments manquants : docxPath, outDir, pdfPath');
 }
-if (!is_file($docxPath)) {
-    $fail('Source introuvable : ' . $docxPath);
+if (! is_file($docxPath)) {
+    $fail('Source introuvable : '.$docxPath);
 }
-if (!is_dir($outDir)) {
+if (! is_dir($outDir)) {
     @mkdir($outDir, 0777, true);
 }
 
@@ -66,19 +65,19 @@ foreach ($candidates as $candidate) {
         break;
     }
 }
-if (!$soffice) {
+if (! $soffice) {
     $fail('LibreOffice introuvable');
 }
 
 // Profil utilisateur UNIQUE par conversion (évite les verrous résiduels)
-$profile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . $prefix . '_' . uniqid('', true);
-$cmd = '"' . $soffice . '" --headless --norestore --nologo --nofirststartwizard '
-    . '-env:UserInstallation=file:///' . str_replace('\\', '/', $profile)
-    . ' --convert-to pdf:writer_pdf_Export --outdir "' . $outDir . '" "' . $docxPath . '"';
+$profile = sys_get_temp_dir().DIRECTORY_SEPARATOR.$prefix.'_'.uniqid('', true);
+$cmd = '"'.$soffice.'" --headless --norestore --nologo --nofirststartwizard '
+    .'-env:UserInstallation=file:///'.str_replace('\\', '/', $profile)
+    .' --convert-to pdf:writer_pdf_Export --outdir "'.$outDir.'" "'.$docxPath.'"';
 
 // Sorties redirigées vers des fichiers (jamais de handles hérités)
-$stdoutFile = $pdfPath . '.out';
-$stderrFile = $pdfPath . '.err.raw';
+$stdoutFile = $pdfPath.'.out';
+$stderrFile = $pdfPath.'.err.raw';
 @unlink($stdoutFile);
 @unlink($stderrFile);
 
@@ -89,7 +88,7 @@ $descriptors = [
 ];
 
 $proc = proc_open($cmd, $descriptors, $pipes, $outDir);
-if (!is_resource($proc)) {
+if (! is_resource($proc)) {
     $fail('Impossible de lancer proc_open');
 }
 
@@ -104,14 +103,14 @@ $stderr = is_file($stderrFile) ? trim((string) file_get_contents($stderrFile)) :
 
 // LibreOffice écrit le PDF avec le NOM du DOCX source dans --outdir
 // (ex. C:\Temp\gen_35_20260818_113014.pdf), pas avec le nom pdfPath.
-$expectedPdf = $outDir . DIRECTORY_SEPARATOR . pathinfo($docxPath, PATHINFO_FILENAME) . '.pdf';
+$expectedPdf = $outDir.DIRECTORY_SEPARATOR.pathinfo($docxPath, PATHINFO_FILENAME).'.pdf';
 
 if ($exit !== 0) {
     $fail(sprintf(
-        "Échec conversion (exit %d)%s%s",
+        'Échec conversion (exit %d)%s%s',
         $exit,
-        $stdout !== '' ? "\nstdout: " . $stdout : '',
-        $stderr !== '' ? "\nstderr: " . $stderr : ''
+        $stdout !== '' ? "\nstdout: ".$stdout : '',
+        $stderr !== '' ? "\nstderr: ".$stderr : ''
     ));
 }
 
@@ -121,18 +120,18 @@ if (is_file($expectedPdf) && realpath($expectedPdf) !== realpath($pdfPath)) {
     @unlink($expectedPdf);
 }
 
-if (!is_file($pdfPath)) {
+if (! is_file($pdfPath)) {
     $fail(sprintf(
-        "PDF non généré (exit 0)%s%s",
-        $stdout !== '' ? "\nstdout: " . $stdout : '',
-        $stderr !== '' ? "\nstderr: " . $stderr : ''
+        'PDF non généré (exit 0)%s%s',
+        $stdout !== '' ? "\nstdout: ".$stdout : '',
+        $stderr !== '' ? "\nstderr: ".$stderr : ''
     ));
 }
 
 // Nettoyage du profil LibreOffice créé
 if (is_dir($profile)) {
     $removeTree = function (string $dir) use (&$removeTree) {
-        foreach (glob($dir . '/*') ?: [] as $item) {
+        foreach (glob($dir.'/*') ?: [] as $item) {
             is_dir($item) ? $removeTree($item) : @unlink($item);
         }
         @rmdir($dir);

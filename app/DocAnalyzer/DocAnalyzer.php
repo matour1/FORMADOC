@@ -28,13 +28,11 @@ class DocAnalyzer
 {
     /**
      * Chemin du fichier de règles (config/analyzer.yaml ou équivalent).
-     *
-     * @var string|null
      */
     private ?string $configPath;
 
     /**
-     * @param string|null $configPath Chemin du fichier de règles (défaut : config/analyzer.php)
+     * @param  string|null  $configPath  Chemin du fichier de règles (défaut : config/analyzer.php)
      */
     public function __construct(?string $configPath = null)
     {
@@ -50,16 +48,16 @@ class DocAnalyzer
      *  - 'ia'    : appel systématique à l'IA (DeepSeek), plus lent.
      */
     public const METHOD_REGEX = 'regex';
+
     public const METHOD_IA = 'ia';
 
     /**
      * Analyse un document et retourne la structure détectée.
      *
-     * @param string $filePath Chemin absolu du fichier DOCX
-     * @param bool   $forceIA  Force l'appel à l'IA même si les règles suffisent
-     * @param string $titleMethod Méthode de détection des titres :
-     *                           'regex' (défaut) ou 'ia'
-     *
+     * @param  string  $filePath  Chemin absolu du fichier DOCX
+     * @param  bool  $forceIA  Force l'appel à l'IA même si les règles suffisent
+     * @param  string  $titleMethod  Méthode de détection des titres :
+     *                               'regex' (défaut) ou 'ia'
      * @return array<string, array<int, array<string, mixed>>> Résultat conforme au contrat
      *
      * @throws InvalidArgumentException Si le fichier de règles est introuvable
@@ -80,12 +78,12 @@ class DocAnalyzer
         //       catégories non-titres (en-têtes, pieds de page, tableaux…).
         $regexResult = AnalyzerResult::empty();
         if ($titleMethod === self::METHOD_REGEX) {
-            $regexTitles = (new RegexTitleDetector())->detect($parsed['context_text_with_positions']);
+            $regexTitles = (new RegexTitleDetector)->detect($parsed['context_text_with_positions']);
             $regexResult['titres'] = $regexTitles['titres'];
             $regexResult['sous_titres'] = $regexTitles['sous_titres'];
         }
 
-        $rulesResult = (new ResultMerger())->merge($rulesResult, $regexResult);
+        $rulesResult = (new ResultMerger)->merge($rulesResult, $regexResult);
 
         // 3. IA complémentaire UNIQUEMENT si demandée explicitement.
         //    Exigence Phase 4 : aucun fallback automatique vers l'IA — si
@@ -100,7 +98,7 @@ class DocAnalyzer
         }
 
         // 4. Fusion déterministe (règles d'abord, IA comble les manques)
-        $merger = new ResultMerger();
+        $merger = new ResultMerger;
 
         return $merger->merge($rulesResult, $iaResult);
     }
@@ -113,9 +111,8 @@ class DocAnalyzer
      * $gabarit est transmis comme options de reconstruction (non utilisées
      * pour l'instant, conservées pour la compatibilité Phase 3).
      *
-     * @param string $filePath Chemin absolu du fichier DOCX à formater
-     * @param array<string, mixed> $gabarit Règles de mise en forme (police, taille, interligne…)
-     *
+     * @param  string  $filePath  Chemin absolu du fichier DOCX à formater
+     * @param  array<string, mixed>  $gabarit  Règles de mise en forme (police, taille, interligne…)
      * @return array<string, mixed> Informations sur l'application du gabarit
      */
     public function applyStyles(string $filePath, array $gabarit): array
@@ -124,7 +121,7 @@ class DocAnalyzer
         $analysis = $this->analyze($filePath);
 
         // 2. Reconstruction du document avec la structure détectée
-        $reconstructor = new DocumentReconstructor();
+        $reconstructor = new DocumentReconstructor;
         $outputPath = $this->outputPathFor($filePath);
 
         $reconstructor->reconstruct($analysis, $outputPath);
@@ -147,7 +144,7 @@ class DocAnalyzer
         $base = pathinfo($filePath, PATHINFO_FILENAME);
         $ext = pathinfo($filePath, PATHINFO_EXTENSION);
 
-        return $dir . DIRECTORY_SEPARATOR . $base . '-reconstruit.' . $ext;
+        return $dir.DIRECTORY_SEPARATOR.$base.'-reconstruit.'.$ext;
     }
 
     /**
@@ -161,7 +158,7 @@ class DocAnalyzer
     {
         $path = $this->configPath ?? config_path('analyzer.php');
 
-        if (!is_file($path)) {
+        if (! is_file($path)) {
             throw new InvalidArgumentException(
                 "DocAnalyzer : fichier de règles introuvable : {$path}"
             );
@@ -171,7 +168,7 @@ class DocAnalyzer
         $config = require $path;
 
         $rules = $config['rules'] ?? null;
-        if (!is_array($rules) || $rules === []) {
+        if (! is_array($rules) || $rules === []) {
             throw new InvalidArgumentException(
                 "DocAnalyzer : aucune règle trouvée dans {$path} (clé 'rules' vide ?)"
             );

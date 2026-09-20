@@ -6,9 +6,13 @@ namespace Tests\Feature;
 
 use App\Models\Document;
 use App\Models\User;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Testing\TestResponse;
+use PhpOffice\PhpWord\IOFactory;
+use PhpOffice\PhpWord\PhpWord;
 use Tests\TestCase;
 
 /**
@@ -33,7 +37,7 @@ class UploadQuotaRefundTest extends TestCase
         return $user;
     }
 
-    private function postUpload(array $overrides = []): \Illuminate\Testing\TestResponse
+    private function postUpload(array $overrides = []): TestResponse
     {
         $docx = UploadedFile::fake()->create('rapport_test.docx', 1024, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 
@@ -80,12 +84,12 @@ class UploadQuotaRefundTest extends TestCase
         $user = $this->makeUser();
 
         // Document valide réel (généré par PhpWord) pour un pipeline complet
-        $phpWord = new \PhpOffice\PhpWord\PhpWord();
+        $phpWord = new PhpWord;
         $section = $phpWord->addSection();
         $section->addTitle('Introduction', 1);
         $section->addText('Contenu du rapport.');
-        $path = storage_path('app/test_p2_quota_' . uniqid() . '.docx');
-        \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007')->save($path);
+        $path = storage_path('app/test_p2_quota_'.uniqid().'.docx');
+        IOFactory::createWriter($phpWord, 'Word2007')->save($path);
 
         $response = $this->post('/documents/upload', [
             'document' => new UploadedFile(
@@ -112,7 +116,7 @@ class UploadQuotaRefundTest extends TestCase
         // Simule un échec du disque : le stockage du fichier lève une
         // exception → le catch global doit rembourser les quotas consommés.
         // Le mock de la façade Storage fait échouer disk('storage')->putFile().
-        $disk = \Mockery::mock(\Illuminate\Contracts\Filesystem\Filesystem::class);
+        $disk = \Mockery::mock(Filesystem::class);
         $disk->shouldReceive('putFile')->andThrow(new \RuntimeException('Disk full'));
         Storage::shouldReceive('disk')->with('storage')->andReturn($disk);
 

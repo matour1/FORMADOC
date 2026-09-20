@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Billing;
 
-use App\Models\Invoice;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -31,8 +31,7 @@ class SubscriptionService
         private readonly KPayService $kpay,
         private readonly CreditService $credits,
         private readonly InvoiceService $invoices,
-    ) {
-    }
+    ) {}
 
     /**
      * Statut d'un utilisateur par rapport aux abonnements.
@@ -189,6 +188,7 @@ class SubscriptionService
         $plan = Plan::find((int) ($metadata['plan_id'] ?? 0));
         if (! $plan || ! $plan->is_active) {
             Log::warning('SubscriptionService : plan introuvable au webhook', ['metadata' => $metadata]);
+
             return false;
         }
 
@@ -417,9 +417,9 @@ class SubscriptionService
     /**
      * Détermine les abonnements à renouveler aujourd'hui.
      *
-     * @return \Illuminate\Support\Collection<int, Subscription>
+     * @return Collection<int, Subscription>
      */
-    public function subscriptionsDueForRenewal(): \Illuminate\Support\Collection
+    public function subscriptionsDueForRenewal(): Collection
     {
         $daysBefore = (int) config('billing.renew_days_before', 3);
         $threshold = now()->addDays($daysBefore);

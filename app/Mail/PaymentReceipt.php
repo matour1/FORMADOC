@@ -25,8 +25,7 @@ class PaymentReceipt extends Mailable
         public Invoice $invoice,
         public string $label = 'Paiement',
         public ?string $pdfPath = null,
-    ) {
-    }
+    ) {}
 
     public function envelope(): Envelope
     {
