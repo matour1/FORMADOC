@@ -260,4 +260,32 @@ class DocumentPipelineIntegrationTest extends TestCase
         // protégées. Le branchement du nouveau pipeline ne doit pas l'oublier.
         $this->post('/documents/upload', [])->assertRedirect(route('login'));
     }
+
+    /**
+     * ⚠️ Régression trouvée en activant le pipeline : la page de validation
+     * affichait l'intitulé de la section de frontispice comme TYPE d'élément.
+     *
+     * `documents/show.blade.php` appelait `BlockCategory::listTitle()` — qui
+     * renvoie « LISTE DES FIGURES » (le titre de la section qui recense les
+     * figures) — à la place de `keyword()`, qui renvoie « Figure » (le type de
+     * l'élément lui-même). La colonne « Type » du tableau des légendes
+     * annonçait donc « LISTE DES FIGURES » au lieu de « Figure ».
+     *
+     * Le défaut restait invisible tant que le pipeline v2 était désactivé : la
+     * vue empruntait l'autre branche et lisait le format historique.
+     */
+    public function test_la_page_de_validation_affiche_le_type_des_legendes(): void
+    {
+        $document = $this->upload(
+            $this->user(),
+            DocxFixture::paragraph('Figure 1 : Architecture de la plateforme'),
+        );
+
+        $page = $this->get("/documents/{$document->hash_id}");
+
+        $page->assertOk();
+        // Le type de l'élément, et non l'intitulé de la section de frontispice.
+        $page->assertSee('Figure');
+        $page->assertDontSee('LISTE DES FIGURES');
+    }
 }

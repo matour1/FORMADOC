@@ -105,9 +105,10 @@ Détail complet dans `DEPLOIEMENT.md`. Résumé de ce qui **n'est pas encore fai
 | T2 | `is_list_style` calculé mais jamais consommé | Signal de sommaire collecté puis jeté → des entrées de sommaire peuvent être classées comme titres | Moyenne — mesurer d'abord |
 | T3 | `findTocBoundaries()` ne reconnaît que `LISTE DES …`, pas `SOMMAIRE` | Idem T2 | Moyenne |
 | T4 | Sommaire tapé à la main sans points de suite | Cas d'échec silencieux possible (aucun test dédié) | Moyenne |
-| T5 | Documentation périmée : `PLAN_DEVELOPPEMENT.md:153` et `README.md:111` listent `cover_page.generate` comme outil actif | Trompeur pour un nouvel arrivant | Basse — facile |
+| T5 | ~~Documentation périmée~~ | `README.md` et `PLAN_DEVELOPPEMENT.md` listaient `cover_page.generate` comme outil actif, et la liste d'outils était incomplète | ✅ Résolu |
 | T6 | Mémoire PHP à 128 Mo par défaut | La suite complète (~1 280 tests) meurt sur « Premature end of PHP process ». Le CI est configuré à 512 Mo | Basse en production, **mais piège pour quiconque lance `php artisan test`** |
-| T7 | `pint` non appliqué à l'ensemble du projet | 95 fichiers non conformes au style déclaré → le CI échouait. **Corrigé** (voir §6) | ✅ Résolu |
+| T7 | ~~`pint` non appliqué au projet~~ | 95 fichiers non conformes → le CI échouait dès le premier push | ✅ Résolu |
+| T8 | ~~`phpunit.xml` n'isolait pas les tests du `.env` local~~ | Le local et la CI testaient des configurations différentes : activer `DOCUMENT_PIPELINE_V2` en local faisait échouer un test sans aucun changement de code | ✅ Résolu |
 
 ---
 
@@ -122,9 +123,12 @@ Détail complet dans `DEPLOIEMENT.md`. Résumé de ce qui **n'est pas encore fai
 | Audit de sécurité à chaque push | `composer audit --locked` + `npm audit --audit-level=high`, **vérifiés localement** : 0 vulnérabilité des deux côtés |
 | Déploiement ébauché | `.github/workflows/deploy.yml` — désactivé, exemples VPS/managé, liste des secrets |
 | Procédure de déploiement écrite | `DEPLOIEMENT.md` — 9 sections, les deux pièges silencieux détaillés |
-| Rapport d'audit | `ETAT_PROJET_ET_ANGLES_MORTS.md` — mis à jour avec les verdicts vérifiés |
+| Rapport d'audit | `ETAT_PROJET_ET_ANGLES_MORTS.md` — verdicts vérifiés, mesures du corpus, décisions |
 | `main` mis à jour | Fast-forward (55 commits), aucun conflit |
-| **Pint appliqué au projet** | Le CI aurait été rouge : ~95 fichiers non conformes. Corrigé et commité |
+| **Pint appliqué au projet** | Le CI aurait été rouge : 70 fichiers corrigés (95 non conformes au total, dont des conflits détectés par le formateur). Commité **isolément** pour pouvoir l'écarter si un problème apparaît |
+| **🐛 Bug d'affichage corrigé** | `documents/show.blade.php` utilisait `BlockCategory::listTitle()` comme **type** d'élément → affichait « LISTE DES FIGURES » au lieu de « Figure ». Bug **masqué** tant que le pipeline v2 restait désactivé ; l'activer l'a révélé. Corrigé en `keyword()`, avec un test de non-régression **dont j'ai vérifié qu'il échoue sans le correctif** |
+| `phpunit.xml` isolé du `.env` local | Les tests forçaient implicitement la configuration du poste → la CI et le local ne testaient pas la même chose |
+| `web_search` / `image_generate` marqués **livrés** | Decision Option B appliquée dans `ETAT_PROJET_ET_ANGLES_MORTS.md`, `A_LIVRER.md`, `DEPLOIEMENT.md`. Retirés de la dette assumée, avec la surveillance à mettre en place (accès de la clé OpenRouter aux modèles `gpt-image-*`) |
 
 ---
 
@@ -137,12 +141,13 @@ Détail complet dans `DEPLOIEMENT.md`. Résumé de ce qui **n'est pas encore fai
 4. [fait]  CI/CD + audit de sécurité
 5. [fait]  Procédure de déploiement
 6. [fait]  Rapport
-─────────────────────────────────────────────
-7. [vous]  Décider §3.1, §3.2, §3.3
-8. [vous]  Choisir l'hébergeur
-9. [nous]  Adapter deploy.yml + activer D3/D4
-10.[vous]  Configurer worker + cron (D6, D7) — ou déléguer avec DEPLOIEMENT.md
-11.[nous]  Front : T1 (retirer le CDN Tailwind) puis l'interface
+7. [fait]  Décision §3.2 : web_search / image_generate = livrés
+──────────────────────────────────────────────
+8. [vous]  Confirmer §3.1 (pipeline v2 = auto ?)
+9. [vous]  Choisir l'hébergeur
+10.[nous]  Adapter deploy.yml + activer D3/D4
+11.[vous]  Configurer worker + cron (D6, D7) — ou déléguer avec DEPLOIEMENT.md
+12.[nous]  Front : T1 (retirer le CDN Tailwind) puis l'interface
 ```
 
 ---

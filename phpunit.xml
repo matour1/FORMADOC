@@ -32,5 +32,15 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- Isolation des tests du .env local.
+             Sans ces valeurs, un test lit le .env du développeur : la CI
+             (Linux, .env généré depuis .env.example) et le poste local ne
+             testaient donc PAS la même configuration. Concrètement, activer
+             DOCUMENT_PIPELINE_V2 en local faisait échouer un test qui passait
+             en CI, sans qu'aucun code n'ait changé.
+             Les tests qui doivent exercer un autre pipeline le forcent
+             explicitement via config(['document.pipeline.v2' => ...]). -->
+        <env name="DOCUMENT_PIPELINE_V2" value="false"/>
+        <env name="DOCUMENT_PERSIST_STRUCTURAL" value="true"/>
     </php>
 </phpunit>
