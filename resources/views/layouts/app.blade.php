@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="theme-color" content="#2b3f66">
+    <meta name="theme-color" content="#0f172a">
     <title>@yield('title', 'FORMADOC') — Mise en forme automatique de rapports</title>
 
-    {{-- Polices : Newsreader (display), Inter (corps), IBM Plex Mono (libellés) --}}
+    {{-- Polices : Newsreader (titres), Plus Jakarta Sans (corps), IBM Plex Mono (données) --}}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
     {{-- Design system (extrait de formadoc-template.html) + Tailwind pour les pages legacy --}}
     @vite(['resources/css/app.css', 'resources/js/app.js'])

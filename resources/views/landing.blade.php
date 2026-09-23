@@ -4,14 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="FORMADOC met en forme automatiquement vos rapports, mémoires et CV — DQP, BTS, licence, master. 5 documents gratuits par mois, assistance IA optionnelle à coût affiché.">
-    <meta name="theme-color" content="#2b3f66">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232b3f66'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='Georgia'>FD</text></svg>">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230f172a'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='Georgia'>FD</text></svg>">
     <title>FORMADOC — Mise en forme automatique de rapports, mémoires et CV</title>
 
-    {{-- Polices : Newsreader (display), Inter (corps), IBM Plex Mono (libellés) --}}
+    {{-- Polices : Newsreader (titres), Plus Jakarta Sans (corps), IBM Plex Mono (données) --}}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
     {{-- Design system + Vite --}}
     @vite(['resources/css/app.css', 'resources/js/app.js'])
