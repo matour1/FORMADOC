@@ -219,10 +219,16 @@ class DesignTokenIntegrityTest extends TestCase
         // Familles définies dans le design system (préfixes observés). Une
         // classe d'une de ces familles qui n'existe pas est une faute de frappe
         // ou une variante oubliée, pas du Tailwind.
+        //
+        // `toast` y est entré après un défaut réel : le CSS définissait
+        // `.toast.success` (convention BEM) alors que les vues écrivaient
+        // `toast-success` (convention Laravel, héritée de `session('success')`).
+        // Aucune règle ne s'appliquait, donc TOUS les toasts se ressemblaient —
+        // succès, avertissement et erreur compris.
         $familles = [
             'banner', 'btn', 'card', 'chat', 'data-table', 'doc', 'stat-item',
             'quota-row', 'badge', 'model-menu', 'upload-step', 'flow-step',
-            'template-card', 'table-wrap', 'form-control', 'progress',
+            'template-card', 'table-wrap', 'form-control', 'progress', 'toast',
         ];
 
         $motif = '/\.('.implode('|', array_map('preg_quote', $familles)).')[a-z0-9-]*/';

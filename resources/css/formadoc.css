@@ -437,9 +437,38 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
     padding: .8rem 1.1rem; box-shadow: var(--shadow-2); animation: fadeSlide .25s ease;
     font-size: .87rem; max-width: 360px;
 }
-.toast.success { border-left-color: var(--color-secondary); }
-.toast.error { border-left-color: var(--color-correction); }
-.toast.warning { border-left-color: var(--color-warning); }
+/* Variantes de statut d'un toast.
+   ---------------------------------
+   Les vues écrivent les classes avec un TIRET (`toast-success`), héritées du
+   nom du flash Laravel (`session('success')`). Le CSS n'avait initialement
+   déclaré que le point (`.toast.success`) : aucune des deux règles ne
+   s'appliquait donc, et TOUS les toasts — information, avertissement, erreur —
+   s'affichaient avec la même bordure ardoise neutre.
+
+   Conséquence : la couleur n'indiquait plus rien. Or c'est le seul signal
+   visuel qui distingue « document analysé avec succès » de « crédits
+   insuffisants » quand on ne lit pas le texte.
+
+   Les deux formes sont déclarées : la tiret pour les vues actuelles, le point
+   pour la convention BEM utilisée ailleurs dans le fichier (`.toast.warning`
+   était déjà employée). On ne renomme pas les vues : la classe est un détail
+   d'implémentation, et une seule définition couvre les deux écritures. */
+.toast.success, .toast-success { border-left-color: var(--color-secondary); }
+.toast.error, .toast-error { border-left-color: var(--color-correction); }
+.toast.warning, .toast-warning { border-left-color: var(--color-warning); }
+/* L'icône prend la couleur de la bordure : sans cela, un toast d'erreur garde
+   une icône grise et la couleur reste confinée au liseré. */
+.toast.success svg, .toast-success svg { color: var(--color-secondary); }
+.toast.error svg, .toast-error svg { color: var(--color-correction); }
+.toast.warning svg, .toast-warning svg { color: var(--color-warning); }
+/* Bouton de fermeture : discret, mais avec une cible cliquable suffisante.
+   Les vues l'emploient sous le nom `toast-close`. */
+.toast-close {
+    background: none; border: none; cursor: pointer; color: var(--color-text-muted);
+    font-size: 1.1rem; line-height: 1; padding: 0 .25rem; border-radius: 4px;
+    transition: color var(--transition);
+}
+.toast-close:hover { color: var(--color-text); }
 
 /* ============ Spinner & skeleton ============ */
 .spinner {
