@@ -60,6 +60,42 @@ Sans eux, l'éclaircissement de ces couleurs en thème sombre rendait le texte i
 
 ---
 
+## 3. ⚠️ Affirmations commerciales de la maquette — NE PAS REPRENDRE
+
+La maquette de la landing est **beaucoup plus engageante** que le produit réel. Reprendre ces textes tels quels créerait des **promesses non tenues** — le défaut que `AUDIT_COPYWRITING.md` signale déjà (P1 : « vérifier les promesses faites à l'utilisateur »).
+
+Chaque ligne ci-dessous a été **vérifiée dans le code**. Le verdict est sans ambiguïté.
+
+| Affirmation de la maquette | Réalité vérifiée | Verdict |
+|---|---|---|
+| « Homologué Normes CAMES & Décret LMD UEMOA » | **Aucune occurrence de « CAMES » dans le code** (0 sur `app/`, `config/`, `database/`) | ❌ **Non fondé.** Une homologation suppose un organisme certificateur, absent |
+| « Plus de 12 000 thèses et mémoires mis en forme » | Aucun compteur, aucune donnée publique de volume | ❌ **Invérifiable.** Un chiffre d'usage ne se déduit pas du code |
+| « Chiffrement AES-256 » (données) | `SESSION_ENCRYPT=true` chiffre **les sessions**. Les **fichiers** stockés (`config/filesystems.php`) n'ont aucune option `encrypt` | ⚠️ **Trompeur.** Vrai pour la session, faux pour les documents — et c'est ce que le client comprend |
+| « Suppression automatique après export » | `files:purge-temp` supprime les **temporaires** (TTL 24 h). Les documents et pièces jointes **restent** | ❌ **Faux.** Confondre les deux ferait croire à un effacement qui n'a pas lieu |
+| « Universités partenaires : UCAD, UFHB, INP-HB, UJKZ, UAC, ESP, 2iE » | Aucune notion de partenariat en base | ❌ **Non fondé.** Un partenariat est un fait juridique |
+| « Gabarits certifiés : APA 7, CAMES v3, Harvard » | Templates réellement en base : **« Rapport », « Mémoire », « Document professionnel »** | ❌ **Faux.** Aucun gabarit APA/CAMES/Harvard n'existe |
+| « Essai gratuit 5 crédits offerts » | Aucun plan gratuit en base (seuls `standard`, `premium`, `pro`, `enterprise`) | ❌ **Non implémenté.** Promettre des crédits non provisionnés est une dette commerciale |
+| « Rejet garanti par le Comité de Lecture » | Aucun comité, aucune instance de validation | ❌ **Non fondé** |
+| « 65 % des rejets proviennent de vices de forme » | Aucune source, aucune donnée | ❌ **Invérifiable** |
+| Paiement « Wave, Orange, MTN, Moov » | `kpay_payments` ne stocke **aucun opérateur** ; `config/kpay.php` liste les moyens de façon générique | ⚠️ **À vérifier auprès de KPay** avant de nommer les opérateurs |
+| « Marge reliure 3.5 cm », « Pagination i, ii → 1, 2, 3 » | **Réel** : `DocumentReconstructor` gère la section frontispice romaine puis le corps arabe | ✅ **Fondé** — c'est une force à mettre en avant |
+| « Le moteur ne modifie pas un seul mot » | **Réel** : moteur déterministe, le texte n'est jamais reformulé (sauf outil explicite) | ✅ **Fondé** |
+| « Word, LibreOffice, Google Docs, Overleaf » | Entrées : `.docx`, `.doc`, `.txt`. Sortie : `.docx`, `.pdf` | ⚠️ **Imprécis.** « Overleaf » (LaTeX) n'a aucun support |
+
+### 3.1 Ce qu'il faut faire de ces textes
+
+**Décision : ils ne sont pas repris.** La landing actuelle (410 lignes, 6 sections) est **factuelle** : elle ne contient aucune affirmation chiffrée non vérifiable. C'est une qualité à préserver, pas une faiblesse à corriger.
+
+Si ces affirmations doivent être utilisées (argument commercial légitime), elles exigent **d'abord** une décision produit :
+- **CAMES / APA / Harvard** → créer les gabarits correspondants, puis les nommer ;
+- **5 crédits offerts** → provisionner le plan gratuit et son quota ;
+- **AES-256** → chiffrer réellement les fichiers au repos (option `encrypt` des disks), ou ne pas l'écrire ;
+- **12 000 thèses / 65 % / Comité de lecture** → sourcer ou retirer.
+
+Ce sont des engagements commerciaux : ils ne se décident pas dans une tâche d'adaptation graphique.
+
+---
+
 ## 3. Règle d'or à respecter pour chaque écran adapté
 
 1. **Chaque chiffre affiché doit être traçable** jusqu'à une requête ou un calcul existant. Pas de valeur d'exemple qui reste en production.
