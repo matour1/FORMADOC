@@ -75,4 +75,34 @@ Sans eux, l'éclaircissement de ces couleurs en thème sombre rendait le texte i
 - [x] Polices harmonisées sur les 3 layouts (`app`, `admin`, `landing`)
 - [x] Ancienne palette purgée du CSS et des vues
 - [x] Chiffres tabulaires pour les montants
-- [ ] Écrans individuels adaptés aux données réelles
+- [x] **Admin** : section « Moteurs & modèles IA » ajoutée sur données réelles
+- [x] **Tableau de bord** : KPI remis en forme, progression inventée retirée
+- [x] Test de garde (jetons **et** classes) — 4 tests
+- [ ] Écrans restants adaptés un par un (landing, chat, documents, compte, modèles…)
+
+### 4.1 Défauts corrigés pendant l'adaptation
+
+Tous de la **même famille** : une référence qui ne résout rien, sans erreur ni log. Ils ont été trouvés par le test de garde, pas par relecture.
+
+| Défaut | Effet visible | Pourquoi c'était invisible |
+|---|---|---|
+| `--color-success`, `--color-danger`, `--color-ink` jamais définis | Badges « Validé » et « Échec » **identiques** | Le nom du jeton est correct à la lecture |
+| `.banner-info` absente | L'encadré de vérification d'e-mail perdait sa variante | La classe de base `.banner` s'appliquait quand même |
+| `.chat-empty` utilisée sans être définie, styles inline dupliqués | — | Les styles inline masquaient l'absence de règle |
+| `toast-success` / `toast-error` / `toast-warning` vs `.toast.success` | **Tous les toasts se ressemblaient** : succès et erreur indiscernables | Deux conventions de nommage coexistaient (BEM vs Laravel) |
+| `.stat-icon` / `.value` / `.label` inexistantes dans le tableau de bord | Les 4 cartes KPI **sans mise en forme** — sur l'écran d'accueil | Le design system attend `.stat-label` / `.stat-value` |
+
+### 4.2 Donnée inventée supprimée
+
+Le tableau de bord affichait `width: 58 %` **en dur** pour la barre de progression de tout document en cours : un pourcentage sans rapport avec l'avancement réel, qui ne bougeait jamais. Le traitement est asynchrone et son avancement n'est pas mesurable par étapes. La barre n'apparaît désormais que pour un état **connu** (terminé, ou échec) ; l'état « en cours » s'exprime par le badge, pas par un chiffre fabriqué. C'était la seule du projet (vérifié sur toutes les vues).
+
+### 4.3 Faux positifs écartés (ne pas « corriger »)
+
+Vérifiés un par un, ces cas sont **légitimes** — les corriger serait une régression :
+
+| Cas | Pourquoi c'est correct |
+|---|---|
+| `honeypot` | Champ masqué par un `style` inline, volontairement (anti-spam : il doit rester invisible même sans CSS) |
+| `quick-amount`, `pm-radio-input` | Hooks fonctionnels (attribut `data-amount`, `input[type=radio]`) ; le style vient des classes voisines |
+| `msg-time` | Stylé par son parent `.message .meta` — un enfant sans règle propre est normal |
+| `is-invalid` | Sur un input `sr-only` (caché) ; les erreurs sont rendues par `.field-error` |
