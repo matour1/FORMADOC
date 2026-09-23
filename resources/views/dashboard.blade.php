@@ -15,26 +15,37 @@
     </div>
 
     {{-- Statistiques --}}
+    {{--
+        Les classes `stat-icon` / `value` / `label` employées ici auparavant
+        n'existent pas dans le design system : le CSS attend
+        `.stat-item .stat-label` et `.stat-item .stat-value`. Les quatre cartes
+        s'affichaient donc SANS mise en forme (ni libellé en petites capitales,
+        ni chiffre mis en valeur, ni icône alignée) — sur l'écran d'accueil,
+        celui que tout utilisateur voit en premier. Le nom fautif ne produisait
+        aucune erreur : la classe était simplement ignorée.
+    --}}
     <div class="stat-grid">
         <div class="stat-item">
-            <div class="stat-icon"><i data-lucide="file-text" style="width:18px;height:18px"></i></div>
-            <div class="value">{{ $documentsCount }}</div>
-            <div class="label">Documents traités</div>
+            <div class="stat-label">Documents traités</div>
+            <div class="stat-value">{{ $documentsCount }}</div>
+            <div class="stat-hint">Tous formats (.docx, .doc, .txt)</div>
         </div>
         <div class="stat-item">
-            <div class="stat-icon"><i data-lucide="coins" style="width:18px;height:18px"></i></div>
-            <div class="value mono">{{ number_format($user->credits_balance, 0, ',', ' ') }}</div>
-            <div class="label">Crédits restants</div>
+            <div class="stat-label">Crédits restants</div>
+            <div class="stat-value">{{ number_format($user->credits_balance, 0, ',', ' ') }}</div>
+            <div class="stat-hint">1 crédit = 1 FCFA</div>
         </div>
         <div class="stat-item">
-            <div class="stat-icon"><i data-lucide="message-circle" style="width:18px;height:18px"></i></div>
-            <div class="value">{{ $chatCount }}</div>
-            <div class="label">Conversations IA</div>
+            <div class="stat-label">Conversations IA</div>
+            <div class="stat-value">{{ $chatCount }}</div>
+            <div class="stat-hint">Assistant documentaire</div>
         </div>
         <div class="stat-item">
-            <div class="stat-icon"><i data-lucide="layout-grid" style="width:18px;height:18px"></i></div>
-            <div class="value" style="font-size:1rem">{{ ucfirst($planSlug) }}</div>
-            <div class="label">Plan actuel</div>
+            <div class="stat-label">Plan actuel</div>
+            <div class="stat-value">{{ ucfirst($planSlug) }}</div>
+            <div class="stat-hint">
+                <a href="{{ route('account.index') }}">Changer d'offre</a>
+            </div>
         </div>
     </div>
 
@@ -100,11 +111,25 @@
                     <span class="proof-stamp failed">✕ Échec</span>
                 @endif
             </div>
-            <div style="margin-top:.75rem;">
-                <div class="progress">
-                    <div class="progress-bar" style="width:{{ $doc->status === 'ready' ? 100 : ($doc->status === 'failed' ? 100 : 58) }}%;"></div>
+            {{--
+                Pas de barre de progression ici, et c'est délibéré.
+                La version précédente affichait `width: 58 %` EN DUR pour tout
+                document en cours : un chiffre sans rapport avec l'avancement
+                réel, qui ne bougeait jamais, et qui donnait à l'utilisateur
+                l'illusion d'un suivi. Le traitement est asynchrone (file
+                d'attente) et son avancement n'est pas mesurable par étapes —
+                un document est en attente, en traitement, ou terminé.
+                Afficher un pourcentage exigerait de l'inventer.
+            --}}
+            @if ($doc->status === 'ready')
+                <div class="progress" style="margin-top:.75rem">
+                    <div class="progress-bar" style="width:100%"></div>
                 </div>
-            </div>
+            @elseif ($doc->status === 'failed')
+                <div class="progress" style="margin-top:.75rem">
+                    <div class="progress-bar" style="width:100%;background:var(--color-correction)"></div>
+                </div>
+            @endif
         </div>
     @empty
         <div class="card empty-state">
