@@ -18,6 +18,19 @@
         </include>
     </source>
     <php>
+        <!-- Mémoire des tests.
+             La suite complète (~1 290 tests) dépasse la limite PHP par défaut
+             de 128 Mo et meurt sur « Premature end of PHP process » — sur un
+             test qui passe pourtant isolément, ce qui envoie chercher un défaut
+             inexistant.
+
+             Le réglage est ICI et non dans une option de ligne de commande :
+             `php artisan test` relance PHPUnit dans un sous-processus qui
+             n'hérite pas des options `-d` du parent. Sans ces deux lignes,
+             `php artisan test` échoue là où `vendor/bin/phpunit -d
+             memory_limit=512M` réussit — deux commandes qui devraient être
+             équivalentes. -->
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

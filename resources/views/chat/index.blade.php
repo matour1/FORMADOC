@@ -74,12 +74,12 @@
                     </form>
                 </div>
             @empty
-                <div class="chat-empty" id="chatEmptyState" style="text-align:center;padding:2rem 1rem;color:var(--color-text-muted);font-size:.85rem">
+                <div class="chat-empty" id="chatEmptyState">
                     Aucune conversation pour le moment.
                 </div>
             @endforelse
             </div>
-            <div class="chat-empty" id="chatSearchEmpty" style="display:none;text-align:center;padding:1.5rem 1rem;color:var(--color-text-muted);font-size:.82rem">
+            <div class="chat-empty compact" id="chatSearchEmpty" style="display:none">
                 Aucune conversation ne correspond.
             </div>
 

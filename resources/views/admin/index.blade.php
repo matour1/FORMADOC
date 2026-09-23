@@ -210,4 +210,93 @@
             @endif
         </section>
     </div>
+
+    {{-- Répartition par moteur IA --}}
+    {{--
+        Ce que cet écran NE montre pas, volontairement : aucune latence, aucun
+        opérateur de paiement, aucune région. Ces données n'existent pas en base
+        (vérifié : `ai_usage_ledger` n'a pas de colonne de durée, `kpay_payments`
+        ne stocke pas l'opérateur). Les afficher obligerait à les inventer, et un
+        chiffre inventé sur un tableau d'exploitation est plus dangereux qu'une
+        absence : il oriente une décision.
+    --}}
+    @if ($parMoteur !== [])
+        <section class="card" style="margin-top:1.5rem">
+            <h2 class="card-title" style="margin-bottom:.25rem">Moteurs &amp; modèles IA</h2>
+            <p style="font-size:.85rem;color:var(--color-text-secondary);margin:0 0 1.1rem">
+                Quel modèle porte le coût, et lequel échoue. Un total stable peut masquer
+                un modèle qui bascule tous ses appels en repli.
+            </p>
+
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Modèle</th>
+                            <th>Fournisseur</th>
+                            <th>Appels</th>
+                            <th>Échecs</th>
+                            <th>Tokens</th>
+                            <th>Crédits</th>
+                            <th>Part du coût</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($parMoteur as $moteur)
+                            @php
+                                $part = $creditsTotaux > 0
+                                    ? round($moteur['credits'] / $creditsTotaux * 100, 1)
+                                    : 0;
+                                // Un taux d'échec élevé est le signal qui justifie de
+                                // changer de fournisseur : on le met en évidence.
+                                $tauxEchec = $moteur['attempts'] > 0
+                                    ? round($moteur['failures'] / $moteur['attempts'] * 100, 1)
+                                    : 0;
+                            @endphp
+                            <tr>
+                                <td data-label="Modèle" style="font-family:var(--font-mono);font-size:.75rem">
+                                    {{ $moteur['model'] }}
+                                </td>
+                                <td data-label="Fournisseur" style="font-size:.78rem">
+                                    {{ $moteur['provider'] }}
+                                </td>
+                                <td data-label="Appels" class="num" style="font-size:.78rem">
+                                    {{ number_format($moteur['attempts'], 0, ',', ' ') }}
+                                </td>
+                                <td data-label="Échecs" class="num" style="font-size:.78rem">
+                                    @if ($moteur['failures'] > 0)
+                                        <span style="color:var(--color-danger)">
+                                            {{ $moteur['failures'] }} ({{ $tauxEchec }} %)
+                                        </span>
+                                    @else
+                                        <span style="color:var(--color-text-muted)">0</span>
+                                    @endif
+                                </td>
+                                <td data-label="Tokens" class="num" style="font-size:.78rem">
+                                    {{ number_format($moteur['tokens'], 0, ',', ' ') }}
+                                </td>
+                                <td data-label="Crédits" class="num" style="font-size:.78rem">
+                                    {{ number_format($moteur['credits'], 0, ',', ' ') }}
+                                </td>
+                                <td data-label="Part du coût">
+                                    <div style="display:flex;align-items:center;gap:.5rem">
+                                        <div class="progress" style="width:70px;flex-shrink:0">
+                                            <div class="progress-bar" style="width:{{ $part }}%"></div>
+                                        </div>
+                                        <span style="font-size:.75rem;color:var(--color-text-muted)">{{ $part }} %</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+
+            <p style="font-size:.78rem;color:var(--color-text-muted);margin:1rem 0 0">
+                Les tentatives échouées sont comptées et facturées : elles représentent ce qui est
+                payé au fournisseur sans produire de résultat. Le rapport de rentabilité détaillé
+                se lit sur <a href="{{ route('admin.billing') }}">Facturation</a>.
+            </p>
+        </section>
+    @endif
 @endsection

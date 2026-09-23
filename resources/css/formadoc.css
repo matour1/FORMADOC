@@ -465,6 +465,10 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
 .banner-success { background: var(--color-secondary-tint); color: var(--color-secondary); border-color: color-mix(in srgb, var(--color-secondary) 25%, transparent); }
 .banner-danger { background: var(--color-correction-tint); color: var(--color-correction); border-color: color-mix(in srgb, var(--color-correction) 25%, transparent); }
 .banner-warning { background: var(--color-warning-tint); color: var(--color-warning); border-color: color-mix(in srgb, var(--color-warning) 25%, transparent); }
+/* Variante informationnelle, distincte de la variante neutre `.banner` :
+   elle porte l'accent cobalt pour signaler « à lire », là où `.banner` sert
+   de cadre générique. Utilisée par le parcours de vérification d'e-mail. */
+.banner-info { background: var(--color-accent-tint); color: var(--color-accent); border-color: color-mix(in srgb, var(--color-accent) 25%, transparent); }
 .banner svg { width: 18px; height: 18px; flex-shrink: 0; }
 
 /* ============ Tables ============ */
@@ -694,6 +698,12 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
 }
 .chat-cost-preview svg { width: 12px; height: 12px; }
 .chat-disclaimer { font-size: .68rem; color: var(--color-text-muted); text-align: center; }
+/* État vide d'une liste de conversations (aucune conversation, ou aucune ne
+   correspond au filtre). Les deux éléments portaient leurs styles en attribut
+   `style`, dupliqués à l'identique : une classe évite qu'une correction
+   n'atteigne qu'un seul des deux cas. */
+.chat-empty { text-align: center; padding: 2rem 1rem; color: var(--color-text-muted); font-size: .85rem; }
+.chat-empty.compact { padding: 1.5rem 1rem; font-size: .82rem; }
 .composer-actions { display: flex; flex-wrap: wrap; gap: .45rem; }
 .chat-action-btn {
     display: inline-flex; align-items: center; gap: .4rem;

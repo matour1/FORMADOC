@@ -78,6 +78,22 @@ class AdminController extends Controller
             ->whereNotNull('structural_json')
             ->count();
 
+        // --- Répartition par moteur IA --------------------------------------
+        // Section « Moteurs & Modèles IA » du tableau de bord. Elle répond à une
+        // question que le total global ne permet pas de trancher : QUEL modèle
+        // porte le coût, et lequel échoue. Un total stable peut cacher un modèle
+        // en train de basculer tous ses appels en repli.
+        //
+        // On réutilise `breakdownByModel()` plutôt qu'une requête dédiée : c'est
+        // la même source que `billing:report`, donc les chiffres affichés ici et
+        // en ligne de commande ne peuvent pas diverger.
+        $parMoteur = $this->ledger->breakdownByModel();
+
+        // Part de chaque modèle dans le coût total, pour la barre de répartition.
+        // Calculée sur les crédits (la grandeur facturée), pas sur les appels :
+        // un modèle peut être appelé souvent et coûter peu.
+        $creditsTotaux = array_sum(array_column($parMoteur, 'credits'));
+
         return view('admin.index', [
             'parStatut' => $parStatut,
             'totalDocuments' => $totalDocuments,
@@ -86,6 +102,8 @@ class AdminController extends Controller
             'clarificationsEnAttente' => $clarificationsEnAttente,
             'documentsAvecClarifications' => $documentsConcernes,
             'avecStructureNative' => $avecStructureNative,
+            'parMoteur' => $parMoteur,
+            'creditsTotaux' => $creditsTotaux,
             'pipelineActif' => config('document.pipeline.v2'),
             'dernieresLignes' => AiUsageLedger::orderByDesc('id')->limit(10)->get(),
         ]);

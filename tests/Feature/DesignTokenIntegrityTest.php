@@ -196,4 +196,98 @@ class DesignTokenIntegrityTest extends TestCase
             ."\n  Occurrences : ".implode(' | ', $matches[0])
         );
     }
+
+    /**
+     * Les classes du design system utilisées par les vues doivent exister.
+     *
+     * **Le défaut que ce test rend impossible.** Même famille que les jetons
+     * manquants, mais pour les CLASSES : `class="banner banner-info"` alors que
+     * seule `.banner` est définie produit un encadré neutre au lieu de la
+     * variante voulue. Aucune erreur, aucun log — l'élément s'affiche, il est
+     * simplement faux. Cas réel rencontré sur `banner-info`.
+     *
+     * **Périmètre volontairement limité aux préfixes du design system.** Les
+     * classes utilitaires Tailwind (`flex`, `mt-4`, `max-w-xl`…) proviennent du
+     * CDN et ne sont pas dans ce fichier : les inclure ferait échouer le test
+     * sur du code correct. On ne vérifie donc que les familles que ce fichier
+     * possède réellement.
+     */
+    public function test_les_classes_du_design_system_utilisees_existent(): void
+    {
+        $css = (string) file_get_contents($this->cssPath());
+
+        // Familles définies dans le design system (préfixes observés). Une
+        // classe d'une de ces familles qui n'existe pas est une faute de frappe
+        // ou une variante oubliée, pas du Tailwind.
+        $familles = [
+            'banner', 'btn', 'card', 'chat', 'data-table', 'doc', 'stat-item',
+            'quota-row', 'badge', 'model-menu', 'upload-step', 'flow-step',
+            'template-card', 'table-wrap', 'form-control', 'progress',
+        ];
+
+        $motif = '/\.('.implode('|', array_map('preg_quote', $familles)).')[a-z0-9-]*/';
+        preg_match_all($motif, $css, $definies);
+        $definies = array_unique($definies[0]);
+
+        $manquantes = [];
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator(resource_path('views'), FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $file) {
+            if (! $file->isFile() || $file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $content = (string) file_get_contents($file->getPathname());
+
+            // On ne lit que les attributs class="…" littéraux : une classe
+            // construite dynamiquement (`btn-{{ $type }}`) est évaluée à
+            // l'exécution et ne peut pas être vérifiée statiquement.
+            preg_match_all('/class="([^"{}]*?)"/', $content, $attributs);
+
+            foreach ($attributs[1] as $attribut) {
+                foreach (preg_split('/\s+/', trim($attribut)) as $classe) {
+                    if ($classe === '') {
+                        continue;
+                    }
+
+                    // La classe appartient-elle à une famille du design system ?
+                    $famille = null;
+                    foreach ($familles as $f) {
+                        if ($classe === $f || str_starts_with($classe, $f.'-')) {
+                            $famille = $f;
+                            break;
+                        }
+                    }
+
+                    if ($famille === null) {
+                        continue;
+                    }
+
+                    if (! in_array('.'.$classe, $definies, true)) {
+                        $manquantes['.'.$classe][] = $file->getFilename();
+                    }
+                }
+            }
+        }
+
+        $rapport = '';
+        foreach ($manquantes as $classe => $fichiers) {
+            $rapport .= sprintf(
+                "\n  %s — utilisé par : %s",
+                $classe,
+                implode(', ', array_values(array_unique($fichiers)))
+            );
+        }
+
+        $this->assertSame(
+            [],
+            array_keys($manquantes),
+            'Des classes du design system sont utilisées dans les vues sans être'
+            .' définies dans formadoc.css. L\'élément s\'affiche quand même, mais'
+            .' sans la variante voulue : le défaut est silencieux.'.$rapport
+        );
+    }
 }
