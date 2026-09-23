@@ -1488,6 +1488,49 @@ a.flow-step:hover { background: var(--color-surface-2); color: var(--color-text)
     .landing-page * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
 
+/* Menu mobile de la landing.
+   ---------------------------
+   `layouts.app` dispose d'une sidebar coulissante (`.sidebar` + `.open`), mais
+   la landing n'en a pas : sa navigation principale est `.nav-links`, masquée
+   sous 768 px. Le menu mobile qui devait la remplacer existait dans le HTML
+   (`landing-mobile-menu`, `landing-mobile-actions`) mais AUCUNE règle CSS ne le
+   définissait : il s'affichait donc EN PERMANENCE, en haut de page, par-dessus
+   la barre de navigation — au point de superposer deux boutons « Analyser un
+   rapport » et de casser les libellés sur deux lignes.
+
+   Un élément qui doit être caché par défaut et révélé par une interaction DOIT
+   avoir sa règle `display: none` explicite : sans elle, le navigateur applique
+   l'affichage par défaut du type d'élément (`div` → bloc). C'est l'inverse du
+   patron habituel (masquer ce qui est inutile), et l'erreur la plus courante
+   sur ce type de composant. */
+.landing-page .landing-mobile-menu {
+    display: none;
+    position: fixed;
+    top: var(--navbar-height);
+    left: 0; right: 0;
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    box-shadow: var(--shadow-2);
+    padding: 1.25rem;
+    z-index: 79;
+}
+.landing-page .landing-mobile-menu.open { display: block; }
+.landing-page .landing-mobile-menu nav { display: flex; flex-direction: column; gap: .15rem; }
+.landing-page .landing-mobile-menu nav a {
+    padding: .7rem .75rem; border-radius: var(--radius-sm);
+    color: var(--color-text-secondary); font-weight: 500;
+}
+.landing-page .landing-mobile-menu nav a:hover { background: var(--color-surface-2); color: var(--color-text); }
+.landing-page .landing-mobile-actions {
+    display: flex; flex-direction: column; gap: .5rem;
+    margin-top: 1rem; padding-top: 1rem;
+    border-top: 1px solid var(--color-border);
+}
+/* Le bouton hamburger n'a de sens que lorsque `.nav-links` est masqué : sous
+   768 px. Au-dessus, il ouvrirait un menu redondant avec la navigation
+   visible. */
+.landing-page .navbar-menu-toggle { display: none; }
+
 /* Responsive landing */
 @media (max-width: 1024px) {
     .landing-page .plan-grid { grid-template-columns: repeat(3, 1fr); }
@@ -1498,6 +1541,9 @@ a.flow-step:hover { background: var(--color-surface-2); color: var(--color-text)
 @media (max-width: 768px) {
     .landing-page .navbar-menu-toggle { display: flex; align-items: center; justify-content: center; }
     .landing-page .nav-links { display: none; }
+    /* Sur mobile, les actions restent accessibles dans le menu déroulant :
+       on masque celles de la barre pour éviter le chevauchement. */
+    .landing-page .nav-actions .btn { display: none; }
     .landing-page section { padding: 3rem 0; }
     .landing-page .feature-grid, .landing-page .steps { grid-template-columns: 1fr 1fr; }
     .landing-page .plan-grid { grid-template-columns: 1fr 1fr; }

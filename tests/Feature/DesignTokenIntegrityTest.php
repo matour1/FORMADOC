@@ -225,10 +225,17 @@ class DesignTokenIntegrityTest extends TestCase
         // `toast-success` (convention Laravel, héritée de `session('success')`).
         // Aucune règle ne s'appliquait, donc TOUS les toasts se ressemblaient —
         // succès, avertissement et erreur compris.
+        //
+        // `landing-mobile-menu` y entre après un défaut plus grave : le menu
+        // mobile de la landing n'avait AUCUNE règle CSS, donc `display` restait
+        // à sa valeur par défaut (bloc) et le menu s'affichait en permanence,
+        // par-dessus la barre de navigation, sur TOUS les écrans. Une classe qui
+        // doit être masquée par défaut doit avoir sa règle explicite.
         $familles = [
             'banner', 'btn', 'card', 'chat', 'data-table', 'doc', 'stat-item',
             'quota-row', 'badge', 'model-menu', 'upload-step', 'flow-step',
             'template-card', 'table-wrap', 'form-control', 'progress', 'toast',
+            'landing-mobile-menu', 'landing-mobile-actions',
         ];
 
         $motif = '/\.('.implode('|', array_map('preg_quote', $familles)).')[a-z0-9-]*/';
