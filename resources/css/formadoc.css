@@ -75,6 +75,23 @@
     --color-warning: #d97706;
     --color-warning-tint: #fffbeb;
 
+    /* Alias sémantiques.
+       ------------------
+       Ces trois noms étaient UTILISÉS dans 10 endroits (badges de statut des
+       écrans d'administration et de documents) sans jamais avoir été DÉFINIS :
+       `var(--color-success)` ne résout rien, donc la couleur tombait sur
+       « inherit » et le badge s'affichait sans distinction de statut. Un
+       « Échec » et un « Validé » rendaient donc à l'identique — l'information
+       la plus importante d'un tableau d'administration était perdue.
+
+       Ils sont définis ici comme alias pour que les deux vocabulaires
+       fonctionnent (`--color-secondary` et `--color-success` désignent le même
+       rôle). Les redéfinir plutôt que de renommer les appelants évite de
+       toucher 6 fichiers pour un simple problème de nommage. */
+    --color-success: var(--color-secondary);
+    --color-danger: var(--color-correction);
+    --color-ink: var(--color-text);
+
     --radius: 12px;
     --radius-sm: 8px;
     --radius-lg: 16px;
