@@ -77,7 +77,7 @@ Chaque ligne ci-dessous a été **vérifiée dans le code**. Le verdict est sans
 | « Essai gratuit 5 crédits offerts » | Aucun plan gratuit en base (seuls `standard`, `premium`, `pro`, `enterprise`) | ❌ **Non implémenté.** Promettre des crédits non provisionnés est une dette commerciale |
 | « Rejet garanti par le Comité de Lecture » | Aucun comité, aucune instance de validation | ❌ **Non fondé** |
 | « 65 % des rejets proviennent de vices de forme » | Aucune source, aucune donnée | ❌ **Invérifiable** |
-| Paiement « Wave, Orange, MTN, Moov » | `kpay_payments` ne stocke **aucun opérateur** ; `config/kpay.php` liste les moyens de façon générique | ⚠️ **À vérifier auprès de KPay** avant de nommer les opérateurs |
+| Paiement « Wave, Orange, MTN, Moov » | `kpay_payments` ne stocke **aucun opérateur** ; `config/kpay.php` liste les moyens de façon générique | ✅ **Fondé — vérifié dans le code** : `subscriptions/checkout.blade.php` propose réellement `payment_method` = `orange` / `mtn` (saisi par l'utilisateur), et le site nomme Orange Cameroon et MTN Cameroon (opérateurs du Cameroun, cohérent avec le siège à Douala) |
 | « Marge reliure 3.5 cm », « Pagination i, ii → 1, 2, 3 » | **Réel** : `DocumentReconstructor` gère la section frontispice romaine puis le corps arabe | ✅ **Fondé** — c'est une force à mettre en avant |
 | « Le moteur ne modifie pas un seul mot » | **Réel** : moteur déterministe, le texte n'est jamais reformulé (sauf outil explicite) | ✅ **Fondé** |
 | « Word, LibreOffice, Google Docs, Overleaf » | Entrées : `.docx`, `.doc`, `.txt`. Sortie : `.docx`, `.pdf` | ⚠️ **Imprécis.** « Overleaf » (LaTeX) n'a aucun support |
@@ -96,7 +96,7 @@ Ce sont des engagements commerciaux : ils ne se décident pas dans une tâche d'
 
 ---
 
-## 3. Règle d'or à respecter pour chaque écran adapté
+## 4. Règle d'or à respecter pour chaque écran adapté
 
 1. **Chaque chiffre affiché doit être traçable** jusqu'à une requête ou un calcul existant. Pas de valeur d'exemple qui reste en production.
 2. **Une donnée absente est omise**, jamais remplacée par un tiret ou un zéro qui laisserait croire à une mesure.
@@ -105,7 +105,7 @@ Ce sont des engagements commerciaux : ils ne se décident pas dans une tâche d'
 
 ---
 
-## 4. État d'avancement
+## 5. État d'avancement
 
 - [x] Identité visuelle appliquée (CSS, polices, jetons de contraste)
 - [x] Polices harmonisées sur les 3 layouts (`app`, `admin`, `landing`)
@@ -113,10 +113,17 @@ Ce sont des engagements commerciaux : ils ne se décident pas dans une tâche d'
 - [x] Chiffres tabulaires pour les montants
 - [x] **Admin** : section « Moteurs & modèles IA » ajoutée sur données réelles
 - [x] **Tableau de bord** : KPI remis en forme, progression inventée retirée
+- [x] **Logo de l'application** intégré (sidebar, admin, landing, footer) + favicon
+- [x] **Admin** : porte d'entrée visible dans la sidebar (section « Exploitation »)
+- [x] Vérifié : aucune donnée d'exemple de la maquette dans les vues. Les seules
+      occurrences de « Orange Money » / « MTN MoMo » sont de **vraies options de
+      paiement** (`subscriptions/checkout.blade.php` envoie `payment_method` =
+      `orange` / `mtn`) ; les opérateurs de la maquette absents du produit
+      (Wave, Moov) ne sont mentionnés nulle part
 - [x] Test de garde (jetons **et** classes) — 4 tests
 - [ ] Écrans restants adaptés un par un (landing, chat, documents, compte, modèles…)
 
-### 4.1 Défauts corrigés pendant l'adaptation
+### 5.1 Défauts corrigés pendant l'adaptation
 
 Tous de la **même famille** : une référence qui ne résout rien, sans erreur ni log. Ils ont été trouvés par le test de garde, pas par relecture.
 
@@ -127,13 +134,17 @@ Tous de la **même famille** : une référence qui ne résout rien, sans erreur 
 | `.chat-empty` utilisée sans être définie, styles inline dupliqués | — | Les styles inline masquaient l'absence de règle |
 | `toast-success` / `toast-error` / `toast-warning` vs `.toast.success` | **Tous les toasts se ressemblaient** : succès et erreur indiscernables | Deux conventions de nommage coexistaient (BEM vs Laravel) |
 | `.stat-icon` / `.value` / `.label` inexistantes dans le tableau de bord | Les 4 cartes KPI **sans mise en forme** — sur l'écran d'accueil | Le design system attend `.stat-label` / `.stat-value` |
+| Espace `/admin` sans **aucun lien** dans l'interface | Un administrateur voyait l'interface d'un utilisateur ordinaire, à l'identique | Le middleware répond 404 (pas 403) pour ne pas révéler l'espace : aucune page ne pouvait donc en parler |
+| Logo en texte (`<span class="mark">FD</span>`) au lieu du fichier de marque | — | Rien ne le signale : le monogramme typographique restait cohérent |
+| Le logo posé sur la sidebar sombre formait un **carré blanc** | Visible en thème sombre uniquement | Le fichier source (`logo 1.1`) n'a **aucune transparence** (fond blanc opaque, 24 bpp) |
+| `logo large formadoc.png` : **941 Ko** pour un rendu de 26 px | Temps de chargement, gaspillage de bande passante | Le poids d'un PNG ne se voit pas dans le code |
+| Cadrage du logo laissé à la marge interne du fichier | Logo petit et décentré | Le contenu réel occupe 349×349 dans une image de 427×435 (et 1386×349 dans 1536×1024) |
 
-### 4.2 Donnée inventée supprimée
+### 5.2 Donnée inventée supprimée
 
 Le tableau de bord affichait `width: 58 %` **en dur** pour la barre de progression de tout document en cours : un pourcentage sans rapport avec l'avancement réel, qui ne bougeait jamais. Le traitement est asynchrone et son avancement n'est pas mesurable par étapes. La barre n'apparaît désormais que pour un état **connu** (terminé, ou échec) ; l'état « en cours » s'exprime par le badge, pas par un chiffre fabriqué. C'était la seule du projet (vérifié sur toutes les vues).
 
-### 4.3 Faux positifs écartés (ne pas « corriger »)
-
+### 5.3 Faux positifs écartés (ne pas « corriger »)
 Vérifiés un par un, ces cas sont **légitimes** — les corriger serait une régression :
 
 | Cas | Pourquoi c'est correct |
