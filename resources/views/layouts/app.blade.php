@@ -12,9 +12,25 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,500&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
-    {{-- Design system (extrait de formadoc-template.html) + Tailwind pour les pages legacy --}}
+    {{-- Design system FORMADOC + Tailwind, compilés par Vite.
+         Le CDN `cdn.tailwindcss.com` a été RETIRÉ : il faisait doublon.
+
+         Pourquoi le retrait est sans risque, et pourquoi il fallait le faire :
+         - les 12 classes Tailwind réellement utilisées dans les vues (max-w-*,
+           flex-1, mx-auto, min-w-0, grid, hidden…) sont TOUTES présentes dans le
+           CSS compilé — vérifié une par une en comparant les vues au build ;
+         - le build inclut le preflight de Tailwind (reset `box-sizing`) ;
+         - le design system stylise lui-même ses champs (`appearance`, masquage
+           des inputs par `.switch input`, `.check-card`, `.pm-radio`), donc le
+           plugin `forms` du CDN n'apportait rien ;
+         - le CDN compilait le CSS DANS LE NAVIGATEUR à chaque chargement :
+           avertissement de production, ~300 Ko, et un « flash » de style non
+           appliqué (FOUC) pendant la compilation. C'est aussi une dépendance
+           réseau externe sur le chemin critique d'affichage.
+
+         Si une classe Tailwind manque à l'avenir, l'ajouter à `resources/css/app.css`
+         (ou l'écrire en CSS dans `formadoc.css`) — le build la prendra. --}}
     @vite(['resources/css/app.css', 'resources/js/app.js'])
-    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
     {{-- Alpine.js (interactivité de l'interface) --}}
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     {{-- Icônes lucide (comme le template) --}}

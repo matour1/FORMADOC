@@ -353,6 +353,16 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
     background: var(--color-surface); border: 1px solid var(--color-border);
     border-radius: var(--radius); padding: 1.1rem 1.25rem; box-shadow: var(--shadow-1);
 }
+/* Les trois éléments d'une carte sont EMPILÉS (libellé, valeur, précision).
+   Les vues les écrivent tantôt en `<div>` (dashboard), tantôt en `<span>`
+   (compte, admin). Un `<span>` est `display: inline` par défaut : sans la règle
+   ci-dessous, libellé et valeur se retrouveraient côte à côte sur la même ligne
+   au lieu de l'un sous l'autre. On impose donc le bloc, ce qui rend le
+   composant indépendant du balisage choisi par chaque vue. */
+.stat-item .stat-label,
+.stat-item .stat-value,
+.stat-item .stat-hint,
+.stat-item .stat-sub { display: block; }
 .stat-item .stat-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--color-text-muted); font-weight: 600; font-family: var(--font-mono); }
 /* Un MÉTRIC n'est pas un titre : la maquette réserve Newsreader aux titres
    et demande Plus Jakarta Sans pour les chiffres (DESIGN.md → « metric-lg »),
