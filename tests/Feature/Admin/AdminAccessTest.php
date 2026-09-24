@@ -306,4 +306,59 @@ class AdminAccessTest extends TestCase
             ->assertOk()
             ->assertSee('DOCUMENT_PIPELINE_V2');
     }
+
+    // -------------------------------------------------------------------------
+    // Porte d'entrée dans l'interface
+    // -------------------------------------------------------------------------
+
+    /**
+     * **Le défaut que ce test rend impossible.**
+     *
+     * L'espace `/admin` existait, était protégé, et fonctionnait. Mais AUCUNE vue
+     * ne comportait de lien vers lui : un compte promu administrateur continuait
+     * de voir exactement l'interface d'un utilisateur ordinaire, sans le moindre
+     * indice qu'un second espace existait. La seule façon d'y entrer était de
+     * connaître l'URL par cœur.
+     *
+     * Les tests d'accès ci-dessus ne pouvaient PAS le détecter : ils interrogent
+     * les routes directement, donc un espace invisible à l'écran les satisfait
+     * entièrement. Le contrôle d'accès et la découvrabilité sont deux propriétés
+     * distinctes, et la seconde n'était couverte par rien.
+     */
+    public function test_la_sidebar_affiche_le_lien_d_administration_pour_un_admin(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        $this->actingAs($admin)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('Exploitation')
+            ->assertSee(route('admin.index'));
+    }
+
+    /**
+     * Le corollaire, qui compte autant : le lien ne doit PAS apparaître pour les
+     * autres.
+     *
+     * Le middleware répond 404 à un non-admin, précisément pour ne pas révéler
+     * l'existence de l'espace. Un lien visible pour tous mènerait à un 404 — pire
+     * que pas de lien : il annoncerait une porte qui ne s'ouvre pas.
+     */
+    public function test_la_sidebar_masque_le_lien_d_administration_aux_autres(): void
+    {
+        $utilisateur = User::factory()->create(['is_admin' => false]);
+
+        $this->actingAs($utilisateur)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertDontSee('Exploitation')
+            ->assertDontSee(route('admin.index'));
+
+        // Et pour un invité : la sidebar est rendue (pages publiques), elle ne
+        // doit pas non plus porter le lien. La page d'accueil n'a pas de nom de
+        // route (`GET /` → `LandingController@index`), d'où l'URL littérale.
+        $this->get('/')
+            ->assertOk()
+            ->assertDontSee(route('admin.index'));
+    }
 }

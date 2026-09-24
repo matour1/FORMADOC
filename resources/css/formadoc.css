@@ -238,9 +238,16 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
     margin-left: auto; font-family: var(--font-mono); font-size: .72rem;
     color: var(--color-text-muted);
 }
-.sidebar-nav a .role-tag {
-    margin-left: auto; font-family: var(--font-mono); font-size: .66rem; text-transform: uppercase; letter-spacing: .04em;
-    color: var(--color-primary); background: var(--color-primary-tint); padding: .1rem .4rem; border-radius: 4px;
+.sidebar-nav a .role-tag { margin-left: auto; }
+/* L'étiquette de rôle est définie HORS de `.sidebar-nav a` : le layout
+   d'administration l'affiche aussi dans sa barre supérieure, pour qu'on ne
+   puisse pas se croire dans l'espace utilisateur par erreur. Une définition
+   qui ne vivait que sous `.sidebar-nav a` aurait laissé cette occurrence sans
+   style — et une étiquette de rôle non stylée passe inaperçue. */
+.role-tag {
+    font-family: var(--font-mono); font-size: .66rem; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--color-primary); background: var(--color-primary-tint);
+    padding: .1rem .4rem; border-radius: 4px;
 }
 .sidebar-footer {
     margin-top: auto; padding-top: 1.1rem; border-top: 1px solid var(--color-border);
@@ -386,6 +393,21 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
 .stat-item .stat-sub { font-size: .76rem; color: var(--color-text-muted); margin-top: .15rem; }
 .card-title { font-family: var(--font-display); font-size: 1.15rem; font-weight: 600; margin: 0 0 .25rem; }
 
+/* En-tête de page : eyebrow + titre + sous-titre. Écrit à la main dans chaque
+   vue d'administration avant d'être extrait ici ; quatre écrans le dupliquaient
+   avec des tailles légèrement différentes. */
+.page-head { margin-bottom: 1.75rem; }
+.page-head h1 { font-size: 1.5rem; font-family: var(--font-display); margin: .25rem 0 .4rem; }
+.page-head p { color: var(--color-text-secondary); font-size: .9rem; margin: 0; max-width: 62ch; }
+
+/* Grille de deux colonnes inégales : une section large à gauche (tableaux,
+   graphiques) et une colonne étroite à droite (listes, résumés). Utilisée par
+   le tableau de bord d'exploitation. */
+.split-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 1.5rem; align-items: start; }
+@media (max-width: 1024px) {
+    .split-grid { grid-template-columns: 1fr; }
+}
+
 /* ============ Badges ============ */
 .badge {
     display: inline-flex; align-items: center; gap: .35rem;
@@ -410,6 +432,34 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
 /* ============ Progression ============ */
 .progress { background: var(--color-surface-2); border-radius: var(--radius-full); height: 8px; overflow: hidden; }
 .progress-bar { height: 100%; background: var(--color-primary); border-radius: var(--radius-full); transition: width .4s ease; }
+
+/* ============ Graphique en barres (CSS pur) ============
+   Les maquettes d'exploitation montrent un histogramme mensuel. Il est
+   construit sans bibliothèque : les vues qui en ont besoin n'existent pas
+   encore (aucune série temporelle n'est stockée), mais le composant est posé
+   ici pour que la première qui l'utilise ne réinvente pas une barre.
+   Les barres sont des `<div>` dont la hauteur est un pourcentage : la valeur
+   reste donc traçable jusqu'à la donnée, contrairement à un SVG figé. */
+.chart-bars {
+    display: flex; align-items: flex-end; gap: .5rem;
+    height: 180px; padding: 1rem 0; border-bottom: 1px solid var(--color-border);
+}
+.chart-bar-group { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; gap: .3rem; }
+.chart-bar-track { flex: 1; display: flex; align-items: flex-end; gap: 2px; }
+.chart-bar {
+    flex: 1; background: var(--color-primary); border-radius: 3px 3px 0 0;
+    min-height: 2px; transition: height .3s ease;
+}
+.chart-bar.accent { background: var(--color-accent); }
+.chart-bar.muted { background: var(--color-border); }
+.chart-bar-label {
+    text-align: center; font-family: var(--font-mono); font-size: .68rem;
+    color: var(--color-text-muted); white-space: nowrap;
+}
+@media (max-width: 560px) {
+    .chart-bars { height: 130px; gap: .25rem; }
+    .chart-bar-label { font-size: .6rem; }
+}
 
 /* ============ Pagination ============ */
 .pagination { display: flex; gap: .3rem; justify-content: center; margin-top: 1.5rem; }

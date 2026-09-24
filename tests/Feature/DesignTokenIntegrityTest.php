@@ -231,11 +231,20 @@ class DesignTokenIntegrityTest extends TestCase
         // à sa valeur par défaut (bloc) et le menu s'affichait en permanence,
         // par-dessus la barre de navigation, sur TOUS les écrans. Une classe qui
         // doit être masquée par défaut doit avoir sa règle explicite.
+        //
+        // `role-tag`, `page-head`, `split-grid` et `chart-bar` y entrent avec la
+        // refonte de l'espace d'exploitation. `role-tag` est le cas instructif :
+        // l'étiquette n'était définie que sous `.sidebar-nav a`. En la déplaçant
+        // dans la barre supérieure de l'admin, elle serait restée sans aucun
+        // style — un élément non stylé ne se remarque pas, il « existe ». Le test
+        // ne vérifie donc pas qu'une classe est définie *quelque part*, mais que
+        // chaque classe employée par une vue l'est.
         $familles = [
             'banner', 'btn', 'card', 'chat', 'data-table', 'doc', 'stat-item',
             'quota-row', 'badge', 'model-menu', 'upload-step', 'flow-step',
             'template-card', 'table-wrap', 'form-control', 'progress', 'toast',
             'landing-mobile-menu', 'landing-mobile-actions',
+            'role-tag', 'page-head', 'split-grid', 'chart-bar',
         ];
 
         $motif = '/\.('.implode('|', array_map('preg_quote', $familles)).')[a-z0-9-]*/';

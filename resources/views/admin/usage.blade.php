@@ -3,10 +3,10 @@
 @section('title', 'Usage IA')
 
 @section('content')
-    <div style="margin-bottom:1.5rem">
+    <div class="page-head">
         <span class="eyebrow">Traçabilité</span>
-        <h1 style="font-size:1.5rem;margin:.25rem 0 .4rem">Registre d'usage IA</h1>
-        <p style="color:var(--color-text-secondary);font-size:.9rem;margin:0">
+        <h1>Registre d'usage IA</h1>
+        <p>
             Chaque tentative facturée, retries et échecs inclus. Le total du rapport de rentabilité
             est la somme de ces lignes — c'est ce qui rend la facturation vérifiable.
         </p>

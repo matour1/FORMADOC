@@ -3,12 +3,10 @@
 @section('title', 'Vue d\'ensemble')
 
 @section('content')
-    <div style="margin-bottom:1.5rem">
+    <div class="page-head">
         <span class="eyebrow">Exploitation</span>
-        <h1 style="font-size:1.5rem;margin:.25rem 0 .4rem">Vue d'ensemble</h1>
-        <p style="color:var(--color-text-secondary);font-size:.9rem;margin:0">
-            État du service, coût réel de l'IA et points demandant une action.
-        </p>
+        <h1>Vue d'ensemble</h1>
+        <p>État du service, coût réel de l'IA et points demandant une action.</p>
     </div>
 
     @php
@@ -20,41 +18,40 @@
             : 0;
     @endphp
 
-    {{-- Chiffres clés --}}
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1rem;margin-bottom:1.75rem">
-        <div class="card" style="margin:0">
-            <p class="eyebrow" style="margin-bottom:.3rem">Documents</p>
-            <p style="font-size:1.6rem;font-weight:700;margin:0">{{ number_format($totalDocuments, 0, ',', ' ') }}</p>
-            <p style="font-size:.78rem;color:var(--color-text-muted);margin:.2rem 0 0">
-                {{ $avecStructureNative }} avec structure native
-            </p>
+    {{-- Chiffres clés.
+         Le balisage utilise `.stat-grid` / `.stat-item`, déjà défini par le
+         design system et employé par le tableau de bord utilisateur. La version
+         précédente réécrivait les mêmes cartes en styles inline : taille de
+         police, marges et graisse étaient figées à quatre endroits, donc un
+         ajustement du design system ne les atteignait pas. --}}
+    <div class="stat-grid">
+        <div class="stat-item">
+            <span class="stat-label">Documents</span>
+            <span class="stat-value">{{ number_format($totalDocuments, 0, ',', ' ') }}</span>
+            <span class="stat-hint">{{ $avecStructureNative }} avec structure native</span>
         </div>
 
-        <div class="card" style="margin:0">
-            <p class="eyebrow" style="margin-bottom:.3rem">Utilisateurs</p>
-            <p style="font-size:1.6rem;font-weight:700;margin:0">{{ number_format($totalUtilisateurs, 0, ',', ' ') }}</p>
+        <div class="stat-item">
+            <span class="stat-label">Utilisateurs</span>
+            <span class="stat-value">{{ number_format($totalUtilisateurs, 0, ',', ' ') }}</span>
+            <span class="stat-hint">Comptes créés</span>
         </div>
 
-        <div class="card" style="margin:0">
-            <p class="eyebrow" style="margin-bottom:.3rem">Coût IA réel</p>
-            <p style="font-size:1.6rem;font-weight:700;margin:0">
-                {{ number_format($coutTotal['credits'], 0, ',', ' ') }}
-                <span style="font-size:.8rem;font-weight:400;color:var(--color-text-muted)">crédits</span>
-            </p>
-            <p style="font-size:.78rem;color:var(--color-text-muted);margin:.2rem 0 0">
-                {{ number_format($coutTotal['usd'], 4, ',', ' ') }} USD · {{ $coutTotal['attempts'] }} tentatives
-            </p>
+        <div class="stat-item">
+            <span class="stat-label">Coût IA réel</span>
+            <span class="stat-value tabular">{{ number_format($coutTotal['credits'], 0, ',', ' ') }}</span>
+            <span class="stat-hint">crédits · {{ number_format($coutTotal['usd'], 4, ',', ' ') }} USD · {{ $coutTotal['attempts'] }} tentatives</span>
         </div>
 
-        <div class="card" style="margin:0">
-            <p class="eyebrow" style="margin-bottom:.3rem">Échecs facturés</p>
-            <p style="font-size:1.6rem;font-weight:700;margin:0">{{ $coutTotal['failures'] }}</p>
-            <p style="font-size:.78rem;color:var(--color-text-muted);margin:.2rem 0 0">
+        <div class="stat-item">
+            <span class="stat-label">Échecs facturés</span>
+            <span class="stat-value tabular">{{ $coutTotal['failures'] }}</span>
+            <span class="stat-hint">
                 {{ $fuite }} % des tentatives
                 @if ($coutTotal['fallbacks'] > 0)
                     · {{ $coutTotal['fallbacks'] }} bascule(s)
                 @endif
-            </p>
+            </span>
         </div>
     </div>
 
@@ -144,7 +141,7 @@
     </div>
 
     {{-- Répartition des documents par statut --}}
-    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:1.5rem;align-items:start">
+    <div class="split-grid">
         <section class="card">
             <h2 class="card-title" style="margin-bottom:.9rem">Documents par statut</h2>
 

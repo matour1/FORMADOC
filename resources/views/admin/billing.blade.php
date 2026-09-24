@@ -3,10 +3,10 @@
 @section('title', 'Rentabilité')
 
 @section('content')
-    <div style="margin-bottom:1.5rem">
+    <div class="page-head">
         <span class="eyebrow">Facturation</span>
-        <h1 style="font-size:1.5rem;margin:.25rem 0 .4rem">Rapport de rentabilité</h1>
-        <p style="color:var(--color-text-secondary);font-size:.9rem;margin:0">
+        <h1>Rapport de rentabilité</h1>
+        <p>
             Les mêmes chiffres que <code>php artisan billing:report</code>, calculés par le même
             service — deux calculs parallèles finiraient par diverger.
         </p>
@@ -36,45 +36,34 @@
         $ratio = $theorique > 0 ? round($totaux['credits'] / $theorique, 2) : null;
     @endphp
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1rem;margin-bottom:1.75rem">
-        <div class="card" style="margin:0">
-            <p class="eyebrow" style="margin-bottom:.3rem">Coût réel</p>
-            <p style="font-size:1.5rem;font-weight:700;margin:0">
-                {{ number_format($totaux['credits'], 0, ',', ' ') }}
-                <span style="font-size:.8rem;font-weight:400;color:var(--color-text-muted)">crédits</span>
-            </p>
-            <p style="font-size:.78rem;color:var(--color-text-muted);margin:.2rem 0 0">
-                {{ number_format($totaux['usd'], 6, ',', ' ') }} USD
-            </p>
+    <div class="stat-grid">
+        <div class="stat-item">
+            <span class="stat-label">Coût réel</span>
+            <span class="stat-value tabular">{{ number_format($totaux['credits'], 0, ',', ' ') }}</span>
+            <span class="stat-hint">crédits · {{ number_format($totaux['usd'], 6, ',', ' ') }} USD</span>
         </div>
 
-        <div class="card" style="margin:0">
-            <p class="eyebrow" style="margin-bottom:.3rem">Prix théorique grille</p>
-            <p style="font-size:1.5rem;font-weight:700;margin:0">
-                {{ number_format($theorique, 0, ',', ' ') }}
-                <span style="font-size:.8rem;font-weight:400;color:var(--color-text-muted)">crédits</span>
-            </p>
-            <p style="font-size:.78rem;color:var(--color-text-muted);margin:.2rem 0 0">
-                coefficient {{ number_format($coefficient, 2, ',', ' ') }}×
+        <div class="stat-item">
+            <span class="stat-label">Prix théorique grille</span>
+            <span class="stat-value tabular">{{ number_format($theorique, 0, ',', ' ') }}</span>
+            <span class="stat-hint">
+                crédits · coefficient {{ number_format($coefficient, 2, ',', ' ') }}×
                 @if ($ratio !== null)
                     · reversibilité {{ $ratio }}
                 @endif
-            </p>
+            </span>
         </div>
 
-        <div class="card" style="margin:0">
-            <p class="eyebrow" style="margin-bottom:.3rem">Tentatives</p>
-            <p style="font-size:1.5rem;font-weight:700;margin:0">{{ number_format($totaux['attempts'], 0, ',', ' ') }}</p>
-            <p style="font-size:.78rem;color:var(--color-text-muted);margin:.2rem 0 0">
-                {{ $totaux['failures'] }} échec(s) · {{ $totaux['fallbacks'] }} bascule(s)
-            </p>
+        <div class="stat-item">
+            <span class="stat-label">Tentatives</span>
+            <span class="stat-value tabular">{{ number_format($totaux['attempts'], 0, ',', ' ') }}</span>
+            <span class="stat-hint">{{ $totaux['failures'] }} échec(s) · {{ $totaux['fallbacks'] }} bascule(s)</span>
         </div>
 
-        <div class="card" style="margin:0">
-            <p class="eyebrow" style="margin-bottom:.3rem">Tokens</p>
-            <p style="font-size:1.5rem;font-weight:700;margin:0">
-                {{ number_format($totaux['tokens'], 0, ',', ' ') }}
-            </p>
+        <div class="stat-item">
+            <span class="stat-label">Tokens</span>
+            <span class="stat-value tabular">{{ number_format($totaux['tokens'], 0, ',', ' ') }}</span>
+            <span class="stat-hint">entrée et sortie cumulées</span>
         </div>
     </div>
 

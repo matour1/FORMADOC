@@ -3,10 +3,10 @@
 @section('title', 'Documents')
 
 @section('content')
-    <div style="margin-bottom:1.5rem">
+    <div class="page-head">
         <span class="eyebrow">Exploitation</span>
-        <h1 style="font-size:1.5rem;margin:.25rem 0 .4rem">Tous les documents</h1>
-        <p style="color:var(--color-text-secondary);font-size:.9rem;margin:0">
+        <h1>Tous les documents</h1>
+        <p>
             Tous utilisateurs confondus. Vue de lecture seule : aucun écran d'administration ne
             modifie les données d'un utilisateur.
         </p>

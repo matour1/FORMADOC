@@ -3,10 +3,10 @@
 @section('title', 'Qualité de la classification')
 
 @section('content')
-    <div style="margin-bottom:1.5rem">
+    <div class="page-head">
         <span class="eyebrow">Qualité</span>
-        <h1 style="font-size:1.5rem;margin:.25rem 0 .4rem">Qualité de la classification</h1>
-        <p style="color:var(--color-text-secondary);font-size:.9rem;margin:0">
+        <h1>Qualité de la classification</h1>
+        <p>
             Ce que la détection a su trancher, et ce qui lui a résisté. Les documents les plus
             incertains sont en tête : ce sont eux qui demandent une action.
         </p>
@@ -21,30 +21,35 @@
             : round(array_sum(array_column($lignes, 'taux')) / count($lignes), 1);
     @endphp
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1rem;margin-bottom:1.75rem">
-        <div class="card" style="margin:0">
-            <p class="eyebrow" style="margin-bottom:.3rem">Documents analysés</p>
-            <p style="font-size:1.5rem;font-weight:700;margin:0">{{ count($lignes) }}</p>
+    <div class="stat-grid">
+        <div class="stat-item">
+            <span class="stat-label">Documents analysés</span>
+            <span class="stat-value tabular">{{ count($lignes) }}</span>
+            <span class="stat-hint">100 derniers au maximum</span>
         </div>
-        <div class="card" style="margin:0">
-            <p class="eyebrow" style="margin-bottom:.3rem">Taux de confiance moyen</p>
-            <p style="font-size:1.5rem;font-weight:700;margin:0">
-                {{ $tauxMoyen !== null ? $tauxMoyen.' %' : '—' }}
-            </p>
-            <p style="font-size:.78rem;color:var(--color-text-muted);margin:.2rem 0 0">
-                seuil d'acceptation : {{ \App\Document\Structure\Block::AUTO_ACCEPT_THRESHOLD * 100 }} %
-            </p>
+
+        {{-- Le taux de confiance moyen n'est calculé QUE s'il y a des lignes.
+             La version précédente affichait « — » dans ce cas : un tiret occupe
+             la place d'une mesure et laisse croire qu'elle a été tentée. Une
+             donnée absente s'omet, elle ne se représente pas. --}}
+        @if ($tauxMoyen !== null)
+            <div class="stat-item">
+                <span class="stat-label">Taux de confiance moyen</span>
+                <span class="stat-value tabular">{{ $tauxMoyen }} %</span>
+                <span class="stat-hint">seuil d'acceptation : {{ \App\Document\Structure\Block::AUTO_ACCEPT_THRESHOLD * 100 }} %</span>
+            </div>
+        @endif
+
+        <div class="stat-item">
+            <span class="stat-label">Blocs ambigus</span>
+            <span class="stat-value tabular">{{ $totalAmbigus }}</span>
+            <span class="stat-hint">titres non tranchés</span>
         </div>
-        <div class="card" style="margin:0">
-            <p class="eyebrow" style="margin-bottom:.3rem">Blocs ambigus</p>
-            <p style="font-size:1.5rem;font-weight:700;margin:0">{{ $totalAmbigus }}</p>
-        </div>
-        <div class="card" style="margin:0">
-            <p class="eyebrow" style="margin-bottom:.3rem">Documents sans titre</p>
-            <p style="font-size:1.5rem;font-weight:700;margin:0">{{ $sansTitre }}</p>
-            <p style="font-size:.78rem;color:var(--color-text-muted);margin:.2rem 0 0">
-                pas de sommaire possible
-            </p>
+
+        <div class="stat-item">
+            <span class="stat-label">Documents sans titre</span>
+            <span class="stat-value tabular">{{ $sansTitre }}</span>
+            <span class="stat-hint">pas de sommaire possible</span>
         </div>
     </div>
 

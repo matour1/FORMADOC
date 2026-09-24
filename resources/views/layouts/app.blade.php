@@ -268,18 +268,27 @@
     @stack('scripts')
 
     <script>
+        /* Élément d'icône du bouton de thème.
+
+           Ne PAS cibler `i`. Après le premier rendu, lucide REMPLACE le `<i>` par
+           un `<svg>` et lui recopie l'attribut `data-lucide`. Un sélecteur
+           `#theme-toggle i` ne trouve alors plus rien : l'icône ne changeait
+           JAMAIS de lune à soleil, alors que le bouton fonctionnait et que le
+           thème basculait bien. Le bouton semblait mort, seul le fond changeait.
+
+           `[data-lucide]` couvre les deux états : le `<i>` d'avant rendu et le
+           `<svg>` d'après. */
+        const iconeTheme = () => document.querySelector('#theme-toggle [data-lucide]');
+
         // Initialisation des icônes lucide (si chargées)
         document.addEventListener('DOMContentLoaded', () => {
-            if (window.lucide) {
-                lucide.createIcons();
-            }
-            // Thème au chargement
-            const saved = localStorage.getItem('formadoc-theme');
-            if (saved === 'dark') {
+            // Thème au chargement — AVANT le rendu des icônes, pour que l'icône du
+            // bouton soit posée du premier coup au lieu d'être repeinte juste après.
+            if (localStorage.getItem('formadoc-theme') === 'dark') {
                 document.documentElement.setAttribute('data-theme', 'dark');
-                document.querySelector('#theme-toggle i')?.setAttribute('data-lucide', 'sun');
+                iconeTheme()?.setAttribute('data-lucide', 'sun');
             }
-            // Icônes des toasts (rendus après DOMContentLoaded si lucide différé)
+            // Icônes lucide (dont celle du bouton de thème, ajustée ci-dessus)
             if (window.lucide) { lucide.createIcons(); }
             // Auto-fermeture des toasts (6s) avec transition douce
             document.querySelectorAll('.toast').forEach(t => {
@@ -298,8 +307,13 @@
             const isDark = root.getAttribute('data-theme') === 'dark';
             root.setAttribute('data-theme', isDark ? 'light' : 'dark');
             localStorage.setItem('formadoc-theme', isDark ? 'light' : 'dark');
-            const icon = document.querySelector('#theme-toggle i');
-            if (icon) { icon.setAttribute('data-lucide', isDark ? 'moon' : 'sun'); if (window.lucide) lucide.createIcons(); }
+            // Re-rendu ciblé : `createIcons()` rescanne tout le document (gaspillage
+            // sur les pages à nombreuses icônes), on ne redessine que celle-ci.
+            const icon = iconeTheme();
+            if (icon) {
+                icon.setAttribute('data-lucide', isDark ? 'moon' : 'sun');
+                if (window.lucide) { lucide.createIcons({ attrs: {}, nameAttr: 'data-lucide' }); }
+            }
         });
         // Sidebar mobile (avec overlay + Escape)
         const menuToggle = document.getElementById('navbar-menu-toggle');

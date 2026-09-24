@@ -115,6 +115,9 @@ Ce sont des engagements commerciaux : ils ne se décident pas dans une tâche d'
 - [x] **Tableau de bord** : KPI remis en forme, progression inventée retirée
 - [x] **Logo de l'application** intégré (sidebar, admin, landing, footer) + favicon
 - [x] **Admin** : porte d'entrée visible dans la sidebar (section « Exploitation »)
+- [x] **Admin** : layout réécrit sur les composants partagés (`sidebar`, `navbar`,
+      `stat-grid`, `stat-item`, `page-head`, `split-grid`) — thème sombre, repli
+      mobile et bascule de thème fonctionnels, sortie vers les autres espaces
 - [x] Vérifié : aucune donnée d'exemple de la maquette dans les vues. Les seules
       occurrences de « Orange Money » / « MTN MoMo » sont de **vraies options de
       paiement** (`subscriptions/checkout.blade.php` envoie `payment_method` =
@@ -139,6 +142,10 @@ Tous de la **même famille** : une référence qui ne résout rien, sans erreur 
 | Le logo posé sur la sidebar sombre formait un **carré blanc** | Visible en thème sombre uniquement | Le fichier source (`logo 1.1`) n'a **aucune transparence** (fond blanc opaque, 24 bpp) |
 | `logo large formadoc.png` : **941 Ko** pour un rendu de 26 px | Temps de chargement, gaspillage de bande passante | Le poids d'un PNG ne se voit pas dans le code |
 | Cadrage du logo laissé à la marge interne du fichier | Logo petit et décentré | Le contenu réel occupe 349×349 dans une image de 427×435 (et 1386×349 dans 1536×1024) |
+| Icône du bouton de thème **jamais mise à jour** | Le bouton semblait mort : le fond changeait, l'icône restait une lune | Lucide **remplace** le `<i>` par un `<svg>` au premier rendu ; le code ciblait `#theme-toggle i`, sélecteur qui ne trouve plus rien après. Défaut présent dans les **deux** layouts |
+| Espace admin écrit en styles inline, dupliquant `.sidebar` / `.navbar` | L'admin ne suivait ni le thème sombre ni les évolutions du design system | Le layout réimplémentait sa propre barre de navigation avec des valeurs figées |
+| `.role-tag` définie seulement sous `.sidebar-nav a` | L'étiquette de rôle serait restée **sans style** dans la barre supérieure de l'admin | Une classe non stylée ne se remarque pas : l'élément « existe » quand même |
+| Taux de confiance absent rendu par un tiret `—` | Un tiret occupe la place d'une mesure et laisse croire qu'elle a été tentée | Contraire à la règle d'or du document (§ 4.2) : une donnée absente s'omet |
 
 ### 5.2 Donnée inventée supprimée
 
@@ -153,3 +160,18 @@ Vérifiés un par un, ces cas sont **légitimes** — les corriger serait une r�
 | `quick-amount`, `pm-radio-input` | Hooks fonctionnels (attribut `data-amount`, `input[type=radio]`) ; le style vient des classes voisines |
 | `msg-time` | Stylé par son parent `.message .meta` — un enfant sans règle propre est normal |
 | `is-invalid` | Sur un input `sr-only` (caché) ; les erreurs sont rendues par `.field-error` |
+
+### 5.4 Poids et cadrage des fichiers de marque
+
+`logo large formadoc.png` pèse **941 Ko** pour un rendu de 26 px : le poids d'un PNG ne se voit pas dans le code. Les dérivés sont donc **générés** dans `public/images/`, avec un rognage calculé sur le contenu réel et non sur la marge interne du fichier.
+
+| Fichier | Taille | Poids | Usage |
+|---|---|---|---|
+| `logo-mark.png` | 64×64 | 7 Ko | favicon, monogramme (sidebar, landing, footer) |
+| `logo-mark@2x.png` | 128×128 | 21 Ko | écrans haute densité |
+| `apple-touch-icon.png` | 180×180 | 36 Ko | raccourci iOS |
+| `logo-full.png` | 640×161 | 75 Ko | mot-symbole complet (réserve) |
+| `logo-full@2x.png` | 320×81 | 25 Ko | en-tête de l'espace admin |
+| `favicon.ico` | 16/32/48 | 7 Ko | onglet navigateur |
+
+`resources/images/` reste la **source** (les originaux y sont versionnés) ; `public/images/` ne contient que des dérivés servis par le web. `Vite::asset()` aurait aussi fonctionné — c'est la méthode documentée pour `resources/images/` — mais un favicon doit rester disponible même si le manifest de build est absent, et `asset()` n'échoue jamais dans ce cas.
