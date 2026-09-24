@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="FORMADOC met en forme automatiquement vos rapports, mémoires et CV — DQP, BTS, licence, master. 5 documents gratuits par mois, assistance IA optionnelle à coût affiché.">
     <meta name="theme-color" content="#0f172a">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230f172a'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='Georgia'>FD</text></svg>">
+    <link rel="icon" type="image/png" sizes="64x64" href="{{ asset('images/logo-mark.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('images/apple-touch-icon.png') }}">
     <title>FORMADOC — Mise en forme automatique de rapports, mémoires et CV</title>
 
     {{-- Polices : Newsreader (titres), Plus Jakarta Sans (corps), IBM Plex Mono (données) --}}
@@ -22,7 +23,10 @@
 
     <header class="landing-nav">
         <div class="wrap">
-            <a class="brand" href="#main"><span class="mark">FD</span> FORMADOC</a>
+            <a class="brand" href="#main">
+                <span class="mark"><img src="{{ asset('images/logo-mark.png') }}" alt="" width="30" height="30"></span>
+                FORMADOC
+            </a>
             <nav class="nav-links" aria-label="Navigation principale">
                 <a href="#fonctionnalites">Fonctionnalités</a>
                 <a href="#parcours">Comment ça marche</a>
@@ -330,7 +334,10 @@
         <div class="wrap">
             <div class="footer-grid">
                 <div class="footer-brand">
-                    <div class="brand"><span class="mark">FD</span> FORMADOC</div>
+                    <div class="brand">
+                        <span class="mark"><img src="{{ asset('images/logo-mark.png') }}" alt="" width="30" height="30"></span>
+                        FORMADOC
+                    </div>
                     <p>La mise en forme automatique de documents, avec ou sans assistance IA. Basé à Douala, Cameroun.</p>
                 </div>
                 <div class="footer-col">

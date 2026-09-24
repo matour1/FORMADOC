@@ -201,12 +201,23 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
     font-family: var(--font-display); font-weight: 700; font-size: 1.35rem;
     margin-bottom: 2rem; color: var(--color-text);
 }
+/* Logo de marque.
+   Le monogramme typographique (« FD ») a ete remplace par le vrai logo de
+   l'application. Deux contraintes du fichier source dictent ce style :
+   - il n'a AUCUNE transparence (fond blanc opaque, format 24 bpp) : pose
+     tel quel sur la surface sombre (--color-surface = #111c2e en theme
+     sombre) il forme un carre blanc qui jure avec la sidebar ;
+   - sa charte EST « bleu sur blanc ». On garde donc la pastille blanche et
+     on lui donne le rayon de l'icone, plutot que de recolorer le logo pour
+     un theme — ce serait trahir la marque.
+   En theme clair (--color-surface = #ffffff) la pastille disparait dans la
+   surface : aucun effet de bord. */
 .sidebar-brand .mark {
     width: 34px; height: 34px; border-radius: 8px;
-    background: var(--color-primary); color: var(--color-on-primary);
+    background: #ffffff; overflow: hidden; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    font-family: var(--font-display); font-weight: 700; font-size: 1.05rem;
 }
+.sidebar-brand .mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .sidebar-section-label {
     font-size: .7rem; text-transform: uppercase; letter-spacing: .08em;
     color: var(--color-text-muted); font-weight: 600;
@@ -1019,11 +1030,14 @@ a.flow-step:hover { background: var(--color-surface-2); color: var(--color-text)
     display: flex; align-items: center; gap: .6rem;
     font-family: var(--font-display); font-weight: 700; font-size: 1.2rem; color: var(--color-text);
 }
+/* Meme contrainte que le logo de la sidebar : le monogramme est un fichier
+   a fond blanc opaque. Voir `.sidebar-brand .mark`. */
 .landing-page .brand .mark {
-    width: 30px; height: 30px; border-radius: 7px; background: var(--color-primary); color: var(--color-on-primary);
+    width: 30px; height: 30px; border-radius: 7px; background: #ffffff;
+    overflow: hidden; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    font-family: var(--font-display); font-weight: 700; font-size: .95rem; flex-shrink: 0;
 }
+.landing-page .brand .mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .landing-page .nav-links { display: flex; align-items: center; gap: 1.6rem; }
 .landing-page .nav-links a { color: var(--color-text-secondary); font-weight: 500; font-size: .9rem; }
 .landing-page .nav-links a:hover { color: var(--color-text); }

@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="theme-color" content="#0f172a">
+    {{-- Identite visuelle de l'onglet et des raccourcis mobiles.
+         Les fichiers viennent de `public/images/` : ils sont servis tels quels,
+         sans passer par Vite. C'est volontaire — un favicon doit rester
+         disponible meme si le bundle JS/CSS est indisponible, et `asset()`
+         n'echoue jamais, contrairement a `Vite::asset()` quand le manifest
+         n'a pas encore ete construit. --}}
+    <link rel="icon" type="image/png" sizes="64x64" href="{{ asset('images/logo-mark.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('images/apple-touch-icon.png') }}">
     <title>@yield('title', 'FORMADOC') — Mise en forme automatique de rapports</title>
 
     {{-- Polices : Newsreader (titres), Plus Jakarta Sans (corps), IBM Plex Mono (données) --}}
@@ -43,7 +51,9 @@
     {{-- Sidebar (desktop : sticky ; mobile : hors écran + overlay) --}}
     <aside class="sidebar" id="app-sidebar" aria-label="Navigation principale">
         <a href="/" class="sidebar-brand">
-            <span class="mark">FD</span>
+            <span class="mark">
+                <img src="{{ asset('images/logo-mark.png') }}" alt="" width="34" height="34">
+            </span>
             FORMADOC
         </a>
 
@@ -81,6 +91,31 @@
                     <i data-lucide="settings"></i> Paramètres
                 </a>
             </nav>
+        @endauth
+
+        {{--
+            Administration — visible UNIQUEMENT pour un compte administrateur.
+
+            Sans cette section, l'espace d'exploitation n'était atteignable qu'en
+            connaissant l'URL `/admin` par cœur : un fondateur promu avec
+            `user:make-admin` continuait de voir exactement l'interface d'un
+            utilisateur ordinaire, sans aucun indice qu'un second espace existe.
+
+            Le lien suit la même logique que le middleware : celui-ci répond 404
+            à un non-admin (pour ne pas révéler l'existence de l'espace), donc le
+            lien ne doit apparaître que pour qui peut l'ouvrir. Afficher un lien
+            menant à un 404 serait pire que de ne rien afficher.
+        --}}
+        @auth
+            @if (auth()->user()->is_admin)
+                <span class="sidebar-section-label">Exploitation</span>
+                <nav class="sidebar-nav">
+                    <a href="{{ route('admin.index') }}" class="{{ request()->routeIs('admin.*') ? 'active' : '' }}">
+                        <i data-lucide="shield-check"></i> Administration
+                        <span class="role-tag">Admin</span>
+                    </a>
+                </nav>
+            @endif
         @endauth
 
         <span class="sidebar-section-label">Aide</span>

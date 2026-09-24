@@ -11,6 +11,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="64x64" href="{{ asset('images/logo-mark.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('images/apple-touch-icon.png') }}">
     <title>@yield('title', 'Administration') · FORMADOC</title>
     {{-- Polices : sans ce bloc, `--font-display` et `--font-body` retombent sur
          les polices système et l'admin ne ressemble plus au reste du produit.
@@ -26,7 +28,10 @@
 
     <header style="background:var(--color-surface);border-bottom:1px solid var(--color-border);padding:.75rem 1.5rem;display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap">
         <a href="{{ route('admin.index') }}" style="text-decoration:none;display:flex;align-items:center;gap:.5rem">
-            <strong style="font-size:1rem">FORMADOC</strong>
+            {{-- Le logo complet porte deja le nom : le repeter en texte juste
+                 a cote ferait doublon. On ne garde que le mot-symbole + le
+                 badge d'espace, ce qui distingue l'administration du reste. --}}
+            <img src="{{ asset('images/logo-full@2x.png') }}" alt="FORMADOC" style="height:26px;width:auto;display:block">
             <span class="eyebrow" style="margin:0;background:var(--color-surface-2);padding:.15rem .5rem;border-radius:4px">
                 Administration
             </span>
