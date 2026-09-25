@@ -434,31 +434,49 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
 .progress-bar { height: 100%; background: var(--color-primary); border-radius: var(--radius-full); transition: width .4s ease; }
 
 /* ============ Graphique en barres (CSS pur) ============
-   Les maquettes d'exploitation montrent un histogramme mensuel. Il est
-   construit sans bibliothèque : les vues qui en ont besoin n'existent pas
-   encore (aucune série temporelle n'est stockée), mais le composant est posé
-   ici pour que la première qui l'utilise ne réinvente pas une barre.
    Les barres sont des `<div>` dont la hauteur est un pourcentage : la valeur
-   reste donc traçable jusqu'à la donnée, contrairement à un SVG figé. */
+   reste donc traçable jusqu'à la donnée, contrairement à un SVG figé.
+
+   Deux réglages viennent d'un constat en conditions réelles. Avec beaucoup de
+   jours sans activité, la première version affichait 28 barres quasi invisibles
+   sur 30 : le graphique semblait cassé alors qu'il était exact. Un graphique dont
+   les barres vides sont illisibles ne dit pas « rien ne s'est passé », il dit
+   « les données sont absentes » — l'inverse du message.
+
+   - `.muted` est donc un gris FRANC (la surface alternée, pas la teinte des
+     bordures, trop proche du fond pour être perçue) ;
+   - une barre nulle garde une hauteur de 3 px, visible comme une barre « à zéro »
+     plutôt que comme une absence de barre ;
+   - l'axe se cale sur le bas et non sur la valeur maximale, pour que la ligne des
+     zéros forme une ligne continue lisible. */
 .chart-bars {
-    display: flex; align-items: flex-end; gap: .5rem;
-    height: 180px; padding: 1rem 0; border-bottom: 1px solid var(--color-border);
+    display: flex; align-items: flex-end; gap: 2px;
+    height: 180px; padding: 1rem 0 .25rem; border-bottom: 1px solid var(--color-border);
 }
-.chart-bar-group { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; gap: .3rem; }
-.chart-bar-track { flex: 1; display: flex; align-items: flex-end; gap: 2px; }
+.chart-bar-group {
+    flex: 1; display: flex; flex-direction: column; justify-content: flex-end;
+    height: 100%; gap: .3rem; min-width: 0;
+}
+.chart-bar-track { flex: 1; display: flex; align-items: flex-end; gap: 1px; }
 .chart-bar {
     flex: 1; background: var(--color-primary); border-radius: 3px 3px 0 0;
-    min-height: 2px; transition: height .3s ease;
+    transition: height .3s ease;
 }
 .chart-bar.accent { background: var(--color-accent); }
-.chart-bar.muted { background: var(--color-border); }
+/* Gris franc : lisible comme « zéro » et non comme « rien ». */
+.chart-bar.muted { background: var(--color-surface-2); box-shadow: inset 0 0 0 1px var(--color-border); }
 .chart-bar-label {
-    text-align: center; font-family: var(--font-mono); font-size: .68rem;
-    color: var(--color-text-muted); white-space: nowrap;
+    text-align: center; font-family: var(--font-mono); font-size: .62rem;
+    color: var(--color-text-muted); white-space: nowrap; overflow: hidden;
 }
-@media (max-width: 560px) {
-    .chart-bars { height: 130px; gap: .25rem; }
-    .chart-bar-label { font-size: .6rem; }
+/* Sur beaucoup de jours, une étiquette sur trois : sans cela elles se
+   chevauchent et deviennent illisibles — ce qui revient à ne pas les afficher,
+   mais en occupant l'espace. La classe est posée par la vue, qui connaît le
+   nombre de points. */
+.chart-bar-label.thin { visibility: hidden; }
+@media (max-width: 768px) {
+    .chart-bars { height: 140px; }
+    .chart-bar-label { font-size: .58rem; }
 }
 
 /* ============ Pagination ============ */

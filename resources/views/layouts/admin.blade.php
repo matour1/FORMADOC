@@ -50,6 +50,9 @@
             <a href="{{ route('admin.index') }}" class="{{ request()->routeIs('admin.index') ? 'active' : '' }}">
                 <i data-lucide="gauge"></i> Vue d'ensemble
             </a>
+            <a href="{{ route('admin.analytics') }}" class="{{ request()->routeIs('admin.analytics') ? 'active' : '' }}">
+                <i data-lucide="trending-up"></i> Analyse
+            </a>
             <a href="{{ route('admin.billing') }}" class="{{ request()->routeIs('admin.billing') ? 'active' : '' }}">
                 <i data-lucide="banknote"></i> Rentabilité
             </a>

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminController;
+use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ClarificationController;
@@ -69,6 +70,11 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/usage', [AdminController::class, 'usage'])->name('usage');
     Route::get('/classification', [AdminController::class, 'classification'])->name('classification');
     Route::get('/documents', [AdminController::class, 'documents'])->name('documents');
+
+    // --- Analyse -----------------------------------------------------------
+    // Séries temporelles : un total dit où on en est, une série dit si cela
+    // s'arrête. Les deux questions sont distinctes et demandent deux écrans.
+    Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics');
 
     // --- Configuration -----------------------------------------------------
     // Sans elle, ajuster une marge exigeait d'éditer un fichier PHP et de
