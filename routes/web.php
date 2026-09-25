@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Admin\AnalyticsController;
+use App\Http\Controllers\Admin\PaymentLinkAdminController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ClarificationController;
@@ -9,6 +10,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\LandingController;
+use App\Http\Controllers\PaymentLinkController;
 use App\Http\Controllers\SampleDocumentController;
 use App\Http\Controllers\StateController;
 use App\Http\Controllers\TemplateController;
@@ -91,6 +93,38 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::post('/users/{user}/admin', [UserController::class, 'toggleAdmin'])->name('users.admin');
     Route::post('/users/{user}/suspension', [UserController::class, 'toggleSuspension'])->name('users.suspension');
     Route::post('/users/{user}/credits', [UserController::class, 'adjustCredits'])->name('users.credits');
+
+    // --- Liens de paiement ---------------------------------------------------
+    // KPay n'expose aucun endpoint de « lien de paiement » : l'objet est une
+    // construction FORMADOC. Deux modes, dont le hors ligne — indispensable quand
+    // les opérateurs sont en maintenance, ce qui s'est produit plusieurs jours
+    // pendant le développement de cette fonctionnalité.
+    Route::get('/payment-links', [PaymentLinkAdminController::class, 'index'])->name('payment-links.index');
+    Route::get('/payment-links/create', [PaymentLinkAdminController::class, 'create'])->name('payment-links.create');
+    Route::post('/payment-links', [PaymentLinkAdminController::class, 'store'])->name('payment-links.store');
+    Route::get('/payment-links/{paymentLink}', [PaymentLinkAdminController::class, 'show'])->name('payment-links.show');
+    Route::post('/payment-links/{paymentLink}/regler', [PaymentLinkAdminController::class, 'reglerHorsLigne'])->name('payment-links.regler');
+    Route::post('/payment-links/{paymentLink}/annuler', [PaymentLinkAdminController::class, 'annuler'])->name('payment-links.annuler');
+    Route::post('/payment-links/{paymentLink}/prolonger', [PaymentLinkAdminController::class, 'prolonger'])->name('payment-links.prolonger');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Page publique de règlement d'un lien de paiement
+|--------------------------------------------------------------------------
+|
+| Pas de middleware `auth` : le destinataire d'un lien n'a pas de compte FORMADOC,
+| c'est la raison d'être de la fonctionnalité. La sécurité repose sur le jeton, dont
+| la longueur et l'unicité ne sont pas décoratives — un jeton deviné ouvrirait la
+| page de règlement d'un tiers.
+|
+| `throttle` : sans limite, un jeton pourrait être cherché par force brute. 30
+| requêtes par minute laisse largement de quoi afficher puis régler un lien.
+*/
+Route::middleware(['web', 'throttle:30,1'])->prefix('paiement')->name('payment-link.')->group(function () {
+    Route::get('/{token}', [PaymentLinkController::class, 'show'])->name('show');
+    Route::post('/{token}/payer', [PaymentLinkController::class, 'payer'])->name('payer');
+    Route::get('/{token}/retour', [PaymentLinkController::class, 'retour'])->name('retour');
 });
 
 // ⚠️ MODULE « PAGE DE GARDE » SUPPRIMÉ DE CETTE VERSION.

@@ -72,6 +72,9 @@
             <a href="{{ route('admin.users.index') }}" class="{{ request()->routeIs('admin.users*') ? 'active' : '' }}">
                 <i data-lucide="users"></i> Comptes
             </a>
+            <a href="{{ route('admin.payment-links.index') }}" class="{{ request()->routeIs('admin.payment-links*') ? 'active' : '' }}">
+                <i data-lucide="link"></i> Liens de paiement
+            </a>
             <a href="{{ route('admin.settings') }}" class="{{ request()->routeIs('admin.settings*') ? 'active' : '' }}">
                 <i data-lucide="sliders-horizontal"></i> Configuration
             </a>
