@@ -249,6 +249,41 @@
                                         @endforeach
                                     </div>
                                 @endif
+                                {{-- Q-OUTILS : quels outils ont RÉELLEMENT tourné pour ce
+                                     message, d'après `metadata.tools_used`.
+
+                                     C'est la réponse honnête à « montrer les étapes ».
+                                     L'envoi d'un message est une requête synchrone : le
+                                     navigateur ne reçoit RIEN tant que le serveur n'a pas
+                                     fini, donc il ne peut pas afficher « l'analyse
+                                     commence » — il ne le sait pas. Après coup, en
+                                     revanche, les outils exécutés sont connus avec
+                                     certitude. On affiche donc le vrai travail effectué,
+                                     au lieu d'une progression inventée.
+
+                                     Seuls les outils RÉUSSIS sont listés (voir
+                                     ChatController) : annoncer une action qui a échoué
+                                     serait pire que de ne rien dire. --}}
+                                @if (! empty($message->metadata['tools_used']))
+                                    <div class="msg-tools" style="margin-top:.55rem;display:flex;flex-wrap:wrap;gap:.35rem;align-items:center">
+                                        <span class="msg-tools-label">
+                                            <i data-lucide="wrench" style="width:12px;height:12px;display:inline-block;vertical-align:-2px"></i>
+                                            {{ count($message->metadata['tools_used']) > 1 ? 'Outils utilisés' : 'Outil utilisé' }}
+                                        </span>
+                                        @foreach ($message->metadata['tools_used'] as $outil)
+                                            {{-- `badge-info` est OBLIGATOIRE : dans le
+                                                 design system, `.badge` seul ne porte ni
+                                                 fond ni couleur — ce sont les variantes
+                                                 qui les definissent. Sans variante, la
+                                                 pastille s'affichait en texte nu (defaut
+                                                 vu a la capture, invisible aux tests, qui
+                                                 verifient le contenu et non le style). --}}
+                                            <span class="badge badge-info" title="{{ $outil }}">
+                                                {{ config('chat.tool_labels.'.$outil, $outil) }}
+                                            </span>
+                                        @endforeach
+                                    </div>
+                                @endif
                             </div>
                             <div class="meta">
                                 <span class="msg-time">{{ $message->created_at->format('H:i') }}</span>

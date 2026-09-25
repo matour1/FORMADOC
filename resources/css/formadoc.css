@@ -1820,6 +1820,21 @@ a.flow-step:hover { background: var(--color-surface-2); color: var(--color-text)
    se reduire : un nom de fichier long debordait de la bulle. */
 .msg-file-link { max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
+/* Outils reellement utilises pendant un message (Q-OUTILS).
+
+   Affiches SOUS la reponse, apres coup : l'envoi est synchrone, donc le client
+   ne peut pas savoir quel outil s'execute tant que le serveur n'a pas repondu.
+   Ce qui est affiche ici est donc un FAIT (l'outil a tourne, il a reussi), pas
+   une etape simulee.
+
+   Pas de `max-width` sur les pastilles : un libelle traduit est court, et le
+   conteneur se replie deja (`flex-wrap: wrap` en attribut dans la vue). */
+.msg-tools { min-width: 0; }
+.msg-tools-label {
+    font-size: .68rem; color: var(--color-text-muted);
+    font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .03em;
+}
+
 /* Un nom de fichier n'a aucune raison de forcer la largeur d'une bulle : il se
    coupe la ou il faut plutot que d'elargir la conversation.
 
