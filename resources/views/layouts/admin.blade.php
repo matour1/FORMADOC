@@ -62,6 +62,9 @@
             <a href="{{ route('admin.classification') }}" class="{{ request()->routeIs('admin.classification') ? 'active' : '' }}">
                 <i data-lucide="tags"></i> Classification
             </a>
+            <a href="{{ route('admin.monitoring') }}" class="{{ request()->routeIs('admin.monitoring') ? 'active' : '' }}">
+                <i data-lucide="activity"></i> Surveillance
+            </a>
             <a href="{{ route('admin.documents') }}" class="{{ request()->routeIs('admin.documents') ? 'active' : '' }}">
                 <i data-lucide="file-text"></i> Documents
             </a>

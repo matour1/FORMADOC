@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Admin\AnalyticsController;
+use App\Http\Controllers\Admin\MonitoringController;
 use App\Http\Controllers\Admin\PaymentLinkAdminController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\UserController;
@@ -72,6 +73,11 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/usage', [AdminController::class, 'usage'])->name('usage');
     Route::get('/classification', [AdminController::class, 'classification'])->name('classification');
     Route::get('/documents', [AdminController::class, 'documents'])->name('documents');
+
+    // --- Surveillance -------------------------------------------------------
+    // « Qu'est-ce qui bloque MAINTENANT » : une liste de cas concrets, là où la vue
+    // d'ensemble donne des agrégats et l'analyse des tendances.
+    Route::get('/monitoring', [MonitoringController::class, 'index'])->name('monitoring');
 
     // --- Analyse -----------------------------------------------------------
     // Séries temporelles : un total dit où on en est, une série dit si cela
