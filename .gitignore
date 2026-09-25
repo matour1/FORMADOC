@@ -39,3 +39,7 @@ test-rapport.txt
 txt.text
 /prompts
 /docs-generation-instructions
+
+# Maquettes de reference (documents de travail, donnees fictives, ~4,4 Mo).
+# Non utilisees par l'application : aucun composant ne les reference.
+/disign
