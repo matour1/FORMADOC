@@ -62,7 +62,22 @@ class SettingsRepository
      *
      * @var array<string, mixed>|null
      */
-    private ?array $memoire = null;
+    /**
+     * Mémorisation partagée entre TOUTES les instances du dépôt.
+     *
+     * **Pourquoi statique, et non une propriété d'instance.** Le dépôt est
+     * enregistré en singleton, mais rien n'empêche le conteneur d'en créer une
+     * seconde instance — et les tests en résolvent volontairement plusieurs
+     * (`app(SettingsRepository::class)` dans le test, une autre instance dans le
+     * contrôleur sous test). Avec une mémoire par instance, écrire depuis l'une et
+     * lire depuis l'autre renvoyait `null` : `set()` semblait n'avoir aucun effet,
+     * et un booléen tout juste désactivé se relisait comme « jamais défini ».
+     *
+     * La cohérence est rétablie par `flush()`, appelé à la fin de chaque écriture.
+     *
+     * @var array<string, mixed>|null
+     */
+    private static ?array $memoire = null;
 
     /**
      * Tous les réglages, typés, indexés par clé.
@@ -71,12 +86,12 @@ class SettingsRepository
      */
     public function all(): array
     {
-        if ($this->memoire !== null) {
-            return $this->memoire;
+        if (self::$memoire !== null) {
+            return self::$memoire;
         }
 
         if (! $this->tableExists()) {
-            return $this->memoire = [];
+            return self::$memoire = [];
         }
 
         /** @var array<string, array{value: string, type: string}> $bruts */
@@ -89,13 +104,13 @@ class SettingsRepository
                 ->all();
         });
 
-        $this->memoire = [];
+        self::$memoire = [];
 
         foreach ($bruts as $cle => $brut) {
-            $this->memoire[$cle] = $this->cast($brut['value'], $brut['type']);
+            self::$memoire[$cle] = $this->cast($brut['value'], $brut['type']);
         }
 
-        return $this->memoire;
+        return self::$memoire;
     }
 
     /**
@@ -183,12 +198,23 @@ class SettingsRepository
     }
 
     /**
-     * Vide le cache applicatif et la mémoire locale.
+     * Vide le cache applicatif et la mémoire locale, puis réapplique la surcharge
+     * de configuration.
+     *
+     * **Pourquoi réappliquer la surcharge ici et pas seulement vider le cache.**
+     * `config()` n'est surchargé qu'au démarrage de la requête. Après une
+     * modification, il porte donc encore les anciennes valeurs : un contrôleur qui
+     * relit `config()` dans la MÊME requête obtient la valeur d'avant, et affiche
+     * ou calcule un résultat faux — silencieusement, puisque rien ne signale que
+     * `config()` est périmé. Réappliquer la surcharge après vidage rend la méthode
+     * sûre à appeler depuis n'importe où, y compris après une écriture.
      */
     public function flush(): void
     {
         Cache::forget(self::CACHE_KEY);
-        $this->memoire = null;
+        self::$memoire = null;
+
+        $this->applyToConfig();
     }
 
     /**
@@ -201,29 +227,32 @@ class SettingsRepository
      * pas du tout, ce qui rendrait `php artisan migrate` impossible : on ne
      * pourrait jamais créer la table manquante.
      *
-     * Le résultat est mémorisé dans une propriété statique : la vérification a
-     * lieu à chaque requête, et interroger le schéma à chaque fois coûte une
-     * requête d'information supplémentaire.
+     * **Le résultat n'est PAS mémorisé dans un `static`, et c'est volontaire.**
+     * C'était le cas, et c'était un défaut : la réponse est « non » au premier
+     * démarrage (migrations pas encore passées), et un `static` la fige pour tout
+     * le processus. Tous les appels suivants — y compris ceux d'une même requête
+     * après `php artisan migrate`, ou ceux des tests qui migrent APRÈS le boot de
+     * l'application — recevaient ce « non » périmé. Conséquence observée :
+     * `set()` enregistrait bien en base, mais la relecture renvoyait `null`, comme
+     * si le réglage n'avait jamais été écrit.
+     *
+     * Le coût de la vérification est négligeable : elle n'a lieu qu'à l'amorçage
+     * d'une requête et après chaque écriture, jamais en boucle.
      */
     private function tableExists(): bool
     {
-        static $existe = null;
+        try {
+            return Schema::hasTable('settings');
+        } catch (\Throwable $e) {
+            // Connexion indisponible (base en cours d'installation, tests sans
+            // migration) : on considère la table absente plutôt que de faire
+            // échouer le démarrage de l'application entière.
+            Log::debug('Réglages : table indisponible, surcharge ignorée.', [
+                'error' => $e->getMessage(),
+            ]);
 
-        if ($existe === null) {
-            try {
-                $existe = Schema::hasTable('settings');
-            } catch (\Throwable $e) {
-                // Connexion indisponible (base en cours d'installation, tests
-                // sans migration) : on considère la table absente plutôt que de
-                // faire échouer le démarrage de l'application entière.
-                Log::debug('Réglages : table indisponible, surcharge ignorée.', [
-                    'error' => $e->getMessage(),
-                ]);
-                $existe = false;
-            }
+            return false;
         }
-
-        return $existe;
     }
 
     /**

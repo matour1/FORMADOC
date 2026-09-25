@@ -64,6 +64,13 @@
             </a>
         </nav>
 
+        <span class="sidebar-section-label">Pilotage</span>
+        <nav class="sidebar-nav">
+            <a href="{{ route('admin.settings') }}" class="{{ request()->routeIs('admin.settings*') ? 'active' : '' }}">
+                <i data-lucide="sliders-horizontal"></i> Configuration
+            </a>
+        </nav>
+
         {{-- Sortie vers le reste du produit. Sans ces deux liens, l'espace
              d'exploitation était un cul-de-sac : le seul retour possible était
              le bouton « précédent » du navigateur. --}}
@@ -111,6 +118,24 @@
         </header>
 
         <main class="page-container">
+            {{-- Erreurs de validation.
+                 Indispensables depuis que l'espace d'exploitation n'est plus en
+                 lecture seule : une valeur refusée (marge hors bornes, devise
+                 mal formée) renvoyait le formulaire SANS aucune explication. Le
+                 réglage semblait ignoré, et rien n'indiquait s'il fallait
+                 corriger la saisie ou si l'enregistrement avait échoué. --}}
+            @if (isset($errors) && $errors->any())
+                <div class="banner banner-danger" role="alert">
+                    <i data-lucide="alert-circle"></i>
+                    <div>
+                        <strong>Réglage refusé :</strong>
+                        @foreach ($errors->all() as $error)
+                            <div>{{ $error }}</div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
             @yield('content')
         </main>
     </div>
