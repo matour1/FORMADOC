@@ -52,6 +52,29 @@ class AuthController extends Controller
         ]);
 
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
+            // --- Compte suspendu -------------------------------------------
+            //
+            // Le contrôle a lieu APRÈS `Auth::attempt()` et non avant : vérifier
+            // l'état du compte demande de le charger, or l'authentification est
+            // précisément ce qui prouve que l'appelant est bien son propriétaire.
+            // Contrôler avant reviendrait à révéler « ce compte existe mais est
+            // suspendu » à quiconque devine une adresse e-mail.
+            //
+            // La session est invalidée immédiatement : sans cela, l'utilisateur
+            // serait authentifié pour la durée de la requête, et un contrôle
+            // ultérieur manquant laisserait la session ouverte.
+            $utilisateur = Auth::user();
+
+            if ($utilisateur !== null && ! $utilisateur->canSignIn()) {
+                Auth::logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+
+                return back()
+                    ->withErrors(['email' => 'Ce compte est suspendu. Contactez le support pour le rétablir.'])
+                    ->onlyInput('email');
+            }
+
             $request->session()->regenerate();
 
             return redirect()->intended(route('account.index'))

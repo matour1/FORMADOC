@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ClarificationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
@@ -74,6 +75,16 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     // redéployer. C'est la route qui donne son sens à la table `settings`.
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings');
     Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
+
+    // --- Gestion des comptes ------------------------------------------------
+    // Routes ÉCRITURE, isolées des routes de consultation ci-dessus pour que
+    // l'inventaire de ce qui modifie une donnée d'utilisateur reste lisible d'un
+    // coup d'œil dans ce fichier. Chaque action est journalisée par le contrôleur.
+    Route::get('/users', [UserController::class, 'index'])->name('users.index');
+    Route::get('/users/{user}', [UserController::class, 'show'])->name('users.show');
+    Route::post('/users/{user}/admin', [UserController::class, 'toggleAdmin'])->name('users.admin');
+    Route::post('/users/{user}/suspension', [UserController::class, 'toggleSuspension'])->name('users.suspension');
+    Route::post('/users/{user}/credits', [UserController::class, 'adjustCredits'])->name('users.credits');
 });
 
 // ⚠️ MODULE « PAGE DE GARDE » SUPPRIMÉ DE CETTE VERSION.

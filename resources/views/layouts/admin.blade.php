@@ -66,6 +66,9 @@
 
         <span class="sidebar-section-label">Pilotage</span>
         <nav class="sidebar-nav">
+            <a href="{{ route('admin.users.index') }}" class="{{ request()->routeIs('admin.users*') ? 'active' : '' }}">
+                <i data-lucide="users"></i> Comptes
+            </a>
             <a href="{{ route('admin.settings') }}" class="{{ request()->routeIs('admin.settings*') ? 'active' : '' }}">
                 <i data-lucide="sliders-horizontal"></i> Configuration
             </a>
@@ -120,15 +123,19 @@
         <main class="page-container">
             {{-- Erreurs de validation.
                  Indispensables depuis que l'espace d'exploitation n'est plus en
-                 lecture seule : une valeur refusée (marge hors bornes, devise
-                 mal formée) renvoyait le formulaire SANS aucune explication. Le
-                 réglage semblait ignoré, et rien n'indiquait s'il fallait
-                 corriger la saisie ou si l'enregistrement avait échoué. --}}
+                 lecture seule : une saisie refusée (marge hors bornes, devise mal
+                 formée, motif d'ajustement trop court) renvoyait le formulaire SANS
+                 aucune explication. La valeur semblait ignorée, et rien n'indiquait
+                 s'il fallait corriger la saisie ou si l'enregistrement avait échoué.
+
+                 L'intitulé est resté neutre (« Action refusée ») : le layout sert
+                 plusieurs formulaires, et « Réglage refusé » ne décrivait plus rien
+                 d'utile sur la fiche d'un compte. --}}
             @if (isset($errors) && $errors->any())
                 <div class="banner banner-danger" role="alert">
                     <i data-lucide="alert-circle"></i>
                     <div>
-                        <strong>Réglage refusé :</strong>
+                        <strong>Action refusée :</strong>
                         @foreach ($errors->all() as $error)
                             <div>{{ $error }}</div>
                         @endforeach

@@ -31,6 +31,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'is_admin' => 'boolean',
+            'is_suspended' => 'boolean',
             'password' => 'hashed',
             'credits_balance' => 'integer',
             'preferences' => 'array',
@@ -85,6 +86,30 @@ class User extends Authenticatable
         return $this->hasOne(Subscription::class)
             ->where('status', 'active')
             ->latestOfMany();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Suspension de compte
+    |--------------------------------------------------------------------------
+    | Le contrôle se fait à la connexion (voir AuthController) et non par un
+    | middleware global : vérifier à chaque requête ajouterait une lecture de
+    | session sans rien apporter, puisque la session ne survit pas à une
+    | déconnexion forcée.
+    */
+
+    /**
+     * Le compte peut-il se connecter ?
+     *
+     * Centralisé ici plutôt qu'écrit en clair dans le contrôleur de connexion :
+     * le jour où une seconde condition d'accès apparaîtra (compte fermé à la
+     * demande du client, période d'essai expirée), il n'y aura qu'un endroit à
+     * modifier — et la connexion est précisément l'endroit qu'on oublie de
+     * mettre à jour.
+     */
+    public function canSignIn(): bool
+    {
+        return ! $this->is_suspended;
     }
 
     public function creditTransactions(): HasMany
