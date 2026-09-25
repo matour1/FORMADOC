@@ -20,6 +20,7 @@ use App\Services\Detection\TextExtractionService;
 use App\Services\OpenRouter\DeepSeekFallbackService;
 use App\Services\OpenRouter\ModelRouter;
 use App\Services\OpenRouter\OpenRouterService;
+use App\Services\Settings\SettingsRepository;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -33,6 +34,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Réglages d'exploitation. En singleton : ils sont lus à chaque requête
+        // (surcharge de la configuration) et le dépôt porte un cache mémoire
+        // qu'il serait absurde de reconstruire à chaque injection.
+        $this->app->singleton(SettingsRepository::class);
         // Orchestrateur de la coexistence entre l'ancien pipeline documentaire
         // (`app/DocAnalyzer`) et celui de la refonte (`app/Document`). Enregistré
         // en singleton : il ne porte aucun état, mais éviter de reconstruire le
@@ -140,6 +145,21 @@ class AppServiceProvider extends ServiceProvider
         // Correction pour MySQL ancien : longueur de clé maximale 1000 octets
         // utf8mb4 nécessite des clés plus courtes (191 max)
         Schema::defaultStringLength(191);
+
+        // Réglages d'exploitation : surcharge de `config()` AVANT tout le reste.
+        //
+        // L'ordre compte. Cette surcharge doit avoir lieu avant que le moindre
+        // service ne lise une valeur de facturation — et elle est placée en tête
+        // de `boot()` pour que ce soit le cas sans avoir à en suivre l'ordre
+        // d'exécution à chaque évolution du fournisseur.
+        //
+        // Sans cette ligne, les réglages enregistrés dans l'administration
+        // n'auraient AUCUN effet : l'écran afficherait une nouvelle marge, la
+        // base la contiendrait, et `UsageCostCalculator` continuerait de lire
+        // celle du fichier de configuration. C'est le type de défaut qui ne
+        // produit aucune erreur et ne se voit qu'en comparant un prix calculé à
+        // la valeur affichée.
+        $this->app->make(SettingsRepository::class)->applyToConfig();
 
         $this->configureRateLimiters();
     }
