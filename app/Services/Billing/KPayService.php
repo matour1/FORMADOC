@@ -136,6 +136,22 @@ class KPayService
      * Chaîne signée : "status|reference|externalId|ts"
      * Rejette si ts > 10 min (anti-rejeu).
      *
+     * **L'unité de `ts` est en MILLISECONDES, et c'est la source d'un défaut
+     * silencieux qu'il faut connaître.** La documentation donne l'exemple
+     * `ts=1747245600000` — treize chiffres, donc un horodatage en millisecondes.
+     * Le code comparait cette valeur à `time()`, qui est en SECONDES : l'écart
+     * calculé valait ~1,7 × 10¹² au lieu de quelques dizaines, donc TOUT retour de
+     * passerelle était rejeté comme « trop ancien ». Le client était bien débité,
+     * mais la page de retour annonçait systématiquement un échec de vérification —
+     * défaut invisible en test unitaire classique, parce qu'il ne produit aucune
+     * erreur, seulement un refus.
+     *
+     * On ramène donc l'horodatage en secondes avant comparaison, sans supposer
+     * l'unité : une valeur de plus de 10 chiffres ne peut pas être en secondes
+     * (elle correspondrait à une date au-delà de l'an 2286), donc on divise. La
+     * conversion est ainsi tolérante aux deux formats, ce qui évite de casser si
+     * KPay normalise un jour son horodatage.
+     *
      * @param  array<string, string>  $query
      */
     public function verifyReturnSignature(array $query): bool
@@ -147,25 +163,45 @@ class KPayService
             return false;
         }
 
+        $tsSecondes = $this->horodatageEnSecondes($ts);
+
         // Anti-rejeu : fenêtre de 10 minutes
         $ttl = (int) config('kpay.signature_ttl_minutes', 10);
-        if (abs(time() - $ts) > $ttl * 60) {
+
+        if (abs(time() - $tsSecondes) > $ttl * 60) {
             return false;
         }
 
         $secret = config('kpay.secret_key', '');
+
         if ($secret === '') {
             return false;
         }
 
-        $chain = ($query['status'] ?? '').'|'
+        // La chaîne signée utilise l'horodatage tel qu'il a été REÇU, pas la
+        // version convertie : KPay l'a signé dans son format d'origine, et signer
+        // une autre représentation produirait une signature différente.
+        $chaine = ($query['status'] ?? '').'|'
             .($query['reference'] ?? '').'|'
             .($query['externalId'] ?? '').'|'
             .$ts;
 
-        $expected = hash_hmac('sha256', $chain, $secret);
+        $expected = hash_hmac('sha256', $chaine, $secret);
 
         return hash_equals($expected, $sig);
+    }
+
+    /**
+     * Ramène un horodatage KPay en secondes, quelle que soit son unité.
+     *
+     * 10 chiffres correspondent à une date jusqu'en 2286 : au-delà, la valeur est
+     * nécessairement en millisecondes. Le test est donc fiable pour des décennies,
+     * et il évite de dépendre d'une unité que la documentation ne nomme pas
+     * explicitement — elle ne l'indique que par l'exemple.
+     */
+    private function horodatageEnSecondes(int $ts): int
+    {
+        return $ts > 9_999_999_999 ? (int) intdiv($ts, 1000) : $ts;
     }
 
     /**

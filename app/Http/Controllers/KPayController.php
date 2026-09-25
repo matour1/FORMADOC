@@ -5,11 +5,13 @@ namespace App\Http\Controllers;
 use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentReceipt;
 use App\Models\KpayPayment;
+use App\Models\PaymentLink;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Billing\CreditService;
 use App\Services\Billing\InvoiceService;
 use App\Services\Billing\KPayService;
+use App\Services\Billing\PaymentLinkService;
 use App\Services\Billing\SubscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -184,10 +186,30 @@ class KPayController extends Controller
         }
 
         // 3. Récupérer l'utilisateur depuis les métadonnées
+        //
+        // **Deux sources, et l'ordre compte.** La métadonnée `user_id` est fournie
+        // par les flux qui connaissent l'utilisateur (achat de crédits, abonnement).
+        // Un lien de paiement, lui, transmet `payment_link_id` et pas `user_id` :
+        // sans ce repli, le webhook répondait `user_not_found` et SORTAIT, avant
+        // même d'examiner le `purpose`. Le lien n'était donc jamais réglé — le
+        // montant était encaissé côté opérateur et le lien restait « en attente »,
+        // donc payable une seconde fois.
         $userId = (int) ($metadata['user_id'] ?? 0);
+
+        if ($userId === 0 && (int) ($metadata['payment_link_id'] ?? 0) > 0) {
+            $userId = (int) (PaymentLink::whereKey((int) $metadata['payment_link_id'])->value('user_id') ?? 0);
+        }
+
         $user = $userId > 0 ? User::find($userId) : null;
 
-        if (! $user) {
+        // Un lien de paiement sans destinataire (client externe) est légitime :
+        // le règlement doit être enregistré même sans compte à créditer. Exiger un
+        // utilisateur ici perdrait la trace du paiement — c'est pourquoi le repli
+        // ci-dessous existe plutôt qu'un simple `return`.
+        $purpose = (string) ($metadata['purpose'] ?? 'credit_purchase');
+        $estLienSansCompte = $purpose === 'payment_link' && (int) ($metadata['payment_link_id'] ?? 0) > 0;
+
+        if (! $user && ! $estLienSansCompte) {
             Log::warning('KPay webhook : utilisateur introuvable', ['user_id' => $userId, 'paymentId' => $paymentId]);
 
             return response()->json(['status' => 'user_not_found'], 200);
@@ -199,9 +221,59 @@ class KPayController extends Controller
         // même transaction, sérialisée par lockForUpdate sur la ligne user.
         // Le check-then-act historique (exists() puis credit()) laissait une
         // fenêtre de course où deux webhooks concurrents pouvaient doubler.)
-        $purpose = (string) ($metadata['purpose'] ?? 'credit_purchase');
 
         if ($status === 'completed') {
+            // --- Lien de paiement -------------------------------------------
+            //
+            // Traité AVANT l'achat de crédits, et pour une raison précise : sans
+            // cette branche, un lien de paiement réglé en ligne tombait dans le
+            // chemin « achat de crédits », qui créditait le montant au nom de
+            // l'utilisateur SANS jamais marquer le lien comme payé. Le lien restait
+            // « en attente » alors que l'argent était encaissé — donc payable une
+            // seconde fois — et rien ne reliait le versement au lien d'origine.
+            //
+            // Le règlement passe par `PaymentLinkService`, qui verrouille la ligne
+            // et garantit un versement unique même si le retour de passerelle a déjà
+            // traité le paiement : c'est le cas nominal, pas théorique.
+            if ($purpose === 'payment_link') {
+                $lienId = (int) ($metadata['payment_link_id'] ?? 0);
+                $lien = $lienId > 0 ? PaymentLink::find($lienId) : null;
+
+                if ($lien === null) {
+                    Log::warning('KPay webhook : lien de paiement introuvable', [
+                        'payment_link_id' => $lienId,
+                        'paymentId' => $paymentId,
+                    ]);
+
+                    return response()->json(['status' => 'link_not_found'], 200);
+                }
+
+                $kpayLocal = KpayPayment::where('external_id', $externalId)->first();
+
+                $reglement = app(PaymentLinkService::class)->regler(
+                    lien: $lien,
+                    reference: $paymentId,
+                    kpayPaymentId: $kpayLocal?->id,
+                );
+
+                Log::info('KPay webhook : lien de paiement traité', [
+                    'lien_id' => $lien->id,
+                    'paymentId' => $paymentId,
+                    'ok' => $reglement['ok'] ?? false,
+                    'motif' => $reglement['motif'] ?? null,
+                    'credits_verses' => $reglement['credits_verses'] ?? null,
+                ]);
+
+                // Un échec de règlement (lien expiré entre-temps, destinataire
+                // introuvable) n'est PAS une erreur du webhook : répondre 500 ferait
+                // réessayer KPay indéfiniment sur une situation qu'un réessai ne
+                // résoudra pas. On répond 200 et on laisse la trace pour traitement
+                // manuel.
+                return response()->json([
+                    'status' => ($reglement['ok'] ?? false) ? 'processed' : 'link_not_registrable',
+                ], 200);
+            }
+
             // --- Abonnement (souscription ou renouvellement) ---
             if (in_array($purpose, ['subscription', 'subscription_renewal'], true)) {
                 $activated = app(SubscriptionService::class)
@@ -308,7 +380,31 @@ class KPayController extends Controller
                 'invoice_id' => $invoice->id,
             ]);
         } else {
-            // failed / cancelled → journaliser (aucun crédit)
+            // failed / cancelled → journaliser (aucun crédit).
+            //
+            // **Un lien de paiement s'arrête ici.** Son échec ne se traite pas comme
+            // celui d'un achat de crédits : il n'y a rien à rembourser (aucun crédit
+            // n'a été versé) et rien à notifier par e-mail. Le lien reste
+            // simplement « en attente », ce qui est le bon état : le client peut
+            // réessayer tant qu'il n'est pas expiré. Envoyer un e-mail d'échec au
+            // destinataire serait même contre-productif — les abandons de paiement
+            // mobile money sont fréquents et souvent involontaires.
+            if ($purpose === 'payment_link') {
+                Log::info('KPay webhook : règlement de lien échoué ou annulé', [
+                    'paymentId' => $paymentId,
+                    'status' => $status,
+                    'reason' => $payload['failureReason'] ?? null,
+                ]);
+
+                return response()->json(['status' => 'link_not_paid'], 200);
+            }
+
+            // Un lien de paiement sans compte destinataire n'a pas d'utilisateur à
+            // qui écrire : on ne va pas plus loin plutôt que de déréférencer null.
+            if ($user === null) {
+                return response()->json(['status' => 'no_user_to_notify'], 200);
+            }
+
             // Pour un abonnement : marquer past_due (grace period)
             $failedSubscription = null;
             if (in_array($purpose, ['subscription', 'subscription_renewal'], true)) {
