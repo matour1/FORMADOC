@@ -17,23 +17,19 @@
 
     <div class="chat-layout">
 
-        {{-- Confirmation de coût AVANT envoi (exigence A) --}}
-        @if ($pendingCost = session('pending_cost'))
-            <div class="banner banner-warning" style="margin-bottom:1rem">
-                <i data-lucide="info"></i>
-                <div style="flex:1">
-                    <strong>Coût estimé : {{ is_array($pendingCost) ? ($pendingCost['credits'] ?? '?') : '?' }} crédit(s)</strong>
-                    <div style="font-size:.82rem">Estimation avant exécution — ajustement automatique après usage.</div>
-                </div>
-                <form action="{{ route('chat.send') }}" method="POST" style="display:inline-flex;gap:.5rem">
-                    @csrf
-                    <input type="hidden" name="message" value="{{ is_array($pendingCost) ? ($pendingCost['message'] ?? '') : '' }}">
-                    <input type="hidden" name="confirm_cost" value="1">
-                    <button type="submit" class="btn btn-primary btn-sm">Confirmer et envoyer</button>
-                    <a href="{{ route('chat.index') }}" class="btn btn-ghost btn-sm">Annuler</a>
-                </form>
-            </div>
-        @endif
+        {{--
+            Le BANDEAU DE CONFIRMATION DE COUT a ete retire.
+
+            Il s'affichait sur `session('pending_cost')`, un flash que PLUS AUCUN
+            code ne pose : l'etape de confirmation a ete supprimee du controleur.
+            Le bandeau etait donc du code mort — mais aussi un mensonge en
+            puissance : s'il s'affichait un jour, il proposerait « Confirmer et
+            envoyer » pour un mecanisme inexistant, en renvoyant `confirm_cost`,
+            champ que `send()` n'a jamais lu.
+
+            Le cout reste annonce AVANT envoi, dans le composer (estimation du
+            plan), puis ajuste apres usage.
+        --}}
 
         {{-- Sidebar des conversations --}}
         <aside class="chat-sidebar">
@@ -83,7 +79,22 @@
                 Aucune conversation ne correspond.
             </div>
 
-            <div class="chat-sidebar-footer mono">Historique conservé 30 jours · <span id="chatQuotaFooter"></span></div>
+            {{--
+                L'ancien libelle annoncait « Historique conserve 30 jours ».
+                C'ETAIT FAUX, et verifiable : `files:purge-temp` ne supprime que
+                les fichiers temporaires et les pieces jointes de sessions DEJA
+                supprimees. Aucune tache ne purge les conversations par anciennete,
+                et aucune duree de retention n'est configuree.
+
+                Une duree de conservation annoncee et non appliquee est un
+                engagement de confidentialite non tenu : l'utilisateur peut croire
+                ses echanges effaces alors qu'ils restent en base indefiniment.
+                On annonce donc ce qui est vrai — la suppression est manuelle —
+                plutot qu'un delai qui n'existe pas.
+            --}}
+            <div class="chat-sidebar-footer mono">
+                Vous supprimez vos conversations quand vous le souhaitez · <span id="chatQuotaFooter"></span>
+            </div>
         </aside>
 
         {{-- Zone principale : nouvelle conversation --}}
@@ -95,24 +106,19 @@
                     <span class="chat-context-info">— posez une question ou demandez une action</span>
                 </div>
                 <div class="chat-header-actions">
-                    <div class="chat-model-picker" id="chatModelPicker">
-                        <button type="button" class="btn btn-ghost btn-sm" id="chatModelSelect" aria-expanded="false" aria-haspopup="true">
-                            <i data-lucide="cpu" style="width:14px;height:14px"></i>
-                            <span id="chatModelLabel">{{ $chatModelName ?? 'Routage automatique' }}</span>
-                            <i data-lucide="chevron-down" style="width:13px;height:13px"></i>
-                        </button>
-                        <div class="chat-model-menu" id="chatModelMenu">
-                            <div class="model-menu-title">Modèles disponibles</div>
-                            <div class="model-menu-item active" data-model="auto">
-                                <span class="model-menu-icon"><i data-lucide="sparkles"></i></span>
-                                <span class="model-menu-info">
-                                    <span class="model-menu-name">Auto <span class="badge badge-info">Défaut</span></span>
-                                    <span class="model-menu-desc">Routage optimal selon la tâche et votre plan.</span>
-                                </span>
-                                <i data-lucide="check" class="model-menu-check"></i>
-                            </div>
-                        </div>
-                    </div>
+                    {{--
+                        Le SELECTEUR DE MODELE a ete retire : il laissait croire qu'on
+                        choisissait le modele, alors qu'aucun champ n'etait envoye au
+                        serveur (ChatController::send() ne lit que `message` et
+                        `attachments`). Une interface qui propose un choix sans effet est
+                        pire qu'une absence d'interface : l'utilisateur croit avoir agi.
+
+                        On affiche donc le routage REEL, en lecture.
+                    --}}
+                    <span class="chat-model-note" title="Le modele est choisi automatiquement selon la tache et votre plan.">
+                        <i data-lucide="cpu" style="width:13px;height:13px"></i>
+                        Routage automatique
+                    </span>
                 </div>
             </div>
 
@@ -229,34 +235,9 @@
             if (emptyState) emptyState.style.display = (!q && visible === 0) ? '' : 'none';
         });
 
-        // Picker de modèle (informations — routage automatique côté serveur)
-        const modelSelect = document.getElementById('chatModelSelect');
-        const modelMenu = document.getElementById('chatModelMenu');
-        if (modelSelect && modelMenu) {
-            modelSelect.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const open = modelMenu.classList.toggle('open');
-                modelSelect.setAttribute('aria-expanded', open ? 'true' : 'false');
-            });
-            document.addEventListener('click', (e) => {
-                if (!modelMenu.contains(e.target)) {
-                    modelMenu.classList.remove('open');
-                    modelSelect.setAttribute('aria-expanded', 'false');
-                }
-            });
-            modelMenu.querySelectorAll('.model-menu-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    modelMenu.querySelectorAll('.model-menu-item').forEach(i => i.classList.remove('active'));
-                    item.classList.add('active');
-                    const label = item.querySelector('.model-menu-name');
-                    if (label) {
-                        document.getElementById('chatModelLabel').textContent = label.childNodes[0].textContent.trim();
-                    }
-                    modelMenu.classList.remove('open');
-                    modelSelect.setAttribute('aria-expanded', 'false');
-                });
-            });
-        }
+        // Le selecteur de modele a ete retire : il laissait croire qu'on choisissait
+        // le modele, alors qu'aucun champ n'etait envoye au serveur. Le routage est
+        // fait par ModelRouter selon la tache et le plan.
     </script>
 @endsection
 

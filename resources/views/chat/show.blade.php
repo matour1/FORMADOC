@@ -3,24 +3,13 @@
 @section('title', 'Conversation — Assistant IA')
 
 @php
-    // Modèles réels du plan de l'utilisateur (alignés sur le routage backend)
-    $router = app(\App\Services\OpenRouter\ModelRouter::class);
-    $planSlug = auth()->user()->currentPlanSlug();
-    $chatModel = $router->select('chat_text', $planSlug)['model'];
-    $analysisModel = $router->select('document_analysis', $planSlug)['model'];
-    $formatModel = $router->select('document_full_format', $planSlug)['model'];
-    $imageModel = $router->select('image_generation', $planSlug)['model'];
-    $modelShort = fn (string $m) => collect(explode('/', $m))->last();
-    $modelName = [
-        'deepseek-chat' => 'DeepSeek · Chat',
-        'llama-3.1-8b-instruct' => 'Llama · Chat rapide',
-        'claude-3.5-sonnet' => 'Claude Sonnet',
-        'claude-3-opus' => 'Claude Opus',
-        'gpt-4o' => 'GPT-4o',
-        'gpt-4o-mini' => 'GPT-4o mini',
-        'gpt-image-1' => 'GPT Image',
-        'gpt-image-1-mini' => 'GPT Image mini',
-    ][$modelShort($chatModel)] ?? $modelShort($chatModel);
+    // Le bloc qui calculait les modèles du plan a été retiré avec le sélecteur.
+    //
+    // Le modèle RÉELLEMENT utilisé est déjà affiché dans l'en-tête de page
+    // (`$chatSession->model_used`), et c'est lui qui fait foi. Afficher en plus le
+    // modèle « préféré » du plan aurait donné deux noms différents à l'écran, dont
+    // un qui ne reflète pas ce qui s'est passé — et sur un écran étroit, la note se
+    // retrouvait tronquée au milieu du nom.
 @endphp
 
 @section('content')
@@ -101,7 +90,11 @@
                 </div>
             @endforeach
 
-            <div class="chat-sidebar-footer mono">Historique conservé 30 jours · Quota IA : {{ $quotaStatus['ai']['used'] }}/{{ $quotaStatus['ai']['unlimited'] ? '∞' : $quotaStatus['ai']['quota'] }}</div>
+            {{-- Meme correction que dans la liste des conversations : aucune duree de
+                 retention n'est appliquee, donc aucune ne doit etre annoncee. --}}
+            <div class="chat-sidebar-footer mono">
+                Suppression à la demande · Quota IA : {{ $quotaStatus['ai']['used'] }}/{{ $quotaStatus['ai']['unlimited'] ? '∞' : $quotaStatus['ai']['quota'] }}
+            </div>
         </aside>
 
         {{-- Zone principale --}}
@@ -119,46 +112,24 @@
                          les outils sont systématiquement proposés et l'IA les exécute
                          elle-même. Aucun sélecteur n'est exposé à l'utilisateur. --}}
 
-                    {{-- Sélecteur de modèle (routage réel du plan) --}}
-                    <div class="chat-model-picker">
-                        <button type="button" class="chat-model-select" id="chatModelSelect" aria-haspopup="true" aria-expanded="false">
-                            <span class="model-dot"></span>
-                            <span id="chatModelLabel">{{ $modelName }}</span>
-                            <i data-lucide="chevron-down" style="width:13px;height:13px;flex-shrink:0"></i>
-                        </button>
-                        <div class="chat-model-menu" id="chatModelMenu" role="menu" aria-label="Choix du modèle">
-                            <div class="model-menu-title">Routage IA du plan {{ ucfirst($planSlug) }}</div>
-                            <div class="model-menu-item active" data-model="chat_text" role="menuitemradio">
-                                <span class="model-menu-icon"><i data-lucide="message-circle" style="width:15px;height:15px"></i></span>
-                                <span class="model-menu-info">
-                                    <span class="model-menu-name">Chat · {{ $modelShort($chatModel) }} <span class="badge badge-info">Défaut</span></span>
-                                    <span class="model-menu-desc">Dialogue rapide et économique, idéal pour discuter.</span>
-                                </span>
-                                <i data-lucide="check" class="model-menu-check" style="width:14px;height:14px"></i>
-                            </div>
-                            <div class="model-menu-item" data-model="document_analysis" role="menuitemradio">
-                                <span class="model-menu-icon"><i data-lucide="search" style="width:15px;height:15px"></i></span>
-                                <span class="model-menu-info">
-                                    <span class="model-menu-name">Analyse · {{ $modelShort($analysisModel) }}</span>
-                                    <span class="model-menu-desc">Compréhension fine des documents et levée d'ambiguïtés.</span>
-                                </span>
-                            </div>
-                            <div class="model-menu-item" data-model="document_full_format" role="menuitemradio">
-                                <span class="model-menu-icon"><i data-lucide="align-left" style="width:15px;height:15px"></i></span>
-                                <span class="model-menu-info">
-                                    <span class="model-menu-name">Mise en forme · {{ $modelShort($formatModel) }}</span>
-                                    <span class="model-menu-desc">Mise en forme complète haute qualité de documents.</span>
-                                </span>
-                            </div>
-                            <div class="model-menu-item" data-model="image_generation" role="menuitemradio">
-                                <span class="model-menu-icon"><i data-lucide="image" style="width:15px;height:15px"></i></span>
-                                <span class="model-menu-info">
-                                    <span class="model-menu-name">Image · {{ $modelShort($imageModel) }}</span>
-                                    <span class="model-menu-desc">Génération d'images et d'illustrations.</span>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
+                    {{--
+                        Le SELECTEUR DE MODELE a ete retire, et c'est une correction, pas
+                        une simplification.
+
+                        Il affichait « Chat / Analyse / Mise en forme / Image » et laissait
+                        croire qu'on choisissait le modele. Or aucun champ n'etait envoye au
+                        serveur : ChatController::send() ne lit que `message` et
+                        `attachments`. Le choix etait purement local — le modele reellement
+                        utilise est celui que ModelRouter choisit selon la tache.
+
+                        Une interface qui propose un choix sans effet est pire qu'une absence
+                        d'interface : l'utilisateur croit avoir agi. On affiche donc le
+                        routage REEL, en lecture.
+                    --}}
+                    <span class="chat-model-note" title="Le modele est choisi automatiquement selon la tache et votre plan. Le modele utilise figure en haut de la conversation.">
+                        <i data-lucide="cpu" style="width:13px;height:13px"></i>
+                        Routage automatique
+                    </span>
                     <button type="button" class="chat-attach-btn" id="chatSearchToggleBtn" aria-label="Rechercher dans les messages" title="Rechercher dans les messages">
                         <i data-lucide="search" style="width:16px;height:16px"></i>
                     </button>
@@ -198,7 +169,20 @@
                         </div>
                         <div class="msg-body">
                             <div class="msg-bubble">
-                            {!! nl2br(e($message->content)) !!}
+                            {{--
+                                Rendu markdown, PAS de texte brut.
+
+                                La version precedente utilisait nl2br(e(...)) — donc le
+                                markdown s'affichait tel quel : « ### Resume de l'analyse »
+                                et « **Titres detectes** » apparaissaient litteralement dans
+                                les reponses. Verifie sur un message reel en base.
+
+                                La directive @markdown rend un HTML SÛR : le contenu est
+                                echappe AVANT toute transformation (voir
+                                ChatMarkdownRenderer), parce qu'il vient d'un modele qui a
+                                lu un document non fiable — donc potentiellement hostile.
+                            --}}
+                            @markdown($message->content)
                                 @if (! empty($message->metadata['tool_turns']) && $message->metadata['tool_turns'] > 0)
                                     {{-- Q-MASQUAGE : badge discret, sans détail brut des appels d'outil --}}
                                     <p style="margin-top:.6rem;font-size:.76rem;opacity:.85">
@@ -418,40 +402,9 @@
             });
         });
 
-        // Sélecteur de modèle (routage : le backend choisit le modèle, ici on guide l'utilisateur)
-        const modelSelect = document.getElementById('chatModelSelect');
-        const modelMenu = document.getElementById('chatModelMenu');
-        if (modelSelect && modelMenu) {
-            modelSelect.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const open = modelMenu.classList.toggle('open');
-                modelSelect.setAttribute('aria-expanded', open ? 'true' : 'false');
-            });
-            document.addEventListener('click', (e) => {
-                if (!modelMenu.contains(e.target)) {
-                    modelMenu.classList.remove('open');
-                    modelSelect.setAttribute('aria-expanded', 'false');
-                }
-            });
-            modelMenu.querySelectorAll('.model-menu-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    modelMenu.querySelectorAll('.model-menu-item').forEach(x => {
-                        x.classList.remove('active');
-                        x.querySelector('.model-menu-check')?.remove();
-                    });
-                    item.classList.add('active');
-                    item.insertAdjacentHTML('beforeend', '<i data-lucide="check" class="model-menu-check" style="width:14px;height:14px;color:var(--color-primary);flex-shrink:0;margin-top:.15rem"></i>');
-                    if (window.lucide) lucide.createIcons();
-                    // Indication : le routage backend choisit le modèle selon le type de tâche.
-                    const label = document.getElementById('chatModelLabel');
-                    if (label && item.dataset.model) {
-                        label.textContent = item.querySelector('.model-menu-name')?.childNodes[0]?.textContent?.trim() || label.textContent;
-                    }
-                    modelMenu.classList.remove('open');
-                    modelSelect.setAttribute('aria-expanded', 'false');
-                });
-            });
-        }
+        // Le sélecteur de modèle a été retiré : il laissait croire qu'on choisissait
+        // le modèle, alors qu'aucun champ n'était envoyé au serveur. Le routage est
+        // fait par ModelRouter selon la tâche et le plan.
 
         // Émojis
         const emojiBtn = document.getElementById('chatEmojiBtn');
