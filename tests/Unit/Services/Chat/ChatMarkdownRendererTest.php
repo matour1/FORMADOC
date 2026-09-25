@@ -260,6 +260,99 @@ class ChatMarkdownRendererTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/on\w+=/i', $html);
     }
 
+    /**
+     * **Le cas réellement observé en production.**
+     *
+     * Le prompt système demande au modèle la liste des fichiers générés « avec leur
+     * lien de téléchargement (au format chat/generated/...) ». Le modèle obéit, mais
+     * produit un lien markdown dont la CIBLE est un chemin relatif — pas une URL.
+     *
+     * Le rendu n'acceptait que `http(s)://`, donc ce lien n'était pas converti, et
+     * l'utilisateur lisait le balisage en clair :
+     *
+     *     [Télécharger document modifié](document_modifie.docx)
+     *
+     * juste avant une pastille de téléchargement, elle, parfaitement fonctionnelle.
+     * Deux défauts d'un coup : du balisage technique dans une réponse destinée à un
+     * étudiant, et un lien inerte affiché à côté de celui qui marche.
+     */
+    public function test_un_lien_markdown_vers_un_fichier_genere_devient_un_lien_reel(): void
+    {
+        $html = $this->rendu(
+            '[Télécharger document modifié](chat/generated/2026/09/19/document_modifie.docx)'
+        );
+
+        $this->assertStringContainsString('class="msg-file-link"', $html,
+            'Un lien markdown vers un fichier généré doit devenir un lien de téléchargement.');
+        $this->assertStringContainsString('document_modifie.docx', $html);
+
+        // Le balisage ne doit PLUS être visible.
+        $this->assertStringNotContainsString('[Télécharger', $html);
+        $this->assertStringNotContainsString('](', $html);
+    }
+
+    /**
+     * Le chemin relatif est accepté avec ou sans `./` et `/` initial, parce que le
+     * modèle produit les trois formes selon le contexte de sa phrase.
+     */
+    public function test_un_chemin_relatif_est_accepte_dans_ses_trois_formes(): void
+    {
+        foreach (['chat/generated/a/b.docx', './chat/generated/a/b.docx', '/chat/generated/a/b.docx'] as $cible) {
+            $html = $this->rendu('['.'Fichier'.']('.$cible.')');
+
+            $this->assertStringContainsString('class="msg-file-link"', $html, 'Cible refusée : '.$cible);
+        }
+    }
+
+    /**
+     * Le lien reste limité aux répertoires que la route de téléchargement accepte.
+     *
+     * Sans cette borne, `[document](mon_rapport.docx)` — le modèle cite souvent un
+     * fichier par son seul nom — produirait un lien vers un fichier inexistant.
+     * Un libellé sans lien est préférable à un lien qui renvoie une erreur.
+     */
+    public function test_un_lien_markdown_vers_un_fichier_hors_perimetre_reste_du_texte(): void
+    {
+        $html = $this->rendu('[Mon rapport](mon_rapport.docx)');
+
+        $this->assertStringNotContainsString('msg-file-link', $html,
+            'Seuls les fichiers générés par le chat sont téléchargeables.');
+        $this->assertStringContainsString('Mon rapport', $html);
+    }
+
+    /**
+     * La cible d'un lien vers un fichier ne doit pas être altérée par l'encodage.
+     *
+     * `urlencode` transforme `/` en `%2F` dans le paramètre `file`, et la route
+     * décode de son côté. Si le motif de reconnaissance des chemins s'appliquait
+     * APRÈS le remplacement du lien, le chemin encodé serait à nouveau transformé à
+     * l'intérieur de l'attribut `href` — produisant un lien imbriqué, donc cassé.
+     */
+    public function test_un_lien_de_fichier_n_est_pas_transformé_une_seconde_fois(): void
+    {
+        $html = $this->rendu('[Fichier](chat/generated/2026/09/19/rapport_final_v2.docx)');
+
+        $this->assertSame(1, substr_count($html, '<a '),
+            'Le lien doit être produit une seule fois, sans imbrication.');
+        $this->assertSame(1, substr_count($html, '</a>'));
+        $this->assertStringNotContainsString('<a href="<a', $html);
+    }
+
+    /**
+     * Un chemin cité seulement dans une phrase continue de fonctionner.
+     *
+     * Contrôle de non-régression : la reconnaissance du lien markdown ne doit pas
+     * avoir remplacé la reconnaissance du chemin nu, qui est la forme que le prompt
+     * demande en priorité.
+     */
+    public function test_un_chemin_nu_reste_reconnu_apres_l_ajout_des_liens_markdown(): void
+    {
+        $html = $this->rendu('Le fichier est prêt : chat/generated/2026/09/19/rapport.docx');
+
+        $this->assertStringContainsString('class="msg-file-link"', $html);
+        $this->assertStringNotContainsString('chat/generated/2026/09/19/rapport.docx</a>', $html);
+    }
+
     // -------------------------------------------------------------------------
     // Intégration sur un message réel
     // -------------------------------------------------------------------------

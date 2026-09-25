@@ -52,13 +52,25 @@
 
     <div class="chat-layout">
 
-        {{-- Sidebar conversations --}}
-        <aside class="chat-sidebar">
+        {{-- Sidebar conversations : COLONNE sur grand ecran, TIROIR sur mobile.
+             Voir le CSS `@media (max-width: 900px)` — mesure avant correction :
+             la liste occupait 180 px en permanence et ne laissait que 102 px a la
+             conversation, soit 14 % de l'ecran. ChatGPT et Claude masquent cette
+             liste derriere un bouton ; on applique le meme modele. --}}
+        <aside class="chat-sidebar" id="chatSidebar" aria-label="Conversations">
             <div class="chat-sidebar-head">
                 <span class="chat-sidebar-title">Conversations</span>
-                <a href="{{ route('chat.index') }}" class="icon-btn" title="Nouvelle conversation" style="width:30px;height:30px">
-                    <i data-lucide="square-pen" style="width:15px;height:15px"></i>
-                </a>
+                <div style="display:flex;gap:.25rem;align-items:center">
+                    <a href="{{ route('chat.index') }}" class="icon-btn" title="Nouvelle conversation" aria-label="Nouvelle conversation" style="width:30px;height:30px">
+                        <i data-lucide="square-pen" style="width:15px;height:15px"></i>
+                    </a>
+                    {{-- Fermeture du tiroir : visible seulement quand il est ouvert,
+                         donc sur mobile. Sur grand ecran il n'y a rien a fermer. --}}
+                    <button type="button" class="icon-btn chat-drawer-close" id="chatDrawerClose"
+                            aria-label="Fermer la liste des conversations" style="width:30px;height:30px">
+                        <i data-lucide="x" style="width:15px;height:15px"></i>
+                    </button>
+                </div>
             </div>
 
             <div class="chat-search-bar" style="margin-bottom:.5rem">
@@ -68,10 +80,17 @@
 
             @foreach ($sessions as $session)
                 <div class="chat-item {{ $session->id === $chatSession->id ? 'active' : '' }}"
+                     {{-- `role="button" tabindex="0"` etait deja present, mais le
+                          gestionnaire ne repondait qu'a `Enter` : la barre d'espace
+                          etait ignoree, alors que c'est la touche qu'on emploie
+                          naturellement sur un bouton. Les deux sont desormais
+                          traitees, et `preventDefault` evite que l'espace fasse
+                          defiler la page. --}}
                      role="button" tabindex="0"
+                     aria-current="{{ $session->id === $chatSession->id ? 'true' : 'false' }}"
                      onclick="window.location='{{ route('chat.show', $session) }}'"
-                     onkeydown="if(event.key==='Enter')window.location='{{ route('chat.show', $session) }}'">
-                    <span class="chat-item-icon"><i data-lucide="message-circle"></i></span>
+                     onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.location='{{ route('chat.show', $session) }}'}">
+                    <span class="chat-item-icon" aria-hidden="true"><i data-lucide="message-circle"></i></span>
                     <span class="chat-item-main">
                         <span class="chat-item-name">{{ \Illuminate\Support\Str::limit($session->title ?: 'Sans titre', 32) }}</span>
                         <span class="chat-item-sub">{{ $session->messages_count }} msg · {{ $session->updated_at->diffForHumans() }}</span>
@@ -103,7 +122,16 @@
             {{-- En-tête --}}
             <div class="chat-main-header">
                 <div class="chat-context">
-                    <span class="chat-context-dot"></span>
+                    {{-- Ouverture du tiroir des conversations : le seul acces a la
+                         liste sur mobile. Sans lui, changer de conversation
+                         demanderait de passer par « Mes conversations », soit un
+                         aller-retour par une page intermediaire. --}}
+                    <button type="button" class="chat-drawer-toggle" id="chatDrawerToggle"
+                            aria-label="Ouvrir la liste des conversations"
+                            aria-controls="chatSidebar" aria-expanded="false">
+                        <i data-lucide="panel-left" style="width:16px;height:16px"></i>
+                    </button>
+                    <span class="chat-context-dot" aria-hidden="true"></span>
                     <strong>Assistant FORMADOC</strong>
                     <span class="chat-context-info">— outils actionnables : analyse, reconstruction, recherche web, images</span>
                 </div>
@@ -272,11 +300,27 @@
                     </div>
                 @endif
 
-                {{-- Indicateur de pensée (Claude-style) --}}
-                <div class="thinking-indicator" id="typingIndicator" style="display:none;">
-                    <span class="thinking-avatar"><i data-lucide="sparkles" style="width:14px;height:14px"></i></span>
-                    <span class="thinking-dots"><span></span><span></span><span></span></span>
-                    <span class="thinking-label">L'assistant réfléchit…</span>
+                {{-- Indicateur d'activite (style Claude).
+                     Le detail de ce qu'il annonce, et surtout ce qu'il N'annonce PAS,
+                     est explique dans les commentaires du script plus bas : l'envoi
+                     est synchrone, donc aucun avancement reel n'est observable par
+                     la page. --}}
+                <div class="thinking-indicator" id="typingIndicator" style="display:none"
+                     role="status" aria-live="polite" aria-atomic="true">
+                    <span class="thinking-avatar" aria-hidden="true"><i data-lucide="sparkles" style="width:14px;height:14px"></i></span>
+                    <span class="thinking-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+                    <span class="thinking-label" id="thinkingLabel">L'assistant traite votre demande…</span>
+                    <span class="thinking-elapsed mono" id="thinkingElapsed" role="timer" aria-live="off">0 s</span>
+                </div>
+                {{-- Avertissement d'attente longue : apparaît seulement si le delai
+                     depasse ce qui est habituel, pour ne pas inquieter sans raison. --}}
+                <div class="thinking-notice" id="thinkingNotice" style="display:none" role="status">
+                    <i data-lucide="info" aria-hidden="true"></i>
+                    <span>
+                        Le traitement continue. Les actions sur un document (analyse,
+                        conversion, mise en forme) prennent souvent une a deux minutes.
+                        Ne fermez pas cette page.
+                    </span>
                 </div>
             </div>
 
@@ -290,7 +334,7 @@
 
                 <div class="composer-box">
                     <textarea name="message" id="chat-input" rows="1" required maxlength="12000"
-                              placeholder="Pose ta question ou demande une action…"
+                              placeholder="Votre message…"
                               aria-label="Votre message"></textarea>
                     <div class="composer-tools">
                         <div class="composer-tools-wrap">
@@ -316,8 +360,26 @@
                 <div class="composer-hint">
                     <span class="chat-cost-preview">
                         <i data-lucide="coins"></i>
-                        Coût estimé : <strong>{{ $chatCostEstimate ?? 0 }} crédit(s)</strong>
-                        (modèles du plan, ajusté après usage)
+                        {{-- Le libelle est dans son propre span, et non en texte nu.
+                             Un enfant flex anonyme se comprime jusqu'a devenir plus
+                             etroit que son mot le plus long, et le navigateur coupe
+                             alors EN PLEIN MOT : « Cout estime » s'affichait
+                             « C o u t  e s t i m e » a 390 px. Un element a part
+                             entiere se replie au contraire d'un bloc. --}}
+                        <span class="cost-label">Coût estimé :</span>
+                        <strong>{{ $chatCostEstimate ?? 0 }} crédit(s)</strong>
+                        {{-- Deux formes, une seule affichee selon la largeur. Mesure a
+                             390 px : la forme longue fait passer l'indice sur deux
+                             lignes et le mot « Cout » s'y coupait.
+
+                             On ne supprime PAS la precision pour autant. Elle porte une
+                             information materielle : le montant affiche est une
+                             ESTIMATION qui sera corrigee apres usage. La retirer ferait
+                             passer le montant pour un prix definitif — exactement l'ecart
+                             qui produit une reclamation. On garde donc l'idee, sous une
+                             forme qui tient sur une ligne. --}}
+                        <span class="cost-precision">(modèles du plan, ajusté après usage)</span>
+                        <span class="cost-precision-court">(estimation)</span>
                     </span>
                     <span class="hint-keys">
                         <span class="kbd">Ctrl</span><span class="kbd">⏎</span> pour envoyer
@@ -355,6 +417,12 @@
         </div>
     </div>
 
+    {{-- Overlay du tiroir des conversations (mobile uniquement).
+         Il assombrit la conversation et, surtout, la fermeture au toucher : sans
+         lui, il faudrait viser a nouveau le bouton d'ouverture pour refermer, un
+         geste peu decouvrable sur un ecran tactile. --}}
+    <div class="chat-sidebar-overlay" id="chatSidebarOverlay" aria-hidden="true"></div>
+
     <script>
         // Autosize textarea
         const ta = document.getElementById('chat-input');
@@ -375,18 +443,107 @@
         // IMPORTANT : on utilise readOnly (et non disabled) pour le textarea :
         // un champ disabled n'est PAS envoyé avec le formulaire → Laravel
         // renverrait « The message field is required ».
+        // --- Etat de chargement pendant l'envoi -------------------------------
+        //
+        // CE QUI EST POSSIBLE, ET CE QUI NE L'EST PAS.
+        //
+        // Le formulaire est envoye en POST classique : le navigateur quitte la page
+        // et n'en reçoit la reponse qu'a la fin du traitement. La page ne peut donc
+        // connaitre NI l'avancement, NI l'outil en cours d'execution — ces
+        // informations n'existent nulle part cote client. Afficher une barre de
+        // progression, un pourcentage ou « Analyse du document… puis Conversion… »
+        // serait INVENTE, et donnerait une information fausse a l'utilisateur.
+        //
+        // Ce qui est reellement observable, en revanche :
+        //   - que le traitement est en cours (l'utilisateur vient de soumettre) ;
+        //   - depuis COMBIEN DE TEMPS (mesure reelle, celle du navigateur) ;
+        //   - que le delai depasse l'habitude (seuil, annonce comme un seuil).
+        //
+        // C'est le meme choix que l'ecran de traitement des documents, qui affiche
+        // un temps ecoule reel et une barre indeterminee plutot qu'un pourcentage
+        // fabrique — il n'existe aucune colonne de jalons pour le mesurer.
         const chatForm = document.getElementById('chat-form');
         const typingIndicator = document.getElementById('typingIndicator');
+        // `chatSend` est declare ici : il est utilise dans le gestionnaire de
+        // soumission ET dans le nettoyage `pageshow` ci-dessous. Sans cette
+        // declaration, la page levait « chatSend is not defined » a l'envoi, ce
+        // qui empechait l'indicateur de s'afficher et desactivait silencieusement
+        // le bouton — le formulaire restait utilisable, mais l'interface mentait
+        // sur l'etat de l'application.
         const chatSend = document.getElementById('chat-send');
+
+        // Une soumission peut etre annulee par la validation HTML5 du navigateur
+        // (champ vide, fichier trop lourd) : `submit` n'est alors PAS declenche, ce
+        // qui est le comportement voulu — on ne montre pas « traitement en cours »
+        // pour un formulaire refuse.
+        let timerElapsed = null;
+        let timerNotice = null;
+
+        const demarrerIndicateur = () => {
+            if (!typingIndicator) return;
+
+            const debut = Date.now();
+            const label = document.getElementById('thinkingLabel');
+            const elapsed = document.getElementById('thinkingElapsed');
+            const notice = document.getElementById('thinkingNotice');
+
+            typingIndicator.style.display = 'flex';
+
+            // Le temps ecoule est annonce toutes les secondes. `aria-live` reste a
+            // `off` sur ce compteur : une annonce vocale a chaque seconde rendrait
+            // l'interface inutilisable avec un lecteur d'ecran. C'est l'indicateur
+            // lui-meme (`role="status"`, `aria-live="polite"`) qui porte le message.
+            timerElapsed = window.setInterval(() => {
+                const s = Math.floor((Date.now() - debut) / 1000);
+                if (elapsed) elapsed.textContent = s + ' s';
+
+                // Au-dela de 20 s, on nomme ce que l'assistant est probablement en
+                // train de faire SANS l'affirmer : la mention precise que le
+                // traitement continue et qu'il ne faut pas fermer la page. Le seuil
+                // est volontairement au-dessus du temps de reponse habituel, pour
+                // que l'avertissement garde sa valeur de signal.
+                if (s >= 20 && label) {
+                    label.textContent = 'Traitement en cours…';
+                }
+                if (s >= 45 && notice) {
+                    notice.style.display = 'flex';
+                }
+            }, 1000);
+        };
+
         if (chatForm) {
             chatForm.addEventListener('submit', () => {
                 const input = document.getElementById('chat-input');
-                if (!input || !input.value.trim()) return; // Laisse le required gérer
-                if (typingIndicator) typingIndicator.style.display = 'flex';
+                if (!input || !input.value.trim()) return; // Laisse le required gerer
+
+                demarrerIndicateur();
+
+                // IMPORTANT : `readOnly` et non `disabled`. Un champ `disabled`
+                // n'est PAS transmis avec le formulaire, et Laravel repondrait
+                // « The message field is required ». Ce piege a deja ete rencontre
+                // sur ce formulaire, le commentaire est conserve pour l'eviter.
                 if (chatSend) { chatSend.disabled = true; chatSend.setAttribute('aria-busy', 'true'); }
                 if (input) input.readOnly = true;
             });
         }
+
+        // Si l'utilisateur revient sur la page (bouton « precedent » du navigateur),
+        // la restauration depuis le cache d'arriere-plan remet l'interface dans
+        // l'etat ou elle a ete quittee : indicateur affiche, champ desactive. Sans
+        // ce nettoyage, l'utilisateur croirait le traitement toujours en cours
+        // alors qu'il est termine — et ne pourrait plus rien ecrire.
+        window.addEventListener('pageshow', (e) => {
+            if (!e.persisted && !document.getElementById('thinkingNotice')) return;
+
+            window.clearInterval(timerElapsed);
+            window.clearInterval(timerNotice);
+            if (typingIndicator) typingIndicator.style.display = 'none';
+            const notice = document.getElementById('thinkingNotice');
+            if (notice) notice.style.display = 'none';
+            if (chatSend) { chatSend.disabled = false; chatSend.removeAttribute('aria-busy'); }
+            const input = document.getElementById('chat-input');
+            if (input) input.readOnly = false;
+        });
 
         // Actions rapides → remplir le champ
         document.querySelectorAll('.chat-action-btn').forEach(btn => {
@@ -511,16 +668,100 @@
             });
         }
 
-        // Scroll vers le bas au chargement
-        const messagesEl = document.getElementById('chat-messages');
-        if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+        // --- Tiroir des conversations (mobile) -------------------------------
+        //
+        // SUR MOBILE, la liste des conversations sort du flux et devient un
+        // tiroir. Mesure avant correction : elle occupait 180 px en permanence et
+        // ne laissait que 102 px a la conversation, soit 14 % de l'ecran — la
+        // liste prenait presque deux fois plus de place que le contenu.
+        //
+        // ChatGPT et Claude sur mobile procedent ainsi, et c'est le bon modele :
+        // la conversation occupe tout l'espace, la liste s'ouvre a la demande.
+        //
+        // L'ouverture/fermeture suit le pattern deja utilise par la navigation
+        // principale (`.sidebar` + `.sidebar-overlay`) : coherence avec le reste
+        // du produit, et un comportement clavier deja connu des utilisateurs.
+        const chatSidebar = document.getElementById('chatSidebar');
+        const chatOverlay = document.getElementById('chatSidebarOverlay');
+        const drawerToggle = document.getElementById('chatDrawerToggle');
+        const drawerClose = document.getElementById('chatDrawerClose');
+
+        const fermerTiroir = () => {
+            chatSidebar?.classList.remove('open');
+            chatOverlay?.classList.remove('open');
+            drawerToggle?.setAttribute('aria-expanded', 'false');
+            // Le focus revient au bouton qui a ouvert le tiroir : sans cela, il
+            // reste sur un element devenu invisible, et la navigation au clavier
+            // repart du debut de la page.
+            drawerToggle?.focus();
+        };
+
+        const ouvrirTiroir = () => {
+            chatSidebar?.classList.add('open');
+            chatOverlay?.classList.add('open');
+            drawerToggle?.setAttribute('aria-expanded', 'true');
+            // Le focus entre dans le tiroir : la liste est utilisable au clavier
+            // des son ouverture, sans avoir a la parcourir depuis le debut.
+            chatSidebar?.querySelector('.chat-item')?.focus();
+        };
+
+        drawerToggle?.addEventListener('click', () => {
+            if (chatSidebar?.classList.contains('open')) fermerTiroir();
+            else ouvrirTiroir();
+        });
+
+        drawerClose?.addEventListener('click', fermerTiroir);
+        chatOverlay?.addEventListener('click', fermerTiroir);
+
+        // Echap ferme le tiroir : c'est le geste attendu d'un panneau superpose,
+        // et le meme que pour la navigation principale.
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && chatSidebar?.classList.contains('open')) fermerTiroir();
+        });
+
+        // Choisir une conversation ferme le tiroir. Le `onclick` de chaque item
+        // navigue deja ; on ferme en plus pour que le retour en arriere (bouton
+        // « precedent ») ne rende pas un tiroir ouvert par-dessus la conversation.
+        chatSidebar?.querySelectorAll('.chat-item').forEach((item) => {
+            item.addEventListener('click', () => {
+                chatSidebar.classList.remove('open');
+                chatOverlay?.classList.remove('open');
+            });
+        });
+
+        // Si la fenetre est elargie au-dela du seuil mobile alors que le tiroir
+        // est ouvert, on le remet en etat : sinon, le retour a une largeur mobile
+        // retrouverait un tiroir ouvert et un overlay qui bloque la conversation.
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 900 && chatSidebar?.classList.contains('open')) {
+                chatSidebar.classList.remove('open');
+                chatOverlay?.classList.remove('open');
+                drawerToggle?.setAttribute('aria-expanded', 'false');
+            }
+        });
+
+        // Le defilement vers le bas etait fait ici ET dans le bloc de scripts
+        // pousse en fin de fichier : deux gestionnaires pour un meme effet. On
+        // garde le second, qui attend DOMContentLoaded — le script inline, lui,
+        // s'executait avant que les icones et la hauteur finale soient posees.
+        //
+        // ATTENTION : ne jamais ecrire une directive Blade entre accents graves
+        // dans un commentaire. Blade compile les directives MEME a l'interieur
+        // d'une balise <script> : la mention litterale de la directive de
+        // defilement a fait planter la page entiere (« Undefined property:
+        // Illuminate\View\Factory::$startPush »). Pour eviter le probleme, on
+        // ecrit le nom sans son arobase.
     </script>
 @endsection
 
 
 @push('scripts')
     <script>
-        // Scrolle en bas de la conversation au chargement
+        // Defilement en bas de la conversation au chargement.
+        //
+        // Dans `DOMContentLoaded` et non en script inline : avant cet evenement,
+        // les polices ne sont pas appliquees et donc `scrollHeight` n'est pas
+        // encore la hauteur definitive — le defilement s'arreterait trop haut.
         document.addEventListener('DOMContentLoaded', function () {
             const container = document.getElementById('chat-messages');
             if (container) {
