@@ -14,6 +14,7 @@ use App\Document\Editing\DocumentEditingService;
 use App\Document\Structure\LegacyStructureBridge;
 use App\Services\Anthropic\ClaudeSkillsService;
 use App\Services\Billing\UsageLedger;
+use App\Services\Chat\ChatMarkdownRenderer;
 use App\Services\Chat\ChatToolsService;
 use App\Services\Chat\DocumentEditService;
 use App\Services\Detection\TextExtractionService;
@@ -160,6 +161,15 @@ class AppServiceProvider extends ServiceProvider
         // produit aucune erreur et ne se voit qu'en comparant un prix calculé à
         // la valeur affichée.
         $this->app->make(SettingsRepository::class)->applyToConfig();
+
+        // Directive Blade @markdown, pour les réponses de l'assistant IA.
+        //
+        // Sans elle, chaque vue devrait écrire
+        // `{!! app(ChatMarkdownRenderer::class)->render($c) !!}` — une forme qui
+        // invite à retirer l'échappement par erreur. La directive dit ce qu'elle
+        // fait, et le rendu non échappé reste confiné dans le service, qui échappe
+        // AVANT de transformer (voir ChatMarkdownRenderer).
+        ChatMarkdownRenderer::register();
 
         $this->configureRateLimiters();
     }

@@ -703,6 +703,90 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
 .message .msg-bubble ul, .message .msg-bubble ol { margin: .4rem 0 .5rem 1.2rem; }
 .message .msg-bubble code { font-family: var(--font-mono); font-size: .82em; background: var(--color-surface-2); padding: .1rem .35rem; border-radius: 5px; }
 .message.user .msg-bubble code { background: rgba(255, 255, 255, .18); color: #fff; }
+
+/* ============ Rendu markdown des messages ============
+   Le modele repond en markdown (c'est son format naturel). Sans ces regles, les
+   balises produites par ChatMarkdownRenderer seraient du HTML brut NON STYLE :
+   un <h3> dans une bulle de 14 px heriterait de la taille par defaut du
+   navigateur, et un <ul> afficherait ses puces hors de la bulle.
+
+   Les tailles sont volontairement BASSES : un message de chat n'est pas une page,
+   et un titre de niveau 2 qui prend toute la largeur d'une bulle ecraserait la
+   conversation. */
+.msg-bubble .msg-heading {
+    font-family: var(--font-display); font-size: 1rem; font-weight: 700;
+    margin: .9rem 0 .45rem; line-height: 1.3;
+}
+.msg-bubble .msg-heading:first-child { margin-top: 0; }
+.message.user .msg-bubble .msg-heading { color: inherit; }
+
+/* Les listes ont besoin de leur propre marge : `nl2br` du texte precedent n'en
+   pose plus, puisque les elements sont generes en HTML.
+
+   ⚠️ `list-style` doit etre REDECLARE. Le preflight de Tailwind contient
+   `ul, ol { list-style: none }` (une remise a zero voulue pour les listes de
+   navigation). Sans cette redeclaration, les 27 listes d'une reponse type
+   s'affichaient SANS PUCES — visuellement, une suite de lignes indentees plutot
+   qu'une enumeration, ce qui change le sens d'un sommaire.
+   `padding-left` (et non `margin-left`) : les marqueurs se placent dans la
+   boite de l'element, et un simple `margin` les ferait sortir du cadre. */
+.msg-bubble .msg-list { list-style: disc; margin: .45rem 0 .6rem; padding-left: 1.3rem; }
+.msg-bubble ol.msg-list { list-style: decimal; }
+.msg-bubble .msg-list li { margin-bottom: .2rem; line-height: 1.55; }
+.msg-bubble .msg-list li:last-child { margin-bottom: 0; }
+/* Les puces prennent la couleur du texte de la bulle : en mode utilisateur le
+   fond est la couleur primaire, donc une puce sombre serait invisible. */
+.message.user .msg-bubble .msg-list { color: inherit; }
+
+/* Bloc de code : le contenu est litteral, donc il doit defiler horizontalement
+   plutot que casser la mise en page sur une longue ligne. */
+.msg-bubble .msg-code {
+    background: var(--color-surface-2); border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm); padding: .65rem .8rem; margin: .5rem 0;
+    overflow-x: auto; font-size: .78rem; line-height: 1.5;
+}
+.msg-bubble .msg-code code { background: none; padding: 0; font-size: inherit; }
+.message.user .msg-bubble .msg-code { background: rgba(0, 0, 0, .22); border-color: rgba(255, 255, 255, .18); }
+.message.user .msg-bubble .msg-code code { color: #fff; }
+
+/* Liens dans une bulle utilisateur : le fond est deja la couleur primaire, donc un
+   lien bleu serait illisible. */
+.message.user .msg-bubble a { color: #fff; text-decoration: underline; }
+
+/* Fichier genere : presente comme une piece jointe cliquable, pas comme du texte.
+   Le modele fournit un chemin brut ; le rendre cliquable ET distinct est ce qui
+   permet a l'utilisateur de recuperer son document. */
+.msg-file-link {
+    display: inline-flex; align-items: center; gap: .35rem;
+    background: var(--color-primary-tint); color: var(--color-primary);
+    padding: .25rem .6rem; border-radius: var(--radius-full);
+    font-family: var(--font-mono); font-size: .75rem; font-weight: 600;
+    text-decoration: none; margin: .15rem 0; transition: all var(--transition);
+}
+.msg-file-link:hover { background: var(--color-primary); color: var(--color-on-primary); }
+.message.user .msg-bubble .msg-file-link { background: rgba(255, 255, 255, .2); color: #fff; }
+.message.user .msg-bubble .msg-file-link:hover { background: #fff; color: var(--color-primary); }
+
+/* Note de routage du modele, en lecture seule.
+   Remplace un selecteur qui n'avait aucun effet : le modele est choisi par
+   ModelRouter selon la tache et le plan, l'utilisateur ne le choisit pas.
+
+   `white-space: nowrap` : sans lui, « Routage automatique · deepseek-chat »
+   s'enroulait sur trois lignes dans l'en-tete et poussait toute la zone de
+   messages vers le bas. Une note d'information ne doit pas deporter le contenu. */
+.chat-model-note {
+    display: inline-flex; align-items: center; gap: .4rem;
+    font-family: var(--font-mono); font-size: .72rem;
+    color: var(--color-text-muted); padding: .3rem .6rem;
+    background: var(--color-surface-2); border: 1px solid var(--color-border);
+    border-radius: var(--radius-full); white-space: nowrap;
+}
+/* Sur ecran etroit, le nom du modele est le premier element a ceder : la
+   mention « routage automatique » suffit alors a informer. */
+@media (max-width: 700px) {
+    .chat-model-note { font-size: 0; gap: 0; padding: .3rem .5rem; }
+    .chat-model-note i { font-size: initial; }
+}
 .message .msg-bubble pre {
     background: var(--color-surface-2); border: 1px solid var(--color-border);
     border-radius: 10px; padding: .8rem 1rem; overflow-x: auto; margin: .55rem 0;

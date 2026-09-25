@@ -18,6 +18,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Document/Adapters/DocxOoxml/TableReader.php, app/Document/Adapters/DocxOoxml/XmlLoader.php | .ai/rules/docx-ooxml.md |
 | app/Document/Editing/**, app/Document/Editing/ReExportCoordinator.php | .ai/rules/editing.md |
 | app/Document/Formatting/** | .ai/rules/formatting.md |
+| ** | .ai/rules/general.md |
 | app/Document/Lists/** | .ai/rules/lists.md |
 | database/migrations/** | .ai/rules/migrations.md |
 | app/Document/Numbering/** | .ai/rules/numbering.md |
