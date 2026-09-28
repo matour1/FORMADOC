@@ -178,6 +178,26 @@ class DocAnalyzer
     }
 
     /**
+     * Analyseur IA utilisé lors du dernier appel, s'il a eu lieu.
+     *
+     * **Pourquoi exposer cet objet.** Le mode « IA complète » envoie le document
+     * entier à l'API DeepSeek, mais l'appel est fait ICI, à l'intérieur du
+     * service — et il ne passait par aucune comptabilité. En gardant une
+     * référence à l'analyseur, l'appelant peut lire `lastUsage()` et FACTURER le
+     * traitement. Une simple copie des tokens ne suffirait pas : il faut aussi
+     * le modèle, pour appliquer le bon prix.
+     */
+    private ?DeepSeekAnalyzer $dernierAnalyseur = null;
+
+    /**
+     * Analyseur IA du dernier appel, ou null si aucun appel n'a eu lieu.
+     */
+    public function dernierAnalyseurIa(): ?DeepSeekAnalyzer
+    {
+        return $this->dernierAnalyseur;
+    }
+
+    /**
      * Appelle l'IA complémentaire (jamais fatale).
      *
      * @return array<string, array<int, array<string, mixed>>>
@@ -192,6 +212,9 @@ class DocAnalyzer
             }
 
             $analyzer = new DeepSeekAnalyzer($apiKey);
+
+            // On RETIENT l'analyseur : l'appelant lira son usage pour facturer.
+            $this->dernierAnalyseur = $analyzer;
 
             return $analyzer->analyze($contextTextWithPositions);
         } catch (\Throwable $e) {

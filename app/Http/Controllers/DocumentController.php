@@ -16,6 +16,9 @@ use App\Models\Document;
 use App\Models\DocumentStructure;
 use App\Models\GeneratedDocument;
 use App\Models\Template;
+use App\Models\User;
+use App\Services\Billing\DocumentCredits;
+use App\Services\Billing\DocumentModePricing;
 use App\Services\Billing\QuotaService;
 use App\Services\Detection\AiCorrectionService;
 use App\Services\Detection\AmbiguityDetectionService;
@@ -33,6 +36,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Throwable;
 
@@ -49,6 +53,27 @@ use Throwable;
  */
 class DocumentController extends Controller
 {
+    /**
+     * Coût en crédits de la passe de classification IA (R2), quand elle a lieu.
+     *
+     * **Il y a DEUX passes IA, pas une.** L'assistance sur les ambiguïtés
+     * (`AiCorrectionService`) et la classification des blocs
+     * (`BlockClassifier` → `DetectBlocksTool`) sont deux appels distincts. La
+     * première version de la facturation n'en comptait qu'un : mesurer 4 requêtes
+     * HTTP là où la facturation en attendait une a mis le défaut au jour. La
+     * moitié de la dépense était absorbée par l'application.
+     *
+     * Le classifieur calcule déjà ce coût (`ai_cost_credits`) : on le récupère
+     * plutôt que de l'estimer à nouveau, ce qui garantirait deux valeurs
+     * divergentes pour la même dépense.
+     */
+    private int $coutClassificationCredits = 0;
+
+    /**
+     * Nombre de blocs soumis à la classification IA lors du dernier appel.
+     */
+    private int $classificationConsultee = 0;
+
     public function __construct(
         private readonly TextExtractionService $textExtraction,
         private readonly LegendDetectionService $legendDetection,
@@ -58,6 +83,8 @@ class DocumentController extends Controller
         private readonly BlockClassifier $classifier,
         private readonly ClarificationService $clarifications,
         private readonly FormattedDocumentExporter $exporter,
+        private readonly DocumentModePricing $pricing,
+        private readonly DocumentCredits $documentCredits,
     ) {}
 
     /**
@@ -117,7 +144,7 @@ class DocumentController extends Controller
         $structure = $document->structure?->structure;
 
         if (empty($structure)) {
-            throw new \RuntimeException('Aucune structure détectée pour ce document.');
+            throw new RuntimeException('Aucune structure détectée pour ce document.');
         }
 
         // Complète le binaire des images depuis l'archive source : sans cela les
@@ -147,10 +174,110 @@ class DocumentController extends Controller
 
     /**
      * Affiche le formulaire d'upload.
+     *
+     * **Le tarif affiché est une ESTIMATION sur une taille de référence**, et
+     * c'est assumé : à cette étape le document n'est pas encore envoyé, donc sa
+     * taille réelle est inconnue. La page indique donc explicitement que le
+     * montant sera exact au moment du traitement, où la taille réelle est
+     * mesurée (voir `runDetection`).
+     *
+     * Deux alternatives auraient été pires :
+     *   - ne rien afficher — l'utilisateur découvrirait le prix après coup, ce
+     *     qui est le défaut que ce travail corrige ;
+     *   - afficher un prix fixe — il serait faux pour presque tous les
+     *     documents, et un prix faux est plus trompeur qu'une estimation
+     *     annoncée comme telle.
      */
     public function create(): View
     {
-        return view('documents.upload');
+        /** @var null|User $user */
+        $user = Auth::user();
+        $plan = $user?->currentPlanSlug() ?? 'default';
+
+        return view('documents.upload', [
+            'modes' => $this->modesPour(null, $plan),
+            'noteTarif' => 'Montants estimés pour un document d\'environ 40 000 caractères. '
+                .'Le prix exact est calculé sur la taille réelle de votre document '
+                .'au moment de l\'analyse : il peut donc être inférieur.',
+        ]);
+    }
+
+    /**
+     * Construit la liste des modes à afficher, avec leur prix.
+     *
+     * @param  null|Document  $document  Document existant : sa taille réelle sert au calcul
+     * @param  string  $plan  Plan de l'utilisateur : il détermine le modèle routé, donc le prix
+     * @return array<int, array<string, mixed>>
+     */
+    private function modesPour(?Document $document, string $plan): array
+    {
+        // Taille de référence quand le document n'est pas encore connu. Elle est
+        // reprise de la page d'envoi et n'a d'autre rôle que d'ordonner
+        // correctement les prix entre eux : un document court coûte moins qu'un
+        // long, quel que soit le référentiel.
+        $referenceChars = 40000;
+
+        if ($document !== null) {
+            // Taille RÉELLE du texte, pas du fichier : un `.docx` est compressé,
+            // donc le fichier est plus petit que son texte, et l'estimation serait
+            // sous-évaluée.
+            $referenceChars = $this->tailleTexte($document);
+        }
+
+        $icones = [
+            DocumentModePricing::MODE_REGEX => 'file-check',
+            DocumentModePricing::MODE_ASSISTE => 'sparkles',
+            DocumentModePricing::MODE_PRECISION => 'scan-search',
+        ];
+
+        $modes = [];
+
+        foreach ($this->pricing->modes() as $mode) {
+            $estimation = $this->pricing->estimate($mode['key'], $referenceChars, $plan);
+
+            $modes[] = [
+                'key' => $mode['key'],
+                'label' => $mode['label'],
+                'description' => $mode['description'],
+                'gratuit' => $mode['gratuit'],
+                'icon' => $icones[$mode['key']] ?? 'settings',
+                'credits' => $estimation['credits'],
+                'detail' => $estimation['detail'],
+            ];
+        }
+
+        return $modes;
+    }
+
+    /**
+     * Nombre de caractères du texte d'un document, ou estimation prudente.
+     *
+     * Le texte est extrait une nouvelle fois ici : le document n'est pas encore
+     * analysé au moment où l'interface de reprise s'affiche. La méthode est
+     * déterministe et sans appel réseau, donc bon marché ; et une extraction qui
+     * échoue retombe sur la taille de référence plutôt que de faire échouer
+     * l'affichage.
+     */
+    private function tailleTexte(Document $document): int
+    {
+        try {
+            $absolu = storage_path('uploads/'.$document->path);
+
+            if (! is_file($absolu)) {
+                return 40000;
+            }
+
+            $texte = $this->textExtraction->execute($absolu);
+
+            return max(1, mb_strlen($texte));
+        } catch (Throwable $e) {
+            Log::warning('Taille du texte indisponible pour le tarif, estimation par défaut', [
+                'document_id' => $document->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return 40000;
+        }
     }
 
     /**
@@ -174,10 +301,29 @@ class DocumentController extends Controller
         $consumed = ['deterministic' => false, 'ai' => false];
 
         try {
-            // Option « Utiliser l'assistance IA » (case à cocher explicite).
-            // Le mode par défaut est SANS IA : aucun appel externe n'est émis
-            // si l'utilisateur ne l'a pas activé (exigence Phase 4).
-            $useAi = $request->boolean('use_ai', false);
+            // Mode demandé, en UN SEUL contrôle (voir DocumentModePricing).
+            //
+            // `title_method` et `use_ai` ne sont plus lus depuis le formulaire :
+            // ils en sont DÉRIVÉS. Les lire séparément autorisait des
+            // combinaisons qui ne correspondent à aucun mode (« ia » + assistance
+            // cochée = demander deux fois la même dépense), et le mode réellement
+            // appliqué n'était alors plus lisible nulle part.
+            $mode = (string) $request->input('mode', DocumentModePricing::MODE_REGEX);
+
+            if (! in_array($mode, [
+                DocumentModePricing::MODE_REGEX,
+                DocumentModePricing::MODE_ASSISTE,
+                DocumentModePricing::MODE_PRECISION,
+            ], true)) {
+                // Mode inconnu : on retombe sur le GRATUIT, jamais sur un payant.
+                $mode = DocumentModePricing::MODE_REGEX;
+            }
+
+            $titleMethod = $mode === DocumentModePricing::MODE_PRECISION
+                ? DocAnalyzer::METHOD_IA
+                : DocAnalyzer::METHOD_REGEX;
+
+            $useAi = $mode === DocumentModePricing::MODE_ASSISTE;
 
             // Utilisateur connecté (nullable : les routes documents restent
             // publiques, le mode invité ne consomme pas de quotas)
@@ -241,8 +387,7 @@ class DocumentController extends Controller
             // Stockage hors web root
             $path = $file->store('documents', 'storage');
 
-            // Méthode de détection des titres (regex par défaut, sans IA)
-            $titleMethod = $request->input('title_method', DocAnalyzer::METHOD_REGEX);
+            // `$titleMethod` et `$useAi` sont dérivés du mode choisi, plus haut.
 
             $document = Document::create([
                 'filename' => $file->getClientOriginalName(),
@@ -253,12 +398,17 @@ class DocumentController extends Controller
                     'size' => $file->getSize(),
                     'title_method' => $titleMethod,
                     'use_ai' => $useAi,
+                    // Mode choisi, conservé tel quel : `title_method` et `use_ai`
+                    // en sont dérivés, mais le MODE est ce que l'utilisateur a
+                    // choisi et ce qui a été facturé. Le garder évite d'avoir à le
+                    // reconstruire plus tard à partir de deux champs.
+                    'mode' => $mode,
                     'user_id' => $user?->id,
                 ],
             ]);
 
             try {
-                $this->runDetection($document, $titleMethod, $useAi);
+                $this->runDetection($document, $titleMethod, $useAi, $user);
             } catch (Throwable $e) {
                 // P2-1 : échec de l'analyse → on nettoie le document créé et
                 // son fichier, puis on rembourse les quotas consommés. L'exception
@@ -337,6 +487,23 @@ class DocumentController extends Controller
     {
         $this->authorizeDocument($document);
 
+        /** @var null|User $user */
+        $user = Auth::user();
+
+        // Mode réellement appliqué à la dernière analyse, reconstruit depuis les
+        // métadonnées. `mode` est préféré quand il existe ; sinon on le déduit de
+        // `title_method`/`use_ai`, ce qui couvre les documents analysés avant
+        // l'introduction du mode unique.
+        $modeActuel = (string) ($document->metadata['mode'] ?? '');
+
+        if ($modeActuel === '') {
+            $modeActuel = ($document->metadata['title_method'] ?? '') === DocAnalyzer::METHOD_IA
+                ? DocumentModePricing::MODE_PRECISION
+                : (($document->metadata['use_ai'] ?? false)
+                    ? DocumentModePricing::MODE_ASSISTE
+                    : DocumentModePricing::MODE_REGEX);
+        }
+
         return view('documents.show', [
             'document' => $document,
             'structure' => $document->structure,
@@ -344,6 +511,10 @@ class DocumentController extends Controller
             // c'est la page où l'utilisateur constate le résultat d'une édition :
             // proposer l'annulation ailleurs l'obligerait à chercher.
             'undoHistory' => $this->editing->undoHistory($document->id),
+            // Ici la taille du document est CONNUE : les prix affichés sont donc
+            // exacts, contrairement à la page d'envoi où ils sont estimés.
+            'modes' => $this->modesPour($document, $user?->currentPlanSlug() ?? 'default'),
+            'modeActuel' => $modeActuel,
         ]);
     }
 
@@ -386,17 +557,36 @@ class DocumentController extends Controller
     {
         $this->authorizeDocument($document);
 
-        // Méthode demandée : 'regex' ou 'ia' (règles déterministes sinon)
-        $titleMethod = in_array($request->input('title_method'), [
-            DocAnalyzer::METHOD_REGEX,
-            DocAnalyzer::METHOD_IA,
-        ], true) ? $request->input('title_method') : DocAnalyzer::METHOD_REGEX;
+        // Mode demandé, en un SEUL contrôle. Le formulaire envoie `mode`, et
+        // l'on en DÉRIVE `title_method` et `use_ai` — au lieu de les recevoir
+        // séparément, ce qui autorisait des combinaisons ne correspondant à
+        // aucun mode réel (« ia » + assistance : deux fois la même dépense).
+        //
+        // Un mode inconnu (formulaire forgé, version antérieure) retombe sur le
+        // mode gratuit déterministe : jamais sur un mode payant.
+        $mode = (string) $request->input('mode', DocumentModePricing::MODE_REGEX);
 
-        // Assistance IA (post-processeur correctif) — mode « assisté »
-        $useAi = $request->boolean('use_ai', false);
+        if (! in_array($mode, [
+            DocumentModePricing::MODE_REGEX,
+            DocumentModePricing::MODE_ASSISTE,
+            DocumentModePricing::MODE_PRECISION,
+        ], true)) {
+            $mode = DocumentModePricing::MODE_REGEX;
+        }
+
+        $titleMethod = $mode === DocumentModePricing::MODE_PRECISION
+            ? DocAnalyzer::METHOD_IA
+            : DocAnalyzer::METHOD_REGEX;
+
+        $useAi = $mode === DocumentModePricing::MODE_ASSISTE;
 
         // Quota IA : l'assistance consomme 1 unité du quota IA, mais reste
         // OPTIONNELLE (bascule déterministe si le quota est épuisé).
+        //
+        // Ce quota et les crédits mesurent deux choses DIFFÉRENTES : le quota
+        // limite le NOMBRE d'analyses IA par mois selon le plan, les crédits
+        // paient la CONSOMMATION réelle. Un utilisateur peut donc avoir du
+        // quota et pas de crédits ; c'est la facturation qui tranche.
         $user = $request->user();
         $aiActive = false;
         if ($useAi && $user) {
@@ -405,6 +595,7 @@ class DocumentController extends Controller
                 $aiActive = true;
             } else {
                 $useAi = false;
+                $mode = DocumentModePricing::MODE_REGEX;
                 session()->flash('warning', 'Quota IA mensuel atteint ('
                     .$quota['used'].'/'.$quota['quota'].'). '
                     .'Analyse relancée en mode déterministe.');
@@ -432,7 +623,7 @@ class DocumentController extends Controller
                 ]);
             }
 
-            $this->runDetection($document, $titleMethod, $useAi);
+            $this->runDetection($document, $titleMethod, $useAi, $request->user());
 
             // Traçabilité de la méthode réellement utilisée
             $document->update([
@@ -773,81 +964,298 @@ class DocumentController extends Controller
      *                       l'utilisateur (case à cocher). Faux par défaut :
      *                       aucun appel externe n'est émis.
      */
-    private function runDetection(Document $document, string $titleMethod = DocAnalyzer::METHOD_REGEX, bool $useAi = false): void
+    private function runDetection(Document $document, string $titleMethod = DocAnalyzer::METHOD_REGEX, bool $useAi = false, ?User $user = null): void
     {
         // 1. Chemin absolu du fichier stocké
         $absolutePath = storage_path('uploads/'.$document->path);
 
-        // 2. Analyse structurelle : parse → règles déterministes → regex
-        //    (si demandé) → IA (UNIQUEMENT si title_method='ia') → fusion
-        $analyzer = new DocAnalyzer(config_path('analyzer.php'));
-        $analysis = $analyzer->analyze($absolutePath, titleMethod: $titleMethod);
-
-        // 3. Détection des légendes (regex — déterministe, conservée)
-        $text = $this->textExtraction->execute($absolutePath);
-        $legends = $this->legendDetection->execute($text);
-
-        // 3bis. Body complet (paragraphes, listes, tableaux, images) : re-parse
-        //       pour conserver TOUS les éléments avec leurs styles. C'est la
-        //       source de vérité de la reconstruction (aucune perte de contenu).
-        $parser = new DocumentParser($absolutePath);
-        $parsed = $parser->parse();
-        $bodyComplet = [];
-        foreach (($parsed['sections'] ?? []) as $sectionIndex => $section) {
-            foreach (($section['body'] ?? []) as $element) {
-                $bodyComplet[] = $element;
-            }
-        }
-
-        // 4. Assemblage de la structure normalisée
-        $structure = [
-            // Résultat normalisé du DocAnalyzer (catégories)
-            'titres' => $analysis['titres'],
-            'sous_titres' => $analysis['sous_titres'],
-            'en_tetes' => $analysis['en_tetes'],
-            'pieds_de_page' => $analysis['pieds_de_page'],
-            'tableaux' => $analysis['tableaux'],
-            'images' => $analysis['images'],
-            'elements_flottants' => $analysis['elements_flottants'],
-            // Légendes détectées par regex (complément)
-            'legends' => $legends,
-            // Contenu complet du corps : paragraphes, listes, tableaux, images
-            // dans l'ordre d'apparition (reconstruction fidèle).
-            'body_complet' => $bodyComplet,
-        ];
-
-        // 5. Détection des ambiguïtés (déterministe — numérotation vs niveau)
-        $ambiguities = (new AmbiguityDetectionService)->detect($structure);
-
-        // 5bis. Assistance IA FACULTATIVE (post-processeur correctif).
-        //       Intervient APRÈS la détection déterministe, UNIQUEMENT si
-        //       l'utilisateur a coché « Utiliser l'assistance IA ».
-        //       L'IA reçoit uniquement les éléments ambigus/incertains et
-        //       renvoie des corrections ciblées (kind, level) fusionnées
-        //       dans la structure. En cas d'échec/timeout, elle est ignorée
-        //       et la structure déterministe est conservée telle quelle.
-        if ($useAi) {
-            $structure = (new AiCorrectionService)->correct($structure, $ambiguities);
-        }
-
-        // 6. Sauvegarde (colonne 'structure' et 'ambiguities', casts array)
+        // 2. Mode de traitement, et TEXTE EXTRAIT AVANT tout appel payant.
         //
-        // Le nouveau pipeline documentaire (refonte) est exécuté EN PARALLÈLE
-        // quand il est activé : il produit le JSON structurel commun sans rien
-        // retirer à l'ancien format, qui reste la source de vérité tant que la
-        // migration n'est pas validée (principe du strangleur).
-        $structural = $this->buildStructuralPayload($document, $absolutePath, $useAi);
-        $legacyPayload = [
-            'structure' => $structure,
-            'ambiguities' => $ambiguities,
-        ];
+        // L'ordre n'est pas cosmétique : la facturation a besoin de la taille
+        // RÉELLE du document pour estimer le coût, et un appel payant ne doit
+        // jamais partir avant que le débit soit acquis. Utiliser la taille du
+        // FICHIER serait faux ici — un `.docx` est compressé, donc son texte est
+        // plus long que le fichier, et l'estimation serait sous-évaluée.
+        $mode = $this->modePour($titleMethod, $useAi);
+        $text = $this->textExtraction->execute($absolutePath);
 
-        DocumentStructure::updateOrCreate(
-            ['document_id' => $document->id],
-            $structural === null ? $legacyPayload : [...$legacyPayload, ...$structural]
-        );
+        $facturation = $this->debiterSiPayant($user, $document, $mode, mb_strlen($text));
+
+        try {
+            // 3. Analyse structurelle : parse → règles déterministes → regex
+            //    (si demandé) → IA (UNIQUEMENT si title_method='ia') → fusion
+            $analyzer = new DocAnalyzer(config_path('analyzer.php'));
+            $analysis = $analyzer->analyze($absolutePath, titleMethod: $titleMethod);
+
+            // 4. Détection des légendes (regex — déterministe, conservée)
+            $legends = $this->legendDetection->execute($text);
+
+            // 4bis. Body complet (paragraphes, listes, tableaux, images) : re-parse
+            //       pour conserver TOUS les éléments avec leurs styles. C'est la
+            //       source de vérité de la reconstruction (aucune perte de contenu).
+            $parser = new DocumentParser($absolutePath);
+            $parsed = $parser->parse();
+            $bodyComplet = [];
+            foreach (($parsed['sections'] ?? []) as $sectionIndex => $section) {
+                foreach (($section['body'] ?? []) as $element) {
+                    $bodyComplet[] = $element;
+                }
+            }
+
+            // 5. Assemblage de la structure normalisée
+            $structure = [
+                // Résultat normalisé du DocAnalyzer (catégories)
+                'titres' => $analysis['titres'],
+                'sous_titres' => $analysis['sous_titres'],
+                'en_tetes' => $analysis['en_tetes'],
+                'pieds_de_page' => $analysis['pieds_de_page'],
+                'tableaux' => $analysis['tableaux'],
+                'images' => $analysis['images'],
+                'elements_flottants' => $analysis['elements_flottants'],
+                // Légendes détectées par regex (complément)
+                'legends' => $legends,
+                // Contenu complet du corps : paragraphes, listes, tableaux, images
+                // dans l'ordre d'apparition (reconstruction fidèle).
+                'body_complet' => $bodyComplet,
+            ];
+
+            // 6. Détection des ambiguïtés (déterministe — numérotation vs niveau)
+            $ambiguities = (new AmbiguityDetectionService)->detect($structure);
+
+            // 6bis. Assistance IA FACULTATIVE (post-processeur correctif).
+            //       Intervient APRÈS la détection déterministe, UNIQUEMENT si
+            //       l'utilisateur a coché « Utiliser l'assistance IA ».
+            //       L'IA reçoit uniquement les éléments ambigus/incertains et
+            //       renvoie des corrections ciblées (kind, level) fusionnées
+            //       dans la structure. En cas d'échec/timeout, elle est ignorée
+            //       et la structure déterministe est conservée telle quelle.
+            $correction = null;
+            if ($useAi) {
+                $correction = new AiCorrectionService;
+                $structure = $correction->correct($structure, $ambiguities);
+            }
+
+            // 7. Sauvegarde (colonne 'structure' et 'ambiguities', casts array)
+            //
+            // Le nouveau pipeline documentaire (refonte) est exécuté EN PARALLÈLE
+            // quand il est activé : il produit le JSON structurel commun sans rien
+            // retirer à l'ancien format, qui reste la source de vérité tant que la
+            // migration n'est pas validée (principe du strangleur).
+            $structural = $this->buildStructuralPayload($document, $absolutePath, $useAi);
+            $legacyPayload = [
+                'structure' => $structure,
+                'ambiguities' => $ambiguities,
+            ];
+
+            DocumentStructure::updateOrCreate(
+                ['document_id' => $document->id],
+                $structural === null ? $legacyPayload : [...$legacyPayload, ...$structural]
+            );
+
+            // 8. Ajustement au coût RÉEL, à partir des tokens effectivement
+            //    échangés. Un ajustement à l'aveugle (sans usage) est ignoré par
+            //    `ajusterApresAppel`, qui rembourse alors l'intégralité plutôt
+            //    que de conserver un montant non justifiable.
+            $this->ajusterSiPayant($facturation, $user, $document, $mode, $analyzer, $correction);
+        } catch (Throwable $e) {
+            // Un traitement qui échoue n'a produit aucun résultat : on rembourse
+            // l'intégralité du débit. Conserver les crédits serait facturer un
+            // service non rendu.
+            $this->rembourserSiPayant($facturation, $user, $document, 'echec_traitement');
+
+            throw $e;
+        }
 
         $document->update(['status' => 'detected']);
+    }
+
+    /**
+     * Mode de traitement effectif, à partir des options demandées.
+     *
+     * Les trois modes sont exclusifs et couvrent toutes les combinaisons :
+     *   - `ia`       → pleine précision (le document ENTIER au modèle) ;
+     *   - `regex` + assistance → assistance IA (éléments ambigus seulement) ;
+     *   - `regex` seul → détection automatique, gratuite.
+     *
+     * `ia` prime sur `useAi` : demander la lecture complète rend l'assistance
+     * redondante, et facturer les deux serait facturer deux fois la même chose.
+     */
+    private function modePour(string $titleMethod, bool $useAi): string
+    {
+        if ($titleMethod === DocAnalyzer::METHOD_IA) {
+            return DocumentModePricing::MODE_PRECISION;
+        }
+
+        return $useAi ? DocumentModePricing::MODE_ASSISTE : DocumentModePricing::MODE_REGEX;
+    }
+
+    /**
+     * Débite l'estimation d'un mode payant, avant l'appel.
+     *
+     * Renvoie un contexte de facturation — vide pour le mode gratuit, ce qui
+     * évite au reste du code d'avoir à distinguer les deux cas.
+     *
+     * @return array{actif: bool, reference: string, credits: int, mode: string}
+     */
+    private function debiterSiPayant(?User $user, Document $document, string $mode, int $documentChars): array
+    {
+        $vide = ['actif' => false, 'reference' => '', 'credits' => 0, 'mode' => $mode];
+
+        // Sans utilisateur (document orphelin, commande en ligne de commande),
+        // il n'y a personne à débiter : le traitement reste possible.
+        if ($user === null || ! $this->pricing->isPaid($mode)) {
+            return $vide;
+        }
+
+        $estimation = $this->pricing->estimate($mode, $documentChars, $user->currentPlanSlug());
+
+        // Solde insuffisant : on REFUSE le traitement plutôt que de le lancer
+        // puis de le rembourser. L'utilisateur doit le savoir avant, pas après
+        // avoir attendu une analyse coûteuse.
+        if (! $user->hasCredits((int) $estimation['credits'])) {
+            throw new RuntimeException(
+                'Crédits insuffisants pour le mode « '.$this->pricing->label($mode).' » ('
+                .$estimation['credits'].' crédit(s) requis).'
+            );
+        }
+
+        $resultat = $this->documentCredits->debitEstimation($user, $document, $mode, $estimation);
+
+        if (! $resultat['ok']) {
+            throw new RuntimeException('Débit impossible ('.$resultat['reason'].').');
+        }
+
+        return [
+            'actif' => true,
+            'reference' => $resultat['reference'],
+            'credits' => (int) $resultat['debited'],
+            'mode' => $mode,
+        ];
+    }
+
+    /**
+     * Ajuste le débit au coût réel, après l'appel.
+     *
+     * **Deux passes IA peuvent avoir eu lieu, et les deux se paient :**
+     *   - `AiCorrectionService` (assistance sur les ambiguïtés), dont l'usage
+     *     remonte par `lastUsage()` ;
+     *   - `BlockClassifier` → `DetectBlocksTool` (classification des blocs),
+     *     dont le coût est déjà calculé par le classifieur.
+     *
+     * La première version n'ajustait que la première : mesurer 4 requêtes HTTP
+     * là où la facturation n'en attendait qu'une a révélé que la moitié de la
+     * dépense était absorbée par l'application.
+     *
+     * @param  array{actif: bool, reference: string, credits: int, mode: string}  $facturation
+     */
+    private function ajusterSiPayant(
+        array $facturation,
+        ?User $user,
+        Document $document,
+        string $mode,
+        DocAnalyzer $analyzer,
+        ?AiCorrectionService $correction,
+    ): void {
+        if (! $facturation['actif'] || $user === null) {
+            return;
+        }
+
+        $usage = $mode === DocumentModePricing::MODE_PRECISION
+            ? ($analyzer->dernierAnalyseurIa()?->lastUsage() ?? [])
+            : ($correction?->lastUsage() ?? []);
+
+        $inputTokens = (int) ($usage['input_tokens'] ?? 0);
+        $outputTokens = (int) ($usage['output_tokens'] ?? 0);
+
+        // Coût de la classification, ajouté à celui de l'assistance. Les deux
+        // passes consomment réellement ; n'en facturer qu'une laissait la
+        // seconde à la charge de l'application.
+        $coutClassification = $this->coutClassificationCredits;
+        $passesFacturees = $coutClassification > 0 ? 2 : 1;
+
+        // Aucun token comptabilisé ET aucune classification facturable : l'appel
+        // n'a pas eu lieu (clé API absente, par exemple) ou la réponse n'a rien
+        // remonté. On rembourse plutôt que de conserver un débit que rien ne
+        // justifie.
+        if ($inputTokens === 0 && $outputTokens === 0 && $coutClassification === 0) {
+            $this->documentCredits->rembourser(
+                $user,
+                $document,
+                (int) $facturation['credits'],
+                $facturation['reference'],
+                'aucun_usage_remonte',
+            );
+
+            return;
+        }
+
+        // Quand seule la classification a produit un coût, l'ajustement se fait
+        // sur elle : c'est le seul usage mesuré, et il est réel.
+        if ($inputTokens === 0 && $outputTokens === 0) {
+            $this->ajusterSurCoutMesure($user, $document, $mode, $facturation, $coutClassification);
+
+            return;
+        }
+
+        $this->documentCredits->ajusterApresAppel(
+            $user,
+            $document,
+            $mode,
+            (int) $facturation['credits'],
+            $facturation['reference'],
+            ['input_tokens' => $inputTokens, 'output_tokens' => $outputTokens],
+            $this->pricing->modelFor($mode, $user->currentPlanSlug()),
+            $coutClassification,
+        );
+    }
+
+    /**
+     * Ajuste le débit sur un coût DÉJÀ mesuré en crédits.
+     *
+     * Utilisé quand un service rend son coût directement (le classifieur), sans
+     * exposer de compteurs de tokens. On rembourse l'écart avec l'estimation, et
+     * l'on n'exige jamais de complément.
+     *
+     * @param  array{actif: bool, reference: string, credits: int, mode: string}  $facturation
+     */
+    private function ajusterSurCoutMesure(
+        User $user,
+        Document $document,
+        string $mode,
+        array $facturation,
+        int $coutMesure,
+    ): void {
+        $ecart = (int) $facturation['credits'] - $coutMesure;
+
+        if ($ecart > 0) {
+            $this->documentCredits->rembourser(
+                $user,
+                $document,
+                $ecart,
+                $facturation['reference'].':classification',
+                'ajustement_classification',
+            );
+        }
+    }
+
+    /**
+     * Rembourse l'intégralité du débit d'un mode payant.
+     *
+     * @param  array{actif: bool, reference: string, credits: int, mode: string}  $facturation
+     */
+    private function rembourserSiPayant(array $facturation, ?User $user, Document $document, string $raison): void
+    {
+        if (! $facturation['actif'] || $user === null || $facturation['credits'] <= 0) {
+            return;
+        }
+
+        $this->documentCredits->rembourser(
+            $user,
+            $document,
+            (int) $facturation['credits'],
+            $facturation['reference'],
+            $raison,
+        );
     }
 
     /**
@@ -892,6 +1300,16 @@ class DocumentController extends Controller
                 function ($documentStructurel) use ($plan, $useAi, &$rapportClassification) {
                     $resultat = $this->classifier->classify($documentStructurel, $plan, $useAi);
                     $rapportClassification = $resultat['report'];
+
+                    // Le classifieur fait une SECONDE passe IA quand elle est
+                    // demandée (`DetectBlocksTool`), distincte de
+                    // `AiCorrectionService`. On RETIENT son coût : sans cela, la
+                    // facturation n'en comptait qu'une sur les deux, et la moitié
+                    // de la dépense était absorbée par l'application.
+                    if (is_array($rapportClassification) && (int) ($rapportClassification['ai_cost_credits'] ?? 0) > 0) {
+                        $this->coutClassificationCredits = (int) $rapportClassification['ai_cost_credits'];
+                        $this->classificationConsultee = (int) ($rapportClassification['ai_consulted'] ?? 0);
+                    }
 
                     return $resultat['document'];
                 },

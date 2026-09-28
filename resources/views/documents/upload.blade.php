@@ -75,47 +75,30 @@
 
                 {{-- Choix de la méthode d'analyse des titres --}}
                 <div style="margin-top:1.6rem">
-                    <p style="font-weight:600;font-size:.92rem;margin-bottom:.25rem">Détection de la structure</p>
+                    <p style="font-weight:600;font-size:.92rem;margin-bottom:.25rem">Mode d'analyse</p>
                     <p style="color:var(--color-text-muted);font-size:.8rem;margin-bottom:.9rem">
-                        FORMADOC lit directement le contenu de votre document Word (styles,
-                        numérotation) sans passer par un modèle de langue. Ce choix ne
-                        concerne que la vitesse de l'analyse préliminaire.
+                        FORMADOC lit d'abord directement le contenu de votre document Word
+                        (styles, numérotation) sans passer par un modèle de langue. Vous choisissez
+                        ensuite si l'IA doit intervenir, et sur quoi : le prix de chaque mode est
+                        indiqué ci-dessous, avant votre choix.
                     </p>
 
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem" role="radiogroup" aria-label="Méthode de détection des titres">
-                        {{-- Déterministe (recommandé) --}}
-                        <label class="radio-card" for="method-regex">
-                            <input type="radio" name="title_method" id="method-regex" value="regex" checked>
-                            <span class="rc-icon"><i data-lucide="file-check" style="width:17px;height:17px"></i></span>
-                            <span>
-                                <strong>Déterminée par le document <span style="color:var(--color-success)">(recommandé)</span></strong>
-                                <small>Les styles Word (Titre 1-3), la numérotation du texte (« 1. », « I. », « CHAPITRE ») et la mise en forme réelle déterminent la structure. <strong>Instantané, gratuit, reproductible.</strong></small>
-                            </span>
-                        </label>
+                    {{-- Trois modes, un seul contrôle, prix affiché.
 
-                        {{-- IA --}}
-                        <label class="radio-card" for="method-ia">
-                            <input type="radio" name="title_method" id="method-ia" value="ia">
-                            <span class="rc-icon"><i data-lucide="bot" style="width:17px;height:17px"></i></span>
-                            <span>
-                                <strong>Assistée par IA</strong>
-                                <small>Le même document est relu par un modèle de langue pour confirmer les passages ambigus. <strong>Plus lent et facturé en crédits</strong>, utile si la détection automatique se trompe.</small>
-                            </span>
-                        </label>
-                    </div>
-                </div>
+                         Avant : deux boutons radio (regex | ia) PLUS une case à cocher
+                         « confirmer les passages incertains ». Le libellé du mode « ia »
+                         annonçait une relecture des passages ambigus, alors que ce mode
+                         envoie le document ENTIER au modèle — l'option la plus coûteuse
+                         était donc présentée comme la plus légère, sans aucun montant.
 
-                {{-- Confirmation des passages incertains --}}
-                <div style="margin-top:1.2rem">
-                    <label for="use_ai" class="check-card">
-                        <input type="checkbox" name="use_ai" id="use_ai" value="1">
-                        <span class="cc-icon"><i data-lucide="sparkles" style="width:17px;height:17px"></i></span>
-                        <span>
-                            <strong>Confirmer les passages incertains par l'IA</strong>
-                            <small>Quand la détection déterministe hésite (ligne isolée, mot-clé de section), le modèle tranche. Sans cette option, ces passages vous sont présentés à confirmer — vous gardez la décision.</small>
-                            <span class="cc-note">Non cochée par défaut : aucune donnée n'est envoyée à un service externe, et aucun crédit n'est consommé. Consomme 1 unité du quota IA si activée.</span>
-                        </span>
-                    </label>
+                         Le mode « pleine précision » répond au besoin exprimé : envoyer
+                         tout le document pour la plus grande fidélité, en sachant ce que
+                         cela coûte. --}}
+                    <x-document-mode-selector
+                        prefix="upload"
+                        :selected="old('mode', 'regex')"
+                        :modes="$modes"
+                        :note-tarif="$noteTarif" />
                 </div>
 
                 <div style="display:flex;justify-content:flex-end;margin-top:1.5rem;gap:.65rem">

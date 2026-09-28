@@ -2,6 +2,7 @@
 
 namespace App\Services\OpenRouter;
 
+use App\Services\Billing\UsageCostCalculator;
 use App\Services\Billing\UsageLedger;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
@@ -59,7 +60,23 @@ class OpenRouterService
         private readonly ModelRouter $router,
         private readonly ?DeepSeekFallbackService $deepSeek = null,
         private readonly ?UsageLedger $ledger = null,
+        private readonly ?UsageCostCalculator $costCalculator = null,
     ) {}
+
+    /**
+     * Calculateur de coût, résolu à la demande.
+     *
+     * **Pourquoi optionnel et résolu paresseusement.** Le constructeur est déjà
+     * appelé sous la forme `new OpenRouterService(new ModelRouter)` dans les
+     * tests et dans `DeepSeekFallbackServiceTest`. Ajouter un paramètre REQUIS
+     * aurait cassé ces appels — et une erreur d'instanciation dans un test se
+     * voit tard. Le paramètre reste donc optionnel, et la résolution passe par
+     * le conteneur quand il n'est pas fourni.
+     */
+    private function calculator(): UsageCostCalculator
+    {
+        return $this->costCalculator ?? app(UsageCostCalculator::class);
+    }
 
     /**
      * Nombre maximum de secondes sans réponse avant de déclencher le fallback
@@ -428,13 +445,22 @@ class OpenRouterService
         $selection = $this->router->select($taskType, $plan);
         $model = $selection['model'];
 
-        $pricing = config("openrouter.pricing.{$model}", null);
+        // Lecture par TABLEAU et non par notation pointee.
+        //
+        // `config("openrouter.pricing.{$model}")` etait FAUX pour tout nom de
+        // modele contenant un point : Laravel y voit un chemin imbrique, cherche
+        // `3.5-sonnet` sous `anthropic/claude-3`, et renvoie null. Le prix tombait
+        // alors a 0 et l'estimation annoncait "gratuit".
+        //
+        // Mesure : 3 modeles sur 9 de la grille etaient concernes, dont
+        // `anthropic/claude-3.5-sonnet` (plans standard a enterprise).
+        $pricing = $this->calculator()->pricingFor($model);
 
         if ($pricing === null) {
-            Log::warning('Prix inconnu pour le modèle OpenRouter', ['model' => $model]);
+            Log::warning('Prix inconnu pour le modele OpenRouter', ['model' => $model]);
             $usd = 0.0;
         } elseif (isset($pricing['image'])) {
-            // Génération d'image : coût par image (1 image = 1 appel)
+            // Generation d'image : cout par image (1 image = 1 appel)
             $usd = (float) $pricing['image'] * max(1, $outputTokens);
         } else {
             $usd = ($inputTokens / 1_000_000) * (float) $pricing['input']
@@ -604,12 +630,25 @@ class OpenRouterService
         $inputTokens = (int) ($usage['prompt_tokens'] ?? 0);
         $outputTokens = (int) ($usage['completion_tokens'] ?? 0);
 
-        // Estimation du coût réel basée sur l'usage retourné
-        $pricing = config("openrouter.pricing.{$model}", null);
-        if ($pricing !== null && ! isset($pricing['image'])) {
-            $usd = ($inputTokens / 1_000_000) * (float) $pricing['input']
-                 + ($outputTokens / 1_000_000) * (float) $pricing['output'];
-        } else {
+        // Cout REEL de ce tour, calcule depuis l'usage retourne par l'API.
+        //
+        // C'est la valeur qui est enregistree dans le registre d'usage ET
+        // utilisee pour facturer : une erreur ici ne fausse pas un affichage,
+        // elle fausse l'argent. Le prix etait lu auparavant par notation
+        // pointee, ce qui renvoyait null pour tout modele au nom contenant un
+        // point — la valeur devenait alors 0.0, et l'appel etait facture zero
+        // credit quel que soit son cout reel.
+        //
+        // `costUsdFor` renvoie null quand le prix est inconnu, ce qui est
+        // SIGNALE ici plutot que confondu avec la gratuite.
+        $usd = $this->calculator()->costUsdFor($model, $inputTokens, $outputTokens);
+
+        if ($usd === null) {
+            Log::warning('Cout reel non calculable : prix du modele inconnu', [
+                'model' => $model,
+                'input_tokens' => $inputTokens,
+                'output_tokens' => $outputTokens,
+            ]);
             $usd = 0.0;
         }
 

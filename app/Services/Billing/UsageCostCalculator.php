@@ -59,23 +59,84 @@ class UsageCostCalculator
     }
 
     /**
+     * Grille tarifaire d'un modèle, ou null s'il est inconnu.
+     *
+     * **Défaut corrigé ici, et il vidait la facturation.** Le prix était lu avec
+     * la notation pointée de Laravel :
+     *
+     *     config("openrouter.pricing.{$model}")   // ← faux
+     *
+     * Or Laravel interprète les points comme un CHEMIN IMBRIQUÉ. Les noms de
+     * modèles en contiennent (`anthropic/claude-3.5-sonnet`), donc la clé
+     * `3.5-sonnet` était cherchée à l'intérieur d'une clé `anthropic/claude-3`,
+     * qui n'existe pas. Résultat : `null`.
+     *
+     * Conséquence mesurée : sur 9 modèles de la grille, 3 renvoyaient `null` —
+     * dont `anthropic/claude-3.5-sonnet`, utilisé par les plans standard,
+     * premium, pro et enterprise. Le coût de ces appels était calculé à 0, donc
+     * enregistré à 0 dans le registre d'usage et facturé 0 à l'utilisateur.
+     *
+     * Le défaut ne concerne PAS que l'affichage : c'est le coût RÉEL qui était
+     * faussé (`OpenRouterService::parseResponse`), et le chat rembourse l'écart
+     * entre l'estimation et ce coût réel — donc un coût nul remboursait
+     * intégralement le message. Les plans supérieurs étaient gratuits.
+     *
+     * On lit donc la grille comme un TABLEAU, où le nom du modèle est une clé
+     * entière et non un chemin.
+     *
+     * @return null|array<string, float> null si le modèle est inconnu
+     */
+    public function pricingFor(string $model): ?array
+    {
+        $grid = (array) config('openrouter.pricing', []);
+
+        $pricing = $grid[$model] ?? null;
+
+        return is_array($pricing) ? $pricing : null;
+    }
+
+    /**
+     * Coût en USD d'un appel, ou null si le modèle est inconnu.
+     *
+     * **`null` et non `0.0` : la distinction est essentielle.** Un modèle inconnu
+     * facturé 0 est indiscernable d'un appel gratuit, et le défaut de prix
+     * passait justement pour de la gratuité. Les appelants peuvent donc
+     * SIGNALER un prix manquant au lieu de le subir silencieusement.
+     *
+     * @return null|float null si le prix du modèle n'est pas connu
+     */
+    public function costUsdFor(string $model, int $inputTokens, int $outputTokens): ?float
+    {
+        $pricing = $this->pricingFor($model);
+
+        if ($pricing === null) {
+            return null;
+        }
+
+        // Génération d'image : le prix est par image, pas par token.
+        if (isset($pricing['image'])) {
+            return (float) $pricing['image'] * max(1, $outputTokens);
+        }
+
+        if (! isset($pricing['input'], $pricing['output'])) {
+            return null;
+        }
+
+        return ($inputTokens / 1_000_000) * (float) $pricing['input']
+             + ($outputTokens / 1_000_000) * (float) $pricing['output'];
+    }
+
+    /**
      * Estime le coût en crédits d'un appel (tokens d'entrée/sortie).
      *
      * @return array{usd: float, credits: int}
      */
     public function estimateCredits(string $model, int $inputTokens, int $outputTokens): array
     {
-        $pricing = config("openrouter.pricing.{$model}", null);
+        $usd = $this->costUsdFor($model, $inputTokens, $outputTokens);
 
-        if ($pricing === null) {
+        if ($usd === null) {
             return ['usd' => 0.0, 'credits' => 0];
-        }
-
-        if (isset($pricing['image'])) {
-            $usd = (float) $pricing['image'] * max(1, $outputTokens);
-        } else {
-            $usd = ($inputTokens / 1_000_000) * (float) $pricing['input']
-                 + ($outputTokens / 1_000_000) * (float) $pricing['output'];
         }
 
         return [

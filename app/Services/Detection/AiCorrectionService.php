@@ -58,6 +58,31 @@ class AiCorrectionService
     private const CONTEXT_LINES = 2;
 
     /**
+     * Usage du DERNIER appel réussi (tokens d'entrée et de sortie).
+     *
+     * **Pourquoi ce service doit remonter son usage.** Il appelle l'API
+     * DeepSeek EN DIRECT, sans passer par `OpenRouterService` — donc sans
+     * passer par le registre d'usage (`AiUsageLedger`) ni par le calcul de
+     * coût. L'assistance IA envoyait donc des éléments au modèle sans qu'aucune
+     * ligne de comptabilité ne soit écrite : la dépense était invisible.
+     *
+     * L'appelant peut désormais lire cet usage et enregistrer la dépense.
+     *
+     * @var array{input_tokens: int, output_tokens: int}
+     */
+    private array $usage = ['input_tokens' => 0, 'output_tokens' => 0];
+
+    /**
+     * Usage du dernier appel réussi.
+     *
+     * @return array{input_tokens: int, output_tokens: int}
+     */
+    public function lastUsage(): array
+    {
+        return $this->usage;
+    }
+
+    /**
      * Corrige une structure détectée de façon déterministe en s'appuyant sur
      * l'IA, UNIQUEMENT sur les parties ambiguës ou incertaines.
      *
@@ -288,6 +313,13 @@ class AiCorrectionService
                 if ($content === '') {
                     throw new \Exception('DeepSeek API : réponse sans contenu exploitable');
                 }
+
+                // Usage remonté par l'API : seule source du coût de cet appel,
+                // qui ne passe pas par le registre d'usage d'OpenRouter.
+                $this->usage = [
+                    'input_tokens' => (int) ($json['usage']['prompt_tokens'] ?? 0),
+                    'output_tokens' => (int) ($json['usage']['completion_tokens'] ?? 0),
+                ];
 
                 $decoded = $this->extractJson($content);
                 if ($decoded === null) {

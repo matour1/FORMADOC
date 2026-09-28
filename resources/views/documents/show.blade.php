@@ -189,38 +189,13 @@
                 <form method="POST" action="{{ route('documents.reanalyze', $document) }}">
                     @csrf
 
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem" role="radiogroup" aria-label="Méthode de réanalyse">
-                        <label class="radio-card" for="reanalyze-regex">
-                            <input type="radio" name="title_method" id="reanalyze-regex" value="regex"
-                                   @checked(($document->metadata['title_method'] ?? 'regex') !== 'ia')>
-                            <span class="rc-icon"><i data-lucide="file-check" style="width:17px;height:17px"></i></span>
-                            <span>
-                                <strong>Analyse rapide (Regex)</strong>
-                                <small>Déterministe et hors-ligne : styles Word (Heading, tailles, gras) + motifs regex. Aucune donnée envoyée à l'extérieur.</small>
-                            </span>
-                        </label>
-
-                        <label class="radio-card" for="reanalyze-ia">
-                            <input type="radio" name="title_method" id="reanalyze-ia" value="ia"
-                                   @checked(($document->metadata['title_method'] ?? '') === 'ia')>
-                            <span class="rc-icon"><i data-lucide="bot" style="width:17px;height:17px"></i></span>
-                            <span>
-                                <strong>Analyse assistée par IA</strong>
-                                <small>Le même document est relu par un modèle de langue pour confirmer les passages ambigus. Plus lent et facturé en crédits.</small>
-                            </span>
-                        </label>
-                    </div>
-
-                    <label for="reanalyze-use-ai" class="check-card" style="margin-top:1.2rem">
-                        <input type="checkbox" name="use_ai" id="reanalyze-use-ai" value="1"
-                               @checked((bool) ($document->metadata['use_ai'] ?? false))>
-                        <span class="cc-icon"><i data-lucide="sparkles" style="width:17px;height:17px"></i></span>
-                        <span>
-                            <strong>Confirmer les passages incertains par l'IA</strong>
-                            <small>Quand la détection déterministe hésite, le modèle tranche. Sans cette option, ces passages vous sont présentés à confirmer — vous gardez la décision.</small>
-                            <span class="cc-note">Consomme 1 unité du quota IA si activée.</span>
-                        </span>
-                    </label>
+                    {{-- Même composant que sur la page d'envoi, donc même
+                         présentation et mêmes prix. Ici la taille du texte est
+                         CONNUE : les montants sont exacts et non estimés. --}}
+                    <x-document-mode-selector
+                        prefix="reanalyze"
+                        :selected="$modeActuel"
+                        :modes="$modes" />
 
                     <div style="display:flex;justify-content:flex-end;margin-top:1.2rem">
                         <button type="submit" class="btn btn-secondary">

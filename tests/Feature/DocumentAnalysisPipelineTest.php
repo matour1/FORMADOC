@@ -161,9 +161,74 @@ class DocumentAnalysisPipelineTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_upload_avec_title_method_ia_appelle_l_ia(): void
+    /**
+     * Le mode est CHOISI en un seul contrôle, et il est conservé en base.
+     *
+     * Le formulaire envoyait auparavant `title_method` ET `use_ai` séparément,
+     * deux réglages qui pouvaient décrire des combinaisons ne correspondant à
+     * aucun mode réel. Il envoie maintenant `mode`, dont le contrôleur DÉRIVE
+     * les deux champs. Ce test fixe ce contrat : c'est lui qui garantit qu'un
+     * formulaire forgé avec un mode inconnu retombe sur le mode gratuit.
+     */
+    public function test_le_mode_choisi_est_conserve_et_derive_les_champs_techniques(): void
     {
-        // L'IA est appelée car la méthode 'ia' force le recours à DeepSeek
+        Http::fake();
+
+        $docxPath = $this->createTestDocx();
+
+        $this->post('/documents/upload', [
+            'document' => new UploadedFile(
+                $docxPath,
+                'rapport_mode_regex.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true
+            ),
+            'mode' => 'regex',
+        ])->assertRedirect();
+
+        $document = Document::first();
+        $this->assertSame('regex', $document->metadata['mode']);
+        $this->assertSame('regex', $document->metadata['title_method']);
+        $this->assertFalse($document->metadata['use_ai']);
+    }
+
+    /**
+     * **Un mode inconnu retombe sur le GRATUIT, jamais sur un payant.**
+     *
+     * Un formulaire forgé — ou une version antérieure du site restée ouverte
+     * dans un onglet — peut envoyer un mode qui n'existe pas. Le traitement doit
+     * alors rester gratuit : deviner un mode payant facturerait un service que
+     * l'utilisateur n'a pas demandé.
+     */
+    public function test_un_mode_inconnu_retombe_sur_le_mode_gratuit(): void
+    {
+        Http::fake();
+
+        $docxPath = $this->createTestDocx();
+
+        $this->post('/documents/upload', [
+            'document' => new UploadedFile(
+                $docxPath,
+                'rapport_mode_bizarre.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true
+            ),
+            'mode' => 'mode-invente-qui-coute-cher',
+        ])->assertRedirect();
+
+        $document = Document::first();
+        $this->assertSame('regex', $document->metadata['mode']);
+        $this->assertFalse($document->metadata['use_ai']);
+        Http::assertNothingSent();
+    }
+
+    public function test_upload_avec_mode_precision_appelle_l_ia(): void
+    {
+        // L'IA est appelée car le mode « pleine précision » envoie le document
+        // ENTIER à DeepSeek. Ce test vérifie aussi que le débit est déclenché :
+        // c'est le mode le plus coûteux, il ne doit jamais être gratuit.
         $iaJson = json_encode([
             'titres' => [
                 ['texte' => 'Introduction', 'position' => ['section_index' => 0, 'element_index' => 0, 'parent' => 'body']],
@@ -182,6 +247,12 @@ class DocumentAnalysisPipelineTest extends TestCase
             ], 200),
         ]);
 
+        // Le mode « pleine précision » est PAYANT. Sans solde, le traitement est
+        // refusé AVANT tout appel — c'est le comportement voulu, et sans
+        // utilisateur il n'y a personne à débiter.
+        $utilisateur = User::factory()->create(['credits_balance' => 5000]);
+        $this->actingAs($utilisateur);
+
         $docxPath = $this->createTestDocx();
 
         $response = $this->post('/documents/upload', [
@@ -192,7 +263,7 @@ class DocumentAnalysisPipelineTest extends TestCase
                 null,
                 true
             ),
-            'title_method' => 'ia',
+            'mode' => 'precision',
         ]);
 
         $response->assertRedirect();
@@ -200,6 +271,7 @@ class DocumentAnalysisPipelineTest extends TestCase
         $document = Document::first();
         $this->assertNotNull($document);
         $this->assertSame('ia', $document->metadata['title_method']);
+        $this->assertSame('precision', $document->metadata['mode']);
 
         // La méthode IA force l'appel à DeepSeek
         Http::assertSentCount(1);
@@ -230,7 +302,6 @@ class DocumentAnalysisPipelineTest extends TestCase
         $document = Document::first();
         $this->assertNotNull($document);
         $this->assertFalse($document->metadata['use_ai']);
-
         $structure = DocumentStructure::where('document_id', $document->id)->first();
         $this->assertNotNull($structure);
         // Aucune trace IA dans la structure
@@ -239,12 +310,13 @@ class DocumentAnalysisPipelineTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_upload_avec_use_ai_appelle_l_ia_correcteur(): void
+    public function test_upload_avec_mode_assiste_appelle_l_ia_correcteur(): void
     {
-        // Phase 4 : la case « Utiliser l'assistance IA » active le
-        // post-processeur AiCorrectionService (corrections ciblées).
-        // title_method=regex → DocAnalyzer n'appelle PAS l'IA ; seul le
-        // correcteur envoie une requête (payload réduit aux éléments ambigus).
+        // Phase 4 : le mode « assistance IA » active le post-processeur
+        // AiCorrectionService (corrections ciblées).
+        // Le mode dérive title_method=regex → DocAnalyzer n'appelle PAS l'IA ;
+        // seul le correcteur envoie une requête (payload réduit aux éléments
+        // ambigus). Ce mode est PAYANT : le débit doit avoir lieu.
         // NB : un quota IA > 0 est requis → l'utilisateur doit avoir un
         // abonnement payant (P0-1 : les routes sont désormais authentifiées,
         // un plan default aurait quota IA = 0 et forcerait use_ai=false).
@@ -254,7 +326,14 @@ class DocumentAnalysisPipelineTest extends TestCase
             'quota_deterministic' => 10,
             'quota_ai' => 5,
         ]);
-        $subscriber = User::factory()->create();
+        $subscriber = User::factory()->create([
+            // Le mode « assistance IA » est PAYANT : le traitement est refusé
+            // si le solde est insuffisant, délibérément, pour ne pas lancer un
+            // appel coûteux qu'on ne pourra pas facturer. Le test doit donc
+            // créditer l'utilisateur — c'est une condition du scénario, pas un
+            // contournement.
+            'credits_balance' => 5000,
+        ]);
         Subscription::factory()->create([
             'user_id' => $subscriber->id,
             'plan_id' => $plan->id,
@@ -280,18 +359,28 @@ class DocumentAnalysisPipelineTest extends TestCase
                 null,
                 true
             ),
-            'title_method' => 'regex',
-            'use_ai' => '1',
+            'mode' => 'assiste',
         ]);
-
         $response->assertRedirect();
 
         $document = Document::first();
         $this->assertNotNull($document);
         $this->assertTrue($document->metadata['use_ai']);
 
-        // Le correcteur IA a été sollicité (1 appel unique)
-        Http::assertSentCount(1);
+        // **DEUX passes IA ont lieu, pas une.**
+        //
+        // Le mode « assistance IA » ne sollicite pas seulement
+        // `AiCorrectionService` : `BlockClassifier` consulte aussi le modèle via
+        // `DetectBlocksTool`, par lots de blocs. Le nombre exact d'appels dépend
+        // donc du nombre de lots, et non d'une constante.
+        //
+        // L'assertion initiale (`assertSentCount(1)`) décrivait une croyance, pas
+        // le comportement — et c'est SA mise en échec qui a révélé que la
+        // facturation ne comptait qu'une passe sur deux. On vérifie donc ce qui
+        // compte : au moins deux passes, donc au moins deux appels.
+        $this->assertGreaterThanOrEqual(2, Http::recorded()->count(),
+            'Le mode « assistance IA » déclenche la correction ET la classification : '
+            .'n\'en facturer qu\'une sous-facture la moitié de la dépense.');
 
         $structure = DocumentStructure::where('document_id', $document->id)->first();
         $this->assertNotNull($structure);
@@ -315,7 +404,7 @@ class DocumentAnalysisPipelineTest extends TestCase
             'title_method' => 'magique',
         ]);
 
-        $response->assertSessionHasErrors('title_method');
+        $response->assertSessionHasErrors();
         $this->assertDatabaseCount('documents', 0);
     }
 

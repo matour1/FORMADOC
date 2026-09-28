@@ -41,6 +41,22 @@ class DeepSeekAnalyzer
     private array $options;
 
     /**
+     * Usage du DERNIER appel réussi (tokens d'entrée et de sortie).
+     *
+     * **Pourquoi cet analyseur doit remonter son usage.** Il appelle l'API
+     * DeepSeek EN DIRECT, sans passer par `OpenRouterService` — donc sans
+     * passer par le registre d'usage (`AiUsageLedger`) ni par le calcul de
+     * coût. Le mode « IA complète » (`title_method = ia`) envoyait ainsi le
+     * document entier au modèle sans qu'aucune ligne de comptabilité ne soit
+     * écrite : la dépense était invisible, et impossible à facturer.
+     *
+     * L'appelant peut désormais lire cet usage et enregistrer la dépense.
+     *
+     * @var array{input_tokens: int, output_tokens: int}
+     */
+    private array $usage = ['input_tokens' => 0, 'output_tokens' => 0];
+
+    /**
      * @param  string  $apiKey  Clé API DeepSeek
      * @param  array<string, mixed>  $options  Options : model, api_url, timeout, max_retries…
      */
@@ -48,6 +64,16 @@ class DeepSeekAnalyzer
     {
         $this->apiKey = $apiKey;
         $this->options = $options;
+    }
+
+    /**
+     * Usage du dernier appel réussi.
+     *
+     * @return array{input_tokens: int, output_tokens: int}
+     */
+    public function lastUsage(): array
+    {
+        return $this->usage;
     }
 
     /**
@@ -183,6 +209,15 @@ class DeepSeekAnalyzer
                 if (empty($json['choices'][0]['message']['content'])) {
                     throw new Exception('DeepSeek API : réponse sans contenu exploitable');
                 }
+
+                // Usage remonté par l'API. On le RETIENT au lieu de le jeter :
+                // c'est la seule source du coût de cet appel, qui ne passe pas
+                // par le registre d'usage d'OpenRouter. Un `usage` absent
+                // laisse les compteurs à zéro plutôt que d'inventer une valeur.
+                $this->usage = [
+                    'input_tokens' => (int) ($json['usage']['prompt_tokens'] ?? 0),
+                    'output_tokens' => (int) ($json['usage']['completion_tokens'] ?? 0),
+                ];
 
                 return (string) $json['choices'][0]['message']['content'];
             } catch (Exception $e) {

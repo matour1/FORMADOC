@@ -2,6 +2,7 @@
 
 namespace App\Services\OpenRouter;
 
+use App\Services\Billing\UsageCostCalculator;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -155,7 +156,9 @@ class DeepSeekFallbackService
 
         // Prix du modèle deepseek (input/output) — estimés depuis la
         // config openrouter (même modèle), sinon défaut approximatif.
-        $pricing = config('openrouter.pricing.deepseek/deepseek-chat', ['input' => 0.2574, 'output' => 1.029]);
+        $pricing = app(UsageCostCalculator::class)
+            ->pricingFor('deepseek/deepseek-chat')
+            ?? ['input' => 0.2574, 'output' => 1.029];
         $inputTokens = (int) ($usage['prompt_tokens'] ?? 0);
         $outputTokens = (int) ($usage['completion_tokens'] ?? 0);
         $usd = ($inputTokens / 1_000_000) * (float) $pricing['input']

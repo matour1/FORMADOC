@@ -963,6 +963,7 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
     .chat-model-note { font-size: 0; gap: 0; padding: .3rem .5rem; }
     .chat-model-note i { font-size: initial; }
 }
+
 .message .msg-bubble pre {
     background: var(--color-surface-2); border: 1px solid var(--color-border);
     border-radius: 10px; padding: .8rem 1rem; overflow-x: auto; margin: .55rem 0;
@@ -2229,3 +2230,30 @@ a.flow-step:hover { background: var(--color-surface-2); color: var(--color-text)
     .landing-page .hero-actions .btn { width: 100%; justify-content: center; }
     .landing-page .doc-sheet.after { display: none; }
 }
+
+/* ============================================================
+   Selecteur de mode d'analyse d'un document (avec tarif)
+   ============================================================
+   Trois modes cohabitent, et l'utilisateur doit pouvoir comparer leur prix
+   AVANT de choisir. Le tarif est donc un element de premier rang dans chaque
+   carte, avec un style distinct du texte descriptif.
+
+   `min-width: 0` sur les cartes : sans lui, une carte de grille ne peut pas
+   devenir plus etroite que son contenu, et une description longue elargirait
+   la page (defaut deja mesure ailleurs dans ce fichier). */
+.mode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .9rem; }
+.mode-grid .mode-card { min-width: 0; }
+.mode-grid .mode-card > span:last-child { min-width: 0; }
+.mode-price {
+    display: inline-flex; align-items: center; gap: .35rem; flex-wrap: wrap;
+    margin: .3rem 0 .35rem; padding: .2rem .55rem;
+    border-radius: var(--radius-full); font-size: .72rem; font-weight: 600;
+    font-family: var(--font-mono);
+    background: var(--color-primary-tint); color: var(--color-primary);
+}
+.mode-price.is-free { background: var(--color-secondary-tint); color: var(--color-secondary); }
+.mode-price svg { width: 12px; height: 12px; flex-shrink: 0; }
+/* Le detail du calcul : discret, mais present — un montant qu'on ne peut pas
+   verifier est un montant qu'on ne peut pas contester non plus. */
+.mode-detail { display: block; margin-top: .25rem; font-size: .69rem; color: var(--color-text-muted); }
+.mode-note { margin-top: .7rem; font-size: .72rem; color: var(--color-text-muted); }
