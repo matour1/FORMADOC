@@ -47,6 +47,13 @@ final class DocumentModePricing
     /**
      * Le mode « pleine précision » : le document ENTIER est envoyé au modèle,
      * sans présélection. Le plus coûteux, et de loin.
+     *
+     * **Ce mode enchaîne DEUX opérations, et son prix les couvre toutes les
+     * deux :** l'analyse complète de la structure, PUIS la mise en forme
+     * complète du document (`LongFormattingJob`, tâche `document_full_format`,
+     * facturée séparément). Afficher seulement la première donnerait un prix
+     * inférieur à la dépense réelle — précisément le défaut que ce travail
+     * corrige.
      */
     public const MODE_PRECISION = 'precision';
 
@@ -201,14 +208,65 @@ final class DocumentModePricing
         // par OpenRouter. Voir PRICING_DEEPSEEK_DIRECT.
         $usd = $this->usdFor($mode, $model, $tokens, $outputTokens);
 
+        // Pleine précision : le coût de la mise en forme complète s'AJOUTE à
+        // celui de l'analyse. Les deux opérations ont lieu, les deux sont
+        // facturées, et n'afficher que la première tromperait l'utilisateur sur
+        // la dépense réelle. On suppose ici que le texte occupe environ 4 fois la
+        // taille du fichier compressé, hypothèse partagée avec le déclenchement.
+        $creditsMiseEnForme = $mode === self::MODE_PRECISION
+            ? self::estimationMiseEnForme($documentChars * 4, $documentChars, $plan)
+            : 0;
+
         return [
             'gratuit' => false,
-            'credits' => max(1, $this->calculator->usdToCredits($usd)),
+            'credits' => max(1, $this->calculator->usdToCredits($usd)) + $creditsMiseEnForme,
             'usd' => round($usd, 6),
             'model' => $model,
             'input_tokens' => $tokens,
-            'detail' => $this->detailFor($mode, $documentChars, $tokens),
+            'detail' => $this->detailFor($mode, $documentChars, $tokens, $creditsMiseEnForme),
         ];
+    }
+
+    /**
+     * Coût estimé de la mise en forme complète (`LongFormattingJob`).
+     *
+     * **Publique et STATIQUE : elle est PARTAGÉE avec le déclenchement du job.**
+     * Le contrôleur s'en sert pour créer le job, et `estimate()` pour afficher le
+     * prix. Deux calculs séparés produiraient deux montants pour la même
+     * opération — celui montré et celui débité. Un utilisateur qui voit 6 crédits
+     * puis en paie 11 a raison de le reprocher, même si chaque calcul est juste
+     * isolément.
+     *
+     * **Pourquoi l'estimation est PRUDENTE (elle surestime).** Le job calcule son
+     * coût réel sur les tokens échangés, puis ajuste à la baisse. L'estimation
+     * sert à vérifier le solde et à annoncer un prix : sous-estimer ferait échouer
+     * le débit APRÈS une analyse déjà payée, et l'utilisateur aurait payé sans
+     * recevoir son document. On préfère annoncer un peu plus et rendre la
+     * différence.
+     *
+     * **Deux tailles en entrée, et on retient la plus GRANDE.** Le job reçoit la
+     * taille du FICHIER (c'est ce dont il dispose à sa création) ; l'affichage
+     * dispose en plus de la taille du TEXTE. Surestimer reste sûr, sous-estimer
+     * non.
+     *
+     * @param  int  $tailleFichier  Octets du fichier envoyé
+     * @param  int  $tailleTexte  Caractères du texte extrait
+     */
+    public static function estimationMiseEnForme(int $tailleFichier, int $tailleTexte, string $plan = 'default'): int
+    {
+        // Hypothèse du job : environ 4 caractères par octet, plancher 500 tokens.
+        $parFichier = max(500, (int) ceil($tailleFichier / 4));
+
+        // Hypothèse de l'affichage : 3 caractères par token.
+        $parTexte = max(500, (int) ceil($tailleTexte / 3));
+
+        $estimation = app(UsageCostCalculator::class)->estimateCredits(
+            app(ModelRouter::class)->select('document_full_format', $plan)['model'],
+            max($parFichier, $parTexte),
+            1500,
+        );
+
+        return max(1, $estimation['credits']);
     }
 
     /**
@@ -322,11 +380,21 @@ final class DocumentModePricing
     /**
      * Phrase expliquant le calcul, affichée à l'utilisateur.
      */
-    private function detailFor(string $mode, int $documentChars, int $inputTokens): string
+    private function detailFor(string $mode, int $documentChars, int $inputTokens, int $creditsMiseEnForme = 0): string
     {
         if ($mode === self::MODE_PRECISION) {
-            return 'Document entier ('.number_format($documentChars, 0, ',', ' ')
-                .' caractères, soit environ '.number_format($inputTokens, 0, ',', ' ').' tokens).';
+            $base = 'Document entier ('.number_format($documentChars, 0, ',', ' ')
+                .' caractères, soit environ '.number_format($inputTokens, 0, ',', ' ').' tokens)';
+
+            // On dit explicitement que le prix couvre DEUX opérations : sans
+            // cela, l'utilisateur ne comprendrait pas pourquoi la pleine
+            // précision coûte plus que le double de l'assistance.
+            if ($creditsMiseEnForme > 0) {
+                return $base.', plus la mise en forme complète (~'
+                    .number_format($creditsMiseEnForme, 0, ',', ' ').' crédits).';
+            }
+
+            return $base.'.';
         }
 
         return 'Éléments ambigus seulement (estimation haute : 20 % du document).';

@@ -273,8 +273,12 @@ class DocumentAnalysisPipelineTest extends TestCase
         $this->assertSame('ia', $document->metadata['title_method']);
         $this->assertSame('precision', $document->metadata['mode']);
 
-        // La méthode IA force l'appel à DeepSeek
-        Http::assertSentCount(1);
+        // Le mode « pleine précision » enchaîne l'analyse complète ET la mise en
+        // forme complète (`LongFormattingJob`, tâche distincte routée vers un
+        // autre modèle). Plusieurs appels sont donc NORMAUX ici — contrairement
+        // au mode assisté, qui ne doit en produire qu'un.
+        $this->assertGreaterThanOrEqual(1, Http::recorded()->count(),
+            'La pleine précision doit au moins interroger le modèle pour analyser le document.');
     }
 
     public function test_upload_sans_use_ai_n_appelle_pas_l_ia(): void
@@ -367,20 +371,20 @@ class DocumentAnalysisPipelineTest extends TestCase
         $this->assertNotNull($document);
         $this->assertTrue($document->metadata['use_ai']);
 
-        // **DEUX passes IA ont lieu, pas une.**
+        // **Le mode assisté ne déclenche QUE la correction ciblée.**
         //
-        // Le mode « assistance IA » ne sollicite pas seulement
-        // `AiCorrectionService` : `BlockClassifier` consulte aussi le modèle via
-        // `DetectBlocksTool`, par lots de blocs. Le nombre exact d'appels dépend
-        // donc du nombre de lots, et non d'une constante.
+        // J'avais d'abord mesuré 4 appels et conclu que le mode sollicitait deux
+        // passes IA (correction + classification). C'était faux : les appels
+        // supplémentaires venaient du `LongFormattingJob`, que ce mode
+        // déclenchait à tort. Un mode présenté comme « vérifier les passages
+        // incertains » lançait en réalité une MISE EN FORME COMPLÈTE du document,
+        // facturée séparément — et l'utilisateur ne le voyait nulle part.
         //
-        // L'assertion initiale (`assertSentCount(1)`) décrivait une croyance, pas
-        // le comportement — et c'est SA mise en échec qui a révélé que la
-        // facturation ne comptait qu'une passe sur deux. On vérifie donc ce qui
-        // compte : au moins deux passes, donc au moins deux appels.
-        $this->assertGreaterThanOrEqual(2, Http::recorded()->count(),
-            'Le mode « assistance IA » déclenche la correction ET la classification : '
-            .'n\'en facturer qu\'une sous-facture la moitié de la dépense.');
+        // On vérifie donc qu'un seul appel a lieu : c'est ce qui garantit que le
+        // mode reste proportionné à ce qu'il annonce.
+        $this->assertSame(1, Http::recorded()->count(),
+            'Le mode « assistance IA » ne doit solliciter QUE la correction ciblée. '
+            .'Plus d\'un appel signale qu\'une autre opération, facturée à part, s\'est greffée.');
 
         $structure = DocumentStructure::where('document_id', $document->id)->first();
         $this->assertNotNull($structure);

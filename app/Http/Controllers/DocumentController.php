@@ -56,16 +56,22 @@ class DocumentController extends Controller
     /**
      * Coût en crédits de la passe de classification IA (R2), quand elle a lieu.
      *
-     * **Il y a DEUX passes IA, pas une.** L'assistance sur les ambiguïtés
-     * (`AiCorrectionService`) et la classification des blocs
-     * (`BlockClassifier` → `DetectBlocksTool`) sont deux appels distincts. La
-     * première version de la facturation n'en comptait qu'un : mesurer 4 requêtes
-     * HTTP là où la facturation en attendait une a mis le défaut au jour. La
-     * moitié de la dépense était absorbée par l'application.
+     * **Trois chemins IA existent, et ils ne s'excluent pas :**
+     *   1. `AiCorrectionService` — assistance sur les ambiguïtés (mode assisté) ;
+     *   2. `DetectBlocksTool` via `BlockClassifier` — classification par lots des
+     *      blocs restés ambigus. N'appelle QUE s'il en reste : sur un document
+     *      bien structuré, aucun appel ;
+     *   3. `DeepSeekAnalyzer` — analyse complète (mode pleine précision).
      *
-     * Le classifieur calcule déjà ce coût (`ai_cost_credits`) : on le récupère
-     * plutôt que de l'estimer à nouveau, ce qui garantirait deux valeurs
+     * Le classifieur calcule déjà son coût (`ai_cost_credits`) : on le récupère
+     * plutôt que de l'estimer à nouveau, ce qui produirait deux valeurs
      * divergentes pour la même dépense.
+     *
+     * **Note de méthode.** J'avais d'abord attribué à la classification les
+     * appels supplémentaires mesurés en mode assisté. C'était faux : ils venaient
+     * du `LongFormattingJob`. C'est un test — écrit pour un autre motif — qui l'a
+     * montré, en passant de 4 appels à 1 après avoir découplé le job. Mesurer par
+     * composant, et non par total, aurait évité l'erreur.
      */
     private int $coutClassificationCredits = 0;
 
@@ -425,14 +431,35 @@ class DocumentController extends Controller
             // --- Mise en forme complète asynchrone (LongFormattingJob) ---
             // Le job exige un utilisateur (débit de crédits). Il est dispatché
             // APRÈS la détection : la structure est déjà disponible.
-            if ($useAi && $user) {
-                $estimate = $this->openRouter->estimateCost(
-                    'document_full_format',
-                    max(500, (int) ceil($file->getSize() / 4)),
-                    1500,
+            //
+            // **Le job suit le mode « pleine précision », et non l'assistance.**
+            // Avant, c'est `$useAi` qui le déclenchait — donc le mode présenté
+            // comme « vérifier les passages incertains » déclenchait en réalité
+            // une MISE EN FORME COMPLÈTE du document, tâche bien plus lourde et
+            // facturée séparément. Et le mode « pleine précision », le plus
+            // complet, ne la déclenchait pas : c'était l'inverse de la logique.
+            //
+            // L'utilisateur voyait donc un prix de 3 crédits pour un traitement
+            // qui en coûtait davantage, sans que rien ne l'annonce — exactement
+            // le défaut que ce travail corrige. Le mode qui envoie le document
+            // entier est celui qui va au bout du traitement.
+            if ($mode === DocumentModePricing::MODE_PRECISION && $user) {
+                // `estimationsMiseEnForme()` est PARTAGÉE avec la tarification
+                // affichée (`DocumentModePricing`). Deux estimations séparées
+                // donneraient deux prix pour la même opération : celui montré à
+                // l'utilisateur et celui débité. Un utilisateur qui voit 6 crédits
+                // et en paie 11 a raison de le reprocher, même si les deux
+                // calculs sont justes isolément.
+                // `estimationMiseEnForme()` est PARTAGÉE avec la tarification
+                // affichée. Deux estimations séparées donneraient deux prix pour
+                // la même opération : celui montré à l'utilisateur et celui
+                // débité. Un utilisateur qui voit 6 crédits et en paie 11 a raison
+                // de le reprocher, même si les deux calculs sont justes isolément.
+                $estimatedCredits = DocumentModePricing::estimationMiseEnForme(
+                    $file->getSize(),
+                    $this->tailleTexte($document),
                     $user->currentPlanSlug(),
                 );
-                $estimatedCredits = max(1, $estimate['credits']);
 
                 if (! $user->hasCredits($estimatedCredits)) {
                     Log::warning('Upload : crédits insuffisants pour le job de formatage IA', [
@@ -1139,12 +1166,11 @@ class DocumentController extends Controller
      * **Deux passes IA peuvent avoir eu lieu, et les deux se paient :**
      *   - `AiCorrectionService` (assistance sur les ambiguïtés), dont l'usage
      *     remonte par `lastUsage()` ;
-     *   - `BlockClassifier` → `DetectBlocksTool` (classification des blocs),
-     *     dont le coût est déjà calculé par le classifieur.
+     *   - `BlockClassifier` → `DetectBlocksTool` (classification des blocs
+     *     restés ambigus), dont le coût est déjà calculé par le classifieur.
      *
-     * La première version n'ajustait que la première : mesurer 4 requêtes HTTP
-     * là où la facturation n'en attendait qu'une a révélé que la moitié de la
-     * dépense était absorbée par l'application.
+     * La classification n'appelle que s'il reste des blocs ambigus : sur un
+     * document bien structuré, elle ne consulte rien et son coût est nul.
      *
      * @param  array{actif: bool, reference: string, credits: int, mode: string}  $facturation
      */
@@ -1301,11 +1327,10 @@ class DocumentController extends Controller
                     $resultat = $this->classifier->classify($documentStructurel, $plan, $useAi);
                     $rapportClassification = $resultat['report'];
 
-                    // Le classifieur fait une SECONDE passe IA quand elle est
-                    // demandée (`DetectBlocksTool`), distincte de
-                    // `AiCorrectionService`. On RETIENT son coût : sans cela, la
-                    // facturation n'en comptait qu'une sur les deux, et la moitié
-                    // de la dépense était absorbée par l'application.
+                    // Le classifieur peut faire une passe IA (`DetectBlocksTool`)
+                    // quand des blocs restent ambigus après la détection
+                    // déterministe. On RETIENT son coût : c'est une dépense
+                    // réelle, distincte de `AiCorrectionService`.
                     if (is_array($rapportClassification) && (int) ($rapportClassification['ai_cost_credits'] ?? 0) > 0) {
                         $this->coutClassificationCredits = (int) $rapportClassification['ai_cost_credits'];
                         $this->classificationConsultee = (int) ($rapportClassification['ai_consulted'] ?? 0);
