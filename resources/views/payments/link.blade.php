@@ -129,18 +129,87 @@
             </div>
 
             @if ($lien->mode === 'online')
-                <form method="POST" action="{{ route('payment-link.payer', $lien->token) }}">
-                    @csrf
-                    <button type="submit" class="btn btn-primary btn-block">
-                        <i data-lucide="credit-card" style="width:16px;height:16px"></i>
-                        Payer {{ number_format($lien->amount_fcfa, 0, ',', ' ') }} {{ $lien->currency }}
-                    </button>
-                </form>
+                {{-- Le moyen de paiement est choisi ICI, avant la redirection.
 
-                <p style="font-size:.78rem;color:var(--color-text-muted);text-align:center;margin:1rem 0 0">
-                    Vous serez redirigé vers la passerelle sécurisée KPay pour choisir votre moyen
-                    de paiement (mobile money, carte bancaire, PayPal).
-                </p>
+                     **Pourquoi ne pas laisser la passerelle choisir.** Chaque
+                     fournisseur a son propre widget : il faut décider avant de
+                     rediriger. Afficher les moyens réellement disponibles (le
+                     registre écarte ceux qui sont désactivés, masqués ou sans clé
+                     d'API) évite d'envoyer le client vers un fournisseur qui ne
+                     répond pas, sans recours.
+
+                     Un seul moyen disponible : le bouton reste unique, sans
+                     sélecteur. Imposer un choix à une option est une friction
+                     inutile, et cela retirerait l'information « c'est la seule
+                     voie possible ». --}}
+                @php
+                    $moyens = $moyens ?? [];
+                    $plusieurs = count($moyens) > 1;
+                @endphp
+
+                @if ($moyens === [])
+                    {{-- Aucun moyen : le dire, plutôt que d'afficher un bouton mort.
+                         C'est le cas quand les clés d'API manquent ou que tout a été
+                         désactivé depuis l'administration. --}}
+                    <div class="banner banner-warning" style="margin:0">
+                        <i data-lucide="alert-triangle"></i>
+                        <div>
+                            <strong>Aucun moyen de paiement en ligne disponible</strong>
+                            <div style="font-size:.85rem;margin-top:.25rem">
+                                Contactez votre interlocuteur pour convenir d'un autre mode de
+                                règlement.
+                            </div>
+                        </div>
+                    </div>
+                @else
+                    @if ($plusieurs)
+                        <p style="font-size:.82rem;color:var(--color-text-secondary);margin:0 0 .5rem">
+                            Choisissez votre moyen de paiement :
+                        </p>
+                    @endif
+
+                    <form method="POST" action="{{ route('payment-link.payer', $lien->token) }}">
+                        @csrf
+
+                        @if ($plusieurs)
+                            <div style="display:flex;flex-direction:column;gap:.5rem;margin-bottom:1rem">
+                                @foreach ($moyens as $cle => $moyen)
+                                    <label for="gw-{{ $cle }}"
+                                        style="display:flex;align-items:flex-start;gap:.6rem;padding:.7rem .85rem;border:1px solid var(--color-border);border-radius:8px;cursor:pointer">
+                                        <input type="radio" name="gateway" id="gw-{{ $cle }}"
+                                            value="{{ $cle }}" @checked($loop->first)
+                                            style="margin-top:.2rem">
+                                        <span>
+                                            <span style="font-weight:600;font-size:.88rem;display:block">
+                                                {{ $moyen['libelle'] }}
+                                            </span>
+                                            <span style="font-size:.78rem;color:var(--color-text-muted)">
+                                                {{ $moyen['description'] }}
+                                            </span>
+                                        </span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        @else
+                            {{-- Un seul moyen : envoyé en champ caché. Le serveur le
+                                 revalide de toute façon — un formulaire trafiqué ne
+                                 peut pas imposer une passerelle non proposable. --}}
+                            @foreach ($moyens as $cle => $moyen)
+                                <input type="hidden" name="gateway" value="{{ $cle }}">
+                            @endforeach
+                        @endif
+
+                        <button type="submit" class="btn btn-primary btn-block">
+                            <i data-lucide="credit-card" style="width:16px;height:16px"></i>
+                            Payer {{ number_format($lien->amount_fcfa, 0, ',', ' ') }} {{ $lien->currency }}
+                        </button>
+                    </form>
+
+                    <p style="font-size:.78rem;color:var(--color-text-muted);text-align:center;margin:1rem 0 0">
+                        Vous serez redirigé vers la plateforme sécurisée du fournisseur pour
+                        finaliser le règlement.
+                    </p>
+                @endif
             @else
                 {{-- Lien hors ligne : aucun bouton de paiement. En afficher un serait
                      une promesse non tenue — le règlement a lieu par un autre canal. --}}
@@ -160,7 +229,10 @@
     </div>
 
     <p style="text-align:center;font-size:.75rem;color:var(--color-text-muted);margin-top:1.5rem">
-        Paiement sécurisé par KPay · <a href="/">FORMADOC</a>
+        @if (! empty($moyens))
+            Moyens de paiement : {{ implode(', ', array_column($moyens, 'libelle')) }} ·
+        @endif
+        <a href="/">FORMADOC</a>
     </p>
 </div>
 

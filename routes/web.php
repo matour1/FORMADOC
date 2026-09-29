@@ -155,6 +155,21 @@ Route::middleware(['web', 'throttle:30,1'])->prefix('paiement')->name('payment-l
     Route::get('/{token}', [PaymentLinkController::class, 'show'])->name('show');
     Route::post('/{token}/payer', [PaymentLinkController::class, 'payer'])->name('payer');
     Route::get('/{token}/retour', [PaymentLinkController::class, 'retour'])->name('retour');
+
+    // Notification Monetbil (équivalent du webhook KPay).
+    //
+    // Route SÉPARÉE du retour, et c'est nécessaire : la notification est appelée
+    // serveur à serveur par Monetbil, sans session ni cookie, et doit répondre la
+    // chaîne `received` en texte brut. La faire passer par `retour` (qui redirige
+    // vers une page HTML) ferait considérer la notification comme non délivrée, et
+    // Monetbil la réémettrait indéfiniment.
+    //
+    // Elle ne relève pas du `throttle:30,1` du groupe : une rafale de notifications
+    // légitimes (plusieurs clients payant en même temps depuis le même opérateur)
+    // serait rejetée en 429 et le paiement resterait non constaté.
+    Route::post('/{token}/notify', [PaymentLinkController::class, 'notify'])
+        ->name('notify')
+        ->withoutMiddleware('throttle:30,1');
 });
 
 // ⚠️ MODULE « PAGE DE GARDE » SUPPRIMÉ DE CETTE VERSION.

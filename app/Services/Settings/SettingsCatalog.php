@@ -147,6 +147,77 @@ final class SettingsCatalog
                 'unit' => 'jours',
             ],
 
+            // --- Moyens de paiement : actif / visible ------------------------
+            //
+            // **Deux réglages par moyen, et non un seul.** « Désactiver » coupe le
+            // moyen partout ; « masquer » le retire de l'interface d'achat tout en
+            // le gardant utilisable pour les liens envoyés à la main. Un booléen
+            // unique obligerait à désactiver pour masquer, donc à perdre aussi les
+            // encaissements négociés.
+            //
+            // **Le défaut est `true` ici alors que le code déduit du fait que les
+            // clés soient renseignées.** Un réglage enregistré en base est une
+            // décision explicite de l'exploitant : il prime sur la déduction. Le
+            // défaut affiché doit donc être l'état attendu une fois l'intégration
+            // en place, pas l'état d'une installation neuve.
+            'kpay_actif' => [
+                'key' => 'payments.gateways.kpay.actif',
+                'type' => 'bool',
+                'group' => 'payments',
+                'label' => 'KPay — moyen activé',
+                'description' => 'Désactiver refuse ce moyen PARTOUT, y compris pour les liens de '
+                    .'paiement envoyés manuellement. C\'est l\'interrupteur d\'urgence quand '
+                    .'KPay est en panne : inutile de redéployer.',
+                'default' => true,
+            ],
+            'kpay_visible' => [
+                'key' => 'payments.gateways.kpay.visible',
+                'type' => 'bool',
+                'group' => 'payments',
+                'label' => 'KPay — affiché dans l\'interface d\'achat',
+                'description' => 'Masquer retire le moyen de la liste proposée aux utilisateurs, sans '
+                    .'le désactiver : les liens de paiement continuent de fonctionner. Utile quand le '
+                    .'moyen est réservé aux encaissements négociés.',
+                'default' => true,
+            ],
+            'monetbil_actif' => [
+                'key' => 'payments.gateways.monetbil.actif',
+                'type' => 'bool',
+                'group' => 'payments',
+                'label' => 'Monetbil — moyen activé',
+                'description' => 'Désactiver refuse ce moyen PARTOUT. Sans clé de service renseignée, '
+                    .'le moyen n\'est de toute façon jamais proposé : un moyen non configuré mènerait '
+                    .'le client vers une page d\'erreur.',
+                'default' => true,
+            ],
+            'monetbil_visible' => [
+                'key' => 'payments.gateways.monetbil.visible',
+                'type' => 'bool',
+                'group' => 'payments',
+                'label' => 'Monetbil — affiché dans l\'interface d\'achat',
+                'description' => 'Masquer retire le moyen de la liste, sans le désactiver.',
+                'default' => true,
+            ],
+            'offline_actif' => [
+                'key' => 'payments.gateways.offline.actif',
+                'type' => 'bool',
+                'group' => 'payments',
+                'label' => 'Règlement hors ligne — moyen activé',
+                'description' => 'Espèces, virement ou mobile money direct, constaté par un '
+                    .'administrateur. C\'est le moyen de secours : il ne dépend d\'aucun service '
+                    .'externe et reste opérationnel quand toutes les passerelles tombent.',
+                'default' => true,
+            ],
+            'offline_visible' => [
+                'key' => 'payments.gateways.offline.visible',
+                'type' => 'bool',
+                'group' => 'payments',
+                'label' => 'Règlement hors ligne — affiché dans l\'interface d\'achat',
+                'description' => 'Le masquer retire la seule voie qui reste quand la connexion ou '
+                    .'l\'opérateur est en panne : à ne faire qu\'en connaissance de cause.',
+                'default' => true,
+            ],
+
             // --- Plateforme --------------------------------------------------
             'auto_renew' => [
                 'key' => 'billing.auto_renew',

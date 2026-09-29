@@ -61,6 +61,71 @@
                         @endif
                     </p>
 
+                    @if ($slug === 'payments')
+                        {{-- Diagnostic des moyens de paiement.
+
+                             **Pourquoi ce panneau, alors que les interrupteurs sont
+                             juste en dessous.** Trois causes distinctes empêchent un
+                             moyen d'apparaître : clé d'API absente, moyen désactivé,
+                             moyen masqué. Les interrupteurs ne montrent que les deux
+                             dernières — un moyen activé et visible mais sans clé ne
+                             s'afficherait nulle part, et l'exploitant conclurait à un
+                             défaut du code. Ce tableau nomme la cause exacte.
+
+                             Il est calculé par `PaymentGatewayRegistry`, donc il
+                             reflète ce que voit réellement l'interface d'achat. --}}
+                        @php $moyens = app(\App\Services\Billing\PaymentGatewayRegistry::class)->etats(); @endphp
+
+                        <div style="border:1px solid var(--color-border);border-radius:8px;padding:1rem;margin-bottom:1.5rem">
+                            <h3 style="font-size:.9rem;font-weight:600;margin:0 0 .25rem">
+                                État réel des moyens de paiement
+                            </h3>
+                            <p style="font-size:.8rem;color:var(--color-text-muted);margin:0 0 .9rem;max-width:70ch">
+                                Ce que voit l'utilisateur au moment de payer. Un moyen doit être
+                                <strong>configuré</strong>, <strong>activé</strong> et
+                                <strong>affiché</strong> pour être proposé.
+                            </p>
+
+                            <div style="display:flex;flex-direction:column;gap:.7rem">
+                                @foreach ($moyens as $cle => $moyen)
+                                    <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;font-size:.85rem">
+                                        <span style="font-weight:600;min-width:15rem">{{ $moyen['libelle'] }}</span>
+
+                                        @if ($moyen['proposable'])
+                                            <span class="badge badge-success">Proposé</span>
+                                        @else
+                                            <span class="badge badge-danger">Non proposé</span>
+                                        @endif
+
+                                        @unless ($moyen['configure'])
+                                            <span class="badge badge-warning" title="Les clés d'API ne sont pas renseignées dans le fichier .env : ce moyen ne peut pas fonctionner, et le proposer mènerait le client vers une page d'erreur.">
+                                                clés absentes
+                                            </span>
+                                        @endunless
+
+                                        @unless ($moyen['actif'])
+                                            <span class="badge badge-warning" title="Le moyen est désactivé : il est refusé partout, y compris pour les liens envoyés manuellement.">
+                                                désactivé
+                                            </span>
+                                        @endunless
+
+                                        @if ($moyen['actif'] && ! $moyen['visible'])
+                                            <span class="badge badge-warning" title="Le moyen fonctionne mais n'est pas affiché : il reste utilisable pour les liens de paiement envoyés manuellement.">
+                                                masqué
+                                            </span>
+                                        @endif
+                                    </div>
+                                @endforeach
+                            </div>
+
+                            <p style="font-size:.78rem;color:var(--color-text-muted);margin:.9rem 0 0;max-width:70ch">
+                                <strong>Désactiver</strong> refuse le moyen partout.
+                                <strong>Masquer</strong> le retire de la liste sans le couper : les liens
+                                de paiement déjà transmis continuent de fonctionner.
+                            </p>
+                        </div>
+                    @endif
+
                     <div style="display:flex;flex-direction:column;gap:1.4rem">
                         @foreach ($definitions as $nom => $definition)
                             @php $etat = $valeurs[$nom]; @endphp

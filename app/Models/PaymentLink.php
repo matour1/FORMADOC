@@ -22,7 +22,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * lien à partir de l'adresse reçue, ce qui est précisément l'usage qu'on en fait.
  */
 #[Fillable([
-    'token', 'label', 'amount_fcfa', 'currency', 'mode', 'status', 'credits',
+    'token', 'label', 'amount_fcfa', 'currency', 'mode', 'gateway', 'status', 'credits',
     'user_id', 'customer_label', 'customer_email', 'description',
     'expires_at', 'paid_at', 'paid_by', 'payment_reference',
     'kpay_payment_id', 'created_by',
@@ -46,6 +46,22 @@ class PaymentLink extends Model
     public const MODE_EN_LIGNE = 'online';
 
     public const MODE_HORS_LIGNE = 'offline';
+
+    /**
+     * Passerelle effectivement utilisée, une fois le paiement initié.
+     *
+     * `NULL` a deux significations distinctes qu'il ne faut pas confondre :
+     *  - un lien hors ligne n'en aura jamais (aucun appel réseau n'est fait) ;
+     *  - un lien en ligne pas encore réglé n'en a pas encore.
+     *
+     * Une fois le règlement engagé, la valeur est celle de `PaymentGatewayRegistry`.
+     * Elle est figée : un lien réglé par Monetbil le restera, même si KPay devient
+     * la passerelle par défaut entre-temps. Le rapprochement comptable en dépend.
+     */
+    public function passerelle(): ?string
+    {
+        return $this->gateway;
+    }
 
     protected function casts(): array
     {
