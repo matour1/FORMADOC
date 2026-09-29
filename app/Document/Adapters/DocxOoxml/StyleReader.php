@@ -70,16 +70,98 @@ final class StyleReader
     /**
      * Styles de sommaire et de listes (frontispice).
      *
+     * **Ce que la mesure du corpus a imposé.** La liste s'arrêtait à `toc 3`, or
+     * le relevé des styles réellement employés sur les documents contenant un
+     * sommaire donne, par ordre de fréquence :
+     *
+     *     toc 4 : 52 occurrences   ← ABSENT de la liste d'origine
+     *     toc 1 : 50               toc 2 : 42               toc 3 : 41
+     *     table of figures : 26    list paragraph : 16      caption : 4
+     *
+     * Le style le PLUS fréquent était donc celui qui n'était pas reconnu. Un
+     * sommaire de niveau 4 — fréquent dans un mémoire, où les sous-sections
+     * descendent souvent à quatre niveaux — passait entièrement au travers.
+     *
+     * **Pourquoi une comparaison par MOTIF et non une liste exhaustive.** Les
+     * noms de style ne sont pas normalisés : Word les traduit selon la langue de
+     * l'interface (« Sommaire 1 » en français), et un document produit par un
+     * outil tiers peut les nommer autrement. Une liste figée est donc toujours
+     * incomplète — c'est précisément ce qui a produit ce défaut. On reconnaît
+     * désormais la FORME du nom (`toc N`, `sommaire N`), sans plafond de niveau.
+     *
+     * Le coût d'un faux positif est faible et asymétrique : classer à tort un
+     * paragraphe comme entrée de sommaire le retire des titres candidats, alors
+     * que l'erreur inverse — un sommaire pris pour des titres — pollue tout le
+     * document (60 % de faux titres mesurés sur les cas touchés).
+     *
+     * @var array<int, string>
+     */
+    /**
+     * Noms EXACTS de styles qui désignent une entrée de SOMMAIRE.
+     *
+     * **Ce que la mesure a corrigé.** `list paragraph` figurait dans cette liste
+     * depuis l'origine. C'était sans conséquence tant que `isListStyle()` n'était
+     * consommé nulle part ; en le branchant (L1.1), le signal mort est devenu une
+     * régression mesurable : sur `fn7Ze5U5VRrdjetpm3t034OPso7I8YmkJEAawH4d.docx`,
+     * **175 paragraphes** portaient `list paragraph` — et c'était **toute la liste
+     * à puces du corps** (« Promouvoir les entreprises locales… », blocs 55 à 142),
+     * pas un sommaire.
+     *
+     * La cause est une confusion de concepts, pas une erreur de liste :
+     *
+     *   - `list paragraph` est le style que Word applique à **toute** liste à
+     *     puces ou numérotée — c'est un style de LISTE ;
+     *   - `toc 1`…`toc 9`, `table of contents`, `table of figures` sont les styles
+     *     qu'un sommaire **généré** porte — ce sont des styles de SOMMAIRE.
+     *
+     * Une liste à puces n'est pas un sommaire. Confondre les deux retire des
+     * centaines de blocs de contenu du document. Les deux notions sont donc
+     * désormais portées par deux méthodes distinctes, et seul
+     * `tocStyleLevel()` autorise le reclassement.
+     *
+     * @var array<int, string>
+     */
+    private const TOC_NAMES = [
+        'table of contents',
+        'table of figures',
+        'tabledesillustrations',
+        'table des matieres',
+        'table des matières',
+        'liste des figures',
+        'liste des tableaux',
+        'liste des annexes',
+    ];
+
+    /**
+     * Noms de styles de LISTE, sans valeur de sommaire.
+     *
+     * Conservé pour la traçabilité et le diagnostic. Ces styles signalent une
+     * puce ou une numérotation, jamais une entrée de sommaire : les consommer
+     * comme tels reclasserait tout le contenu listé du document.
+     *
      * @var array<int, string>
      */
     private const LIST_NAMES = [
-        'toc 1',
-        'toc 2',
-        'toc 3',
-        'table of figures',
-        'tabledesillustrations',
         'list paragraph',
         'paragraphedeliste',
+        'liste',
+        'list',
+    ];
+
+    /**
+     * Motifs de nom reconnus comme des styles de sommaire.
+     *
+     * Couvre `toc 1` … `toc 9` (sans plafond) et les équivalents localisés
+     * (`sommaire 1`, `inhoudsopgave 1`…). Le niveau est capturé puis converti
+     * pour que l'appelant puisse connaître la profondeur de l'entrée.
+     *
+     * @var array<int, string>
+     */
+    private const LIST_PATTERNS = [
+        '/^toc\s*(\d+)$/u',
+        '/^sommaire\s*(\d+)$/u',
+        '/^table\s+of\s+contents\s*(\d+)$/u',
+        '/^table\s+des\s+mati[eè]res\s*(\d+)$/u',
     ];
 
     /**
@@ -290,22 +372,75 @@ final class StyleReader
 
     /**
      * Le style appartient-il au frontispice (sommaire, listes) ?
+     *
+     * **Ce prédicat est un diagnostic, pas une décision.** Il est VRAI pour une
+     * puce comme pour une entrée de sommaire. L'utiliser pour reclasser un bloc
+     * retire le contenu listé du document : c'est la régression mesurée sur
+     * `fn7Ze5U5…docx` (175 blocs de puces reclassés en sommaire). Pour décider,
+     * utiliser `tocStyleLevel()`, qui ne retient que les vrais sommaires.
      */
     public function isListStyle(?string $styleId): bool
     {
+        return $this->listStyleLevel($styleId) !== null;
+    }
+
+    /**
+     * Niveau de sommaire d'un style, ou null si ce n'est pas une entrée de SOMMAIRE.
+     *
+     * Seuls les styles de sommaire répondent : un style de liste à puces
+     * (`list paragraph`) retourne `null`, car il habille du CONTENU. La
+     * distinction est le correctif de la régression L1.1 — voir `TOC_NAMES`.
+     */
+    public function tocStyleLevel(?string $styleId): ?int
+    {
         if ($styleId === null || ! isset($this->styles[$styleId])) {
-            return false;
+            return null;
         }
 
         $name = mb_strtolower($this->styles[$styleId]['name']);
 
-        foreach (self::LIST_NAMES as $listName) {
-            if ($name === $listName) {
-                return true;
+        foreach (self::TOC_NAMES as $tocName) {
+            if ($name === $tocName) {
+                // Style de sommaire sans niveau : on retourne 1 plutôt que null,
+                // car le fait d'être une entrée de sommaire est acquis. Retourner
+                // null ici ferait passer une « Liste des figures » pour un titre.
+                return 1;
             }
         }
 
-        return false;
+        foreach (self::LIST_PATTERNS as $pattern) {
+            if (preg_match($pattern, $name, $m) === 1) {
+                return max(1, (int) $m[1]);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Niveau de liste d'un style, ou null — SOMMAIRE ET PUCE confondus.
+     *
+     * Le niveau est retourné plutôt qu'un simple booléen parce que l'appelant en
+     * a besoin pour distinguer un sommaire (niveaux 1-2) d'une table des matières
+     * complète (tous niveaux) — la distinction est documentée dans le modèle de
+     * référence du projet.
+     *
+     * **Ne pas utiliser pour reclasser un bloc en entrée de sommaire** : la
+     * méthode répond aussi pour une puce. Voir `tocStyleLevel()`.
+     */
+    public function listStyleLevel(?string $styleId): ?int
+    {
+        if ($styleId === null || ! isset($this->styles[$styleId])) {
+            return null;
+        }
+
+        $name = mb_strtolower($this->styles[$styleId]['name']);
+
+        if (in_array($name, self::LIST_NAMES, true)) {
+            return 1;
+        }
+
+        return $this->tocStyleLevel($styleId);
     }
 
     /**

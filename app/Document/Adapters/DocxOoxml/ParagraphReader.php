@@ -85,6 +85,11 @@ final class ParagraphReader
             'is_heading_style' => $isHeadingStyle,
             'is_caption_style' => $this->styles->isCaptionStyle($styleId),
             'is_list_style' => $this->styles->isListStyle($styleId),
+            // Signal DISTINCT du précédent, et c'est une décision de conception :
+            // `is_list_style` confond puce et entrée de sommaire — l'utiliser pour
+            // reclasser un bloc retire tout le contenu listé du document. Seul
+            // `is_toc_style` autorise le reclassement en `BlockType::TocEntry`.
+            'is_toc_style' => $this->styles->tocStyleLevel($styleId) !== null,
             'font_size' => $analysis['font_size'],
             'is_bold' => $analysis['is_bold'],
             'is_italic' => $analysis['is_italic'],

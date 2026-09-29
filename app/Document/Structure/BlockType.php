@@ -55,6 +55,26 @@ enum BlockType: string
     case CrossRef = 'cross_ref';
 
     /**
+     * Entrée d'un sommaire ou d'une table des matières DÉJÀ présents.
+     *
+     * **Pourquoi un type à part, et non un paragraphe.** Une entrée de sommaire
+     * ressemble à un titre — elle porte souvent le style `toc N`, donc un niveau
+     * de plan — mais ce n'en est pas un : c'est la COPIE d'un titre, avec un
+     * numéro de page en fin de ligne. La classer comme titre produit deux
+     * conséquences mesurables :
+     *
+     *   - le sommaire entre dans le sommaire qu'on génère, ce qui est
+     *     manifestement faux ;
+     *   - la numérotation voit des titres en double et renumérote sur une base
+     *     erronée.
+     *
+     * Mesuré sur le document de référence du projet : les entrées du sommaire
+     * représentaient **60 % des titres détectés**. Les classer à part renverse
+     * la lecture du document.
+     */
+    case TocEntry = 'toc_entry';
+
+    /**
      * Le type est-il un titre (participe à la table des matières) ?
      */
     public function isHeading(): bool
