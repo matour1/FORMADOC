@@ -34,6 +34,25 @@ le coût.
 - Une ligne perdue ne doit jamais faire échouer l'appel IA : tout échec d'écriture est loggé et ignoré.
 - `estimated = true` marque un coût approximé (échec sans réponse) ; ces lignes sont exclues du contrôle `UsageLedger::recalculabilite()`.
 - Le coût doit rester recalculable depuis `model` + tokens + `config/openrouter.php` : ne jamais stocker un coût non dérivable des tokens sans passer `estimated`.
+- **`cost_usd` vient de la réponse du fournisseur : c'est le FAIT.** Le recalculer depuis les tokens ne sert qu'à VÉRIFIER (`recalculabilite()`), jamais à remplacer la valeur — sur les appels échoués (SSL, 402, 404) il inventerait une dépense qui n'a pas eu lieu. Une mesure qui le faisait annonçait « 82,8 % du coût en échecs » alors que le vrai chiffre était 0 %.
+
+## Moyens de paiement : trois états distincts, jamais un seul booléen
+`PaymentGatewayRegistry` distingue **configuré** (clés d'API renseignées), **actif** (l'exploitant accepte le moyen, refus PARTOUT) et **visible** (apparaît dans l'interface d'achat). Seul `estProposable()` combine les trois.
+
+**Masquer n'est pas désactiver.** Un moyen actif mais masqué reste utilisable pour les liens négociés sans être proposé en libre-service. Un booléen unique aurait obligé à couper le moyen pour cesser de le proposer — donc à perdre aussi les encaissements en cours.
+
+**Les clés de configuration ne doivent JAMAIS valoir `null`.** `null` est indiscernable d'une clé absente, et `SettingsRepository::applyToConfig()` ignore silencieusement les clés inconnues : le réglage serait affiché, modifiable, et sans effet. L'invariant `SettingsTest::test_chaque_reglage_pointe_vers_une_configuration_existante` le refuse, et il a raison. Mettre un défaut explicite (`true`).
+
+**Un moyen non déclaré n'est pas « sans clé », c'est un moyen inconnu.** `estConfigure()` est une liste blanche : retourner `true` par défaut pour une passerelle absente de la table la rendrait proposable, et le contrôleur la routerait vers la passerelle par défaut. Un client demandant « paypal » serait envoyé chez KPay.
+
+## Monetbil : ce qu'il ne faut PAS copier du SDK officiel
+Le paquet `Monetbil/monetbil-php` désactive la vérification SSL (`CURLOPT_SSL_VERIFYPEER, 0`) alors que la requête transporte montants et références de paiement, et configure par propriétés statiques globales (deux paiements simultanés se marchent dessus, aucun test ne peut l'isoler). On interroge l'API via `Http`, qui vérifie les certificats — aucun paquet ajouté.
+
+- **Signature = MD5 du secret suivi des valeurs triées par CLÉ.** Trier par valeur donne une signature toujours différente, et TOUTES les notifications sont rejetées sans message utile.
+- **`status = 7` est un SUCCÈS** (mode test), pas seulement `1`. Ne reconnaître que `1` rend la phase de recette impossible.
+- **La signature ne porte aucun horodatage** : elle est rejouable telle quelle. La protection contre le double versement repose sur l'idempotence de `PaymentLinkService::regler()`, jamais sur la signature.
+- **Le statut ANNONCÉ par une notification n'a aucun effet** : seul `checkPayment()` (appel API) décide.
+
 
 ## Rembourser au prorata sur le coût RÉEL
 `CreditService::proportionalRefund()` arrondit vers le bas (`intdiv`) : arrondir au supérieur ferait payer l'app une fraction de crédit à chaque incident.

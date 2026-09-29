@@ -60,3 +60,29 @@ corpus (2 388 fichiers pour 1 573 contenus). Compter des lignes hors perimetre
 numerateur que le denominateur.
 
 Citer les deux bases quand elles different, et nommer celle qui sert au verdict.
+
+## Ne jamais utiliser `null` comme sentinelle dans une cle de configuration
+`null` est **indiscernable d'une cle ABSENTE**. Consequences en cascade :
+- `config($cle, $defaut)` ne retourne son defaut que si la cle est absente : avec
+  une valeur `null` stockee, le defaut ne s'applique **jamais** ;
+- `SettingsRepository::applyToConfig()` ignore silencieusement les cles inconnues :
+  un reglage valorise a `null` serait **affiche, modifiable, et sans effet**.
+
+Cas vecu (2026-09-29) : `env('PAYMENTS_KPAY_ACTIF')` sans defaut ecrivait `null`,
+donc KPay apparaissait configure mais **inactif**. La correction par `??` etait un
+pansement ; l'invariant du projet (`SettingsTest::
+test_chaque_reglage_pointe_vers_une_configuration_existante`) a montre que la
+bonne solution etait un **defaut explicite** (`env('X', true)`).
+
+Regle : une cle de configuration porte une VALEUR, jamais une absence. Ajouter un
+test qui verifie `assertNotNull(config($cle))` et `assertIsBool(...)` pour les
+drapeaux.
+
+## Une liste blanche ne se code pas par defaut permissif
+`estConfigure()` retournait `true` pour toute passerelle **absente** d'une table de
+correspondance, au motif qu'elle n'a pas besoin de cles. Resultat : un moyen
+**inconnu** etait declare configure, donc proposable, et le controleur le routait
+vers la passerelle par defaut — un client demandant « paypal » partait chez KPay.
+
+Regle : tester d'abord l'**appartenance** (`array_key_exists`), puis les proprietes
+du membre. Un element non declare est refuse, jamais accepte par omission.
