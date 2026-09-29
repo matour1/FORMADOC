@@ -299,20 +299,20 @@ Toute nouvelle règle doit être évaluée **avant/après sur les contenus DISTI
 
 **Réellement ouvertes :**
 
-1. **Quand passer `pipeline.v2` de `auto` à `true` ?** Le critère est le nombre de replis. **Partiellement mesuré** le 2026-09-29 : sur 8 432 conversions loggées, **1 seule a échoué** — et c'était un script de mesure interne (`document_id: "enquete"`), depuis corrigé. Aucun repli sur un document utilisateur.
-
-   **Mais l'échantillon ne permet pas encore de trancher** : en base, seules **1 structure sur 37** a traversé le choix de moteur (les 36 autres portent `pipeline = NULL`, antérieures à l'intégration et donc sans valeur probante). Un échantillon de 1 ne prouve pas l'absence de repli. Le critère du plan (« volume suffisant ») n'est **pas** atteint.
-3. **Coût réel en tokens et en crédits par document** de la double-vérification IA (nombre de blocs sous 0,85 × coût unitaire). Données partielles (12 % de blocs ambigus), pas de conversion. **Cette question a pris de l'importance** : la facturation du mode « assistance IA » repose sur une *estimation*, pas sur cette mesure.
-4. **Fréquence réelle des problèmes de marges** : à mesurer sur les contenus distincts. Reste en dette assumée tant que le chiffre manque.
-5. **Le filtre de contenu reclasserait-il un tableau de données numériques ?** Faux positif identifié mais **non testé**. Le seuil de densité (4 lignes dans 12 blocs) le rend improbable, pas impossible.
-6. **Les diagrammes du document de référence sont-ils des images aplaties ou des formes éditables ?** Question non instruite (voir §5.3) — conditionne le classement en dette.
+1. ~~**Quand passer `pipeline.v2` de `auto` à `true` ?**~~ → **TRANCHÉE le 2026-09-29 : `true` est justifiable.** Voir §4.5 pour la mesure.
+2. **Coût réel en tokens et en crédits par document** de la double-vérification IA (nombre de blocs sous 0,85 × coût unitaire). Données partielles (12 % de blocs ambigus), pas de conversion. **Cette question a pris de l'importance** : la facturation du mode « assistance IA » repose sur une *estimation*, pas sur cette mesure.
+3. **Fréquence réelle des problèmes de marges** : à mesurer sur les contenus distincts. Reste en dette assumée tant que le chiffre manque.
+4. **Le filtre de contenu reclasserait-il un tableau de données numériques ?** Faux positif identifié mais **non testé**. Le seuil de densité (4 lignes dans 12 blocs) le rend improbable, pas impossible.
+5. **Les diagrammes du document de référence sont-ils des images aplaties ou des formes éditables ?** Question non instruite (voir §5.3) — conditionne le classement en dette.
 
 ### 4.3 Critère de sortie avant d'attaquer une nouvelle phase
 
 1. **Refaire les fréquences sur les contenus distincts** (1 573 — et non 1 347 : la mesure a été affinée), pas sur les fichiers (2 388).
 2. ~~**Mesurer le correctif du sommaire sur l'ensemble du corpus**~~ → **fait** (voir §4.4).
-3. **Trancher la question 1 (`auto` → `true`)** : impossible en l'état, l'échantillon est de 1 document. Il faut d'abord que davantage de documents traversent le choix de moteur.
+3. ~~**Trancher la question 1 (`auto` → `true`)**~~ → **fait** (voir §4.5).
 4. Ne pas coder de nouvelle règle de détection sans chiffre sur le corpus à l'appui (principe 4).
+
+**Les quatre critères de sortie sont désormais satisfaits.** La phase suivante peut être attaquée.
 
 ### 4.4 Mesure du correctif de sommaire sur le corpus *(2026-09-29)*
 
@@ -347,6 +347,27 @@ Dans les deux cas, la leçon est la même : **vérifier que l'instrument mesure 
 **Troisième défaut, trouvé par le test posé au bon niveau.** `BlockType::TocEntry` a deux producteurs (par style, par contenu). Seul le second retirait le numéro de page : une entrée `toc 1` conservait donc `"CHAPITRE I : PRESENTATION\t2"`, et ce numéro serait recopié dans le sommaire généré — le défaut même que L1.1 devait corriger.
 
 Les tests de `StyleReader` ne pouvaient pas le voir : le style était **correctement** reconnu, c'est son **usage** qui était incomplet. Il a fallu un test **de bout en bout sur `DocxNativeAdapter`**, à l'endroit où les blocs sont réellement produits. **Un composant correct branché à un usage incomplet produit quand même un résultat faux** — d'où la règle : tester au niveau qui produit le résultat, pas seulement sur les pièces intermédiaires.
+
+**Correctif complémentaire (branche `fix/sommaire-numero-de-page`)** : le numéro de page est désormais retiré sur **les deux** chemins. Mesure du risque : le chemin par style ne contrôle pas la longueur du texte, une entrée réduite à un numéro aurait pu devenir vide → **0 vidage sur 1 621 contenus** (216 entrées observées, aucune ne descend sous 4 caractères). Aucun garde-fou ajouté, la mesure ne le justifiant pas.
+
+### 4.5 Replis du pipeline : la question `auto` → `true` est tranchée *(2026-09-29)*
+
+**Le critère du plan** était de compter les replis sur un « volume suffisant ». Le comptage en base était inexploitable : **36 structures sur 37** portent `pipeline = NULL` — elles sont antérieures à l'intégration du choix de moteur et ne prouvent rien. L'échantillon réellement jugeable était de **1 document**.
+
+La mesure a donc été faite **directement sur le corpus**, en mode `auto`, où un retour `null` **signifie** un repli.
+
+| Mesure | Valeur |
+| --- | --- |
+| Fichiers parcourus | 2 675 |
+| **Contenus distincts** | **1 648** |
+| Contenus `.docx` distincts | 1 643 |
+| Conversions réussies | **1 643** |
+| **Replis** | **0 (0 %)** |
+| Formats non supportés | 5 (`.txt` — repli attendu, ce n'est pas un défaut) |
+
+**Le pipeline complet a été mesuré, pas seulement l'adaptateur.** Un premier passage portait sur `DocxNativeAdapter::convert()` (0 échec sur 1 643 contenus) ; mais ce n'est pas le chemin de production. `DocumentPipeline::convert()` englobe l'adaptateur **et** les étages suivants, et c'est lui qui décide du repli. Les deux mesures donnent 0, mais seule la seconde répond à la question posée — **mesurer le bon composant est la moitié du travail**.
+
+**Verdict : `auto` → `true` est justifiable.** Le repli automatique n'a jamais eu à travailler sur 1 643 contenus `.docx` distincts, ce qui dépasse largement le « volume suffisant » exigé. Reste à décider *quand* opérer le basculement (il change le comportement en cas d'échec futur : l'erreur remonterait au lieu d'être absorbée) — c'est une décision d'exploitation, plus une question de mesure.
 
 ---
 
