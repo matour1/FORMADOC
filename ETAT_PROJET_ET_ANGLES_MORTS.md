@@ -270,6 +270,8 @@ Le système lit déjà les en-têtes, pieds de page et numéros de page, et peut
 8. **(nouveau, 2026-09-29)** **Un signal proposé doit être testé sur le cas MÊME qui l'a fait proposer.** La version précédente retenait les points de suite comme signal principal de reconnaissance d'un sommaire. Mesure sur le document cité en référence par ce même document : **0 détection sur 49 entrées**. Le signal n'avait jamais été éprouvé sur le cas d'où il venait.
 9. **(nouveau, 2026-09-29)** **Mesurer par composant, pas par total.** Sur la facturation IA, un compteur global de 4 requêtes HTTP a fait attribuer les appels au mauvais composant, et la conclusion était l'inverse de la réalité. Un total ne dit pas QUI a produit quoi.
 10. **(nouveau, 2026-09-29)** **Un test qui échoue selon la charge de la machine crée un défaut au lieu d'en révéler un.** `PaymentLinkTest` comparait une durée en JOURS calculée depuis `created_at` (posé par la base) à partir de `now()` (calculé en PHP avant l'insertion) : l'écart de quelques millisecondes suffisait à faire retourner 2 au lieu de 3. Le test passait seul et échouait en suite complète. Correction : comparer à une seconde près, **après avoir vérifié que le test détecte toujours une durée fausse** (sinon on a supprimé le signal au lieu du bruit).
+11. **(nouveau, 2026-09-29)** **Ne jamais RECALCULER une valeur que la base enregistre déjà.** Mesurer le coût IA en recalculant les prix à partir des tokens a produit « les échecs pèsent 82,8 % du coût » — alors que la colonne `cost_usd`, issue de la réponse du fournisseur, dit **0 %** : ces appels avaient échoué avant tout traitement (SSL, `402`, `404`) et n'ont jamais été facturés. Le recalcul avait substitué une **hypothèse** (le prix *s'il avait abouti*) à un **fait** (le prix payé). Recalculer n'est légitime que pour *vérifier* une valeur enregistrée.
+12. **(nouveau, 2026-09-29)** **Un taux aberrant accuse d'abord l'instrument, pas le code.** Trois cas le même jour : « 100 % des reclassements suspects » (l'audit comptait les pages de frontispice comme faux positifs), « 82,8 % du coût en échecs » (recalcul d'un coût inexistant), « 100 % natif, 0 repli » (comparaison 1 = 1 ignorant 36 lignes hors périmètre). Un taux trop propre (0 % ou 100 %) est **plus suspect** qu'un taux intermédiaire. Avant de rapporter un taux : se demander ce que l'instrument mesure réellement, et sur quelle base.
 
 ---
 
@@ -299,8 +301,8 @@ Toute nouvelle règle doit être évaluée **avant/après sur les contenus DISTI
 
 **Réellement ouvertes :**
 
-1. ~~**Quand passer `pipeline.v2` de `auto` à `true` ?**~~ → **TRANCHÉE le 2026-09-29 : `true` est justifiable.** Voir §4.5 pour la mesure.
-2. **Coût réel en tokens et en crédits par document** de la double-vérification IA (nombre de blocs sous 0,85 × coût unitaire). Données partielles (12 % de blocs ambigus), pas de conversion. **Cette question a pris de l'importance** : la facturation du mode « assistance IA » repose sur une *estimation*, pas sur cette mesure.
+1. ~~**Quand passer `pipeline.v2` de `auto` à `true` ?**~~ → **MESURÉE le 2026-09-29, DÉCISION : rester en `auto`.** La mesure ne montre aucun repli (0 sur 1 643 contenus, §4.5), donc `true` serait justifiable. La décision retenue est néanmoins de **conserver le repli** : les contenus mesurés sont des documents **déjà en base**, pas les fichiers que de nouveaux utilisateurs téléverseront. Un `.docx` corrompu ou produit par un outil exotique ne s'y trouve peut-être pas — or c'est précisément le cas que le repli protège. À réexaminer quand du trafic réel existera.
+2. **Coût réel en tokens et en crédits par document** de la double-vérification IA. **Mesuré partiellement le 2026-09-29** (§4.6) : coût moyen **0,001512 USD** par appel `function_calling` et **0,003266 USD** par génération d'image, sur les données d'usage existantes. **Non mesuré** : le coût par *document* traité, car aucun débit documentaire réel n'existe en base de développement. **Aucune fuite de marge détectée** : les 14 appels échoués n'ont rien coûté.
 3. **Fréquence réelle des problèmes de marges** : à mesurer sur les contenus distincts. Reste en dette assumée tant que le chiffre manque.
 4. **Le filtre de contenu reclasserait-il un tableau de données numériques ?** Faux positif identifié mais **non testé**. Le seuil de densité (4 lignes dans 12 blocs) le rend improbable, pas impossible.
 5. **Les diagrammes du document de référence sont-ils des images aplaties ou des formes éditables ?** Question non instruite (voir §5.3) — conditionne le classement en dette.
@@ -368,6 +370,30 @@ La mesure a donc été faite **directement sur le corpus**, en mode `auto`, où 
 **Le pipeline complet a été mesuré, pas seulement l'adaptateur.** Un premier passage portait sur `DocxNativeAdapter::convert()` (0 échec sur 1 643 contenus) ; mais ce n'est pas le chemin de production. `DocumentPipeline::convert()` englobe l'adaptateur **et** les étages suivants, et c'est lui qui décide du repli. Les deux mesures donnent 0, mais seule la seconde répond à la question posée — **mesurer le bon composant est la moitié du travail**.
 
 **Verdict : `auto` → `true` est justifiable.** Le repli automatique n'a jamais eu à travailler sur 1 643 contenus `.docx` distincts, ce qui dépasse largement le « volume suffisant » exigé. Reste à décider *quand* opérer le basculement (il change le comportement en cas d'échec futur : l'erreur remonterait au lieu d'être absorbée) — c'est une décision d'exploitation, plus une question de mesure.
+
+**Décision retenue : rester en `auto`.** La mesure autorise le basculement, mais l'échantillon est composé de documents **déjà en base**. Ce ne sont pas les fichiers que de nouveaux utilisateurs téléverseront. Un `.docx` corrompu, tronqué ou produit par un outil exotique ne s'y trouve peut-être pas — or c'est exactement le cas que le repli absorbe. Conserver le filet tant que du trafic réel n'a pas fourni l'échantillon qui manque.
+
+### 4.6 Coûts IA réels et fuites de marge *(2026-09-29)*
+
+**Ce qui est mesurable aujourd'hui**, à partir du registre `ai_usage_ledger` (44 appels enregistrés) :
+
+| Tâche | Appels | Coût total (USD) | Tokens moyens | Coût moyen |
+| --- | --- | --- | --- | --- |
+| `function_calling` | 28 | 0,033267 | 8 318 entrée / 190 sortie | **0,001512 USD** |
+| `image_generation` | 16 | 0,026124 | 66 entrée / 3 157 sortie | **0,003266 USD** |
+| **Total** | **44** | **0,059391** | — | — |
+
+Crédits débités correspondants : **79**, pour un coût fournisseur de 0,059391 USD.
+
+**Aucune fuite de marge sur les fallbacks.** 9 appels ont basculé de modèle (`is_fallback`). La migration avertit qu'« un modèle facturé différent du modèle voulu est une fuite de marge invisible ». Vérification : pour les 9, le coût enregistré correspond exactement au prix du modèle **réellement appelé**. Le commentaire d'avertissement est donc couvert par la facturation.
+
+**Aucune fuite de marge sur les échecs.** 14 appels ont `succeeded = false`, et **tous** portent `cost_usd = 0.000000`. Ils ont échoué **avant tout traitement** : certificat SSL absent en local, `402` (crédits insuffisants), `404` (modèle inexistant). Le fournisseur n'a rien traité, donc rien facturé. Aucun n'a été facturé à l'utilisateur.
+
+**Un chiffre faux, produit par mon propre instrument — et c'est la leçon de cette section.** Ma première mesure **recalculait** le coût de chaque appel à partir des tokens (`costUsdFor($modèle, $tokens…)`). Sur les appels échoués, ce recalcul donnait le prix que l'appel aurait coûté **s'il avait abouti** — soit une dépense jamais engagée. Verdict produit : « les échecs pèsent **82,8 %** du coût total, fuite de marge structurelle ». Le chiffre réel est **0 %**.
+
+La colonne `cost_usd` provient de la **réponse du fournisseur**. Elle est la seule source fiable : recalculer substitue une **hypothèse** à un **fait**. Recalculer n'est légitime que pour *vérifier* une valeur enregistrée — et l'écart doit alors être rapporté, jamais pris pour la valeur.
+
+**Ce qui reste non mesuré.** Le coût **par document** traité (mode « assistance IA » et « pleine précision ») ne peut pas être établi ici : aucun débit documentaire n'existe en base de développement. La question 2 du §4.2 reste donc **partiellement** ouverte, et exigera des données de production.
 
 ---
 

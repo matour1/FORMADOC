@@ -182,7 +182,7 @@ php artisan serve
 
 L'application est alors accessible sur `http://localhost:8000`.
 
-> **Production** : exécuter `php artisan migrate --seed` (ou `php artisan migrate` puis `php artisan db:seed --class=TemplateSeeder`) sur l'environnement de déploiement pour créer la table `cover_page_templates` et insérer les 3 gabarits. Vérifier aussi `DEEPSEEK_API_KEY` (vide = IA désactivée, pipeline 100 % hors-ligne) et `LIBREOFFICE_PATH` (optionnel).
+> **Production** : exécuter `php artisan migrate --seed` (ou `php artisan migrate` puis `php artisan db:seed --class=TemplateSeeder`) sur l'environnement de déploiement pour créer les tables et insérer les gabarits de mise en forme. Vérifier aussi `DEEPSEEK_API_KEY` (vide = IA désactivée, pipeline 100 % hors-ligne) et `LIBREOFFICE_PATH` (optionnel).
 
 ## 🏗️ Structure du projet
 
@@ -213,7 +213,7 @@ app/
     ├── Anthropic/              # SaaS — skills documentaires Claude (expérimental)
     │   └── ClaudeSkillsService.php     # Génération docx/xlsx/pptx/pdf via API Anthropic (Pro only)
     ├── Chat/                   # SaaS — outils du chat IA
-    │   └── ChatToolsService.php        # Outils actionnables (cover_page, reconstruct, TOC, structure, web, image)
+│   ├── ChatToolsService.php        # Outils actionnables (reconstruct, TOC, structure, web, image)
     └── Billing/                # SaaS — monétisation
         ├── CreditService.php           # Débit/crédit atomique + journalisation
         ├── UsageCostCalculator.php     # USD → crédits (marge, taux, coefficient ×2)
