@@ -9,13 +9,13 @@
 > | Affirmation du 2026-09-20 | Réalité mesurée le 2026-09-29 |
 > |---|---|
 > | §1.2bis : « aucune variable `DOCUMENT_PIPELINE_V2` n'existe dans `.env` » → 3 fonctions non livrées | **FAUX.** `DOCUMENT_PIPELINE_V2=auto` (`.env:113`) et `=false` (`.env.example:192`). Le pipeline natif **tourne** : 693 blocs produits en base sur un document réel. Les fonctions 2/3/4 **sont atteignables** ; ce qui reste à évaluer est leur *qualité*, pas leur *accès*. |
-> | §2.2 : « le corpus a déjà été mesuré, sur **526 documents** » | **FAUX.** Le corpus compte **2 241 fichiers**, soit **1 347 contenus distincts** — 33 % de duplication (un même fichier y figure jusqu'à 9 fois). Toute fréquence calculée sur le nombre de *fichiers* est donc surestimée. |
+> | §2.2 : « le corpus a déjà été mesuré, sur **526 documents** » | **FAUX.** Le corpus compte **2 388 fichiers**, soit **1 573 contenus distincts** — 33 % de duplication (un même fichier y figure jusqu'à 9 fois). Toute fréquence calculée sur le nombre de *fichiers* est donc surestimée. |
 > | §2.2 : « `is_list_style` calculé mais jamais consommé » | **VRAI, et corrigé** le 2026-09-29 (branche `feature/sommaire-detection`). Voir §2.2 pour la mesure avant/après. |
 >
 > **Deux précisions que la révision précédente ignorait :**
 >
 > 1. **La renumérotation ne s'exécute pas à l'analyse, mais à l'EXPORT** (`FormattedDocumentExporter` → `ReExportCoordinator`). Les `finalNumber` vides dans les structures stockées sont donc **normaux** et ne prouvent aucune panne.
-> 2. **Le corpus est dupliqué.** Mesurer « sur 2 241 fichiers » revient à compter des copies. Les fréquences ci-dessous portent sur les **contenus distincts**, sauf mention contraire — c'est la seule base honnête, et l'absence de cette précaution explique très probablement l'écart entre le « 7/7 documents » d'origine et les 0,22 % mesurés depuis.
+> 2. **Le corpus est dupliqué.** Mesurer « sur 2 388 fichiers » revient à compter des copies. Les fréquences ci-dessous portent sur les **contenus distincts**, sauf mention contraire — c'est la seule base honnête, et l'absence de cette précaution explique très probablement l'écart entre le « 7/7 documents » d'origine et les 0,22 % mesurés depuis.
 
 ---
 
@@ -177,7 +177,7 @@ La **position dans le document n'intervient pas** — le « sommaire en premièr
 
 Les 22 titres restants sont tous légitimes (chapitres, sections, conclusion, annexes), et les numéros de page ont été retirés du texte des entrées reclassées.
 
-**Ce que le document initial appelait « 7/7 documents »** — le corpus est **dupliqué à 33 %** (2 241 fichiers pour 1 347 contenus distincts, un même fichier y figure jusqu'à 9 fois). Sept **copies** d'un même document ont très probablement été prises pour sept documents distincts. Toute fréquence calculée sur des *fichiers* doit donc être refaite sur les *contenus distincts*.
+**Ce que le document initial appelait « 7/7 documents »** — le corpus est **dupliqué à 33 %** (2 388 fichiers pour 1 573 contenus distincts, un même fichier y figure jusqu'à 9 fois). Sept **copies** d'un même document ont très probablement été prises pour sept documents distincts. Toute fréquence calculée sur des *fichiers* doit donc être refaite sur les *contenus distincts*.
 
 **Preuve du correctif** : `tests/Unit/Document/Classification/TocEntryDetectionTest.php` (7 tests), dont le contrôle négatif central — *un style de titre ne doit PAS être pris pour un style de liste*, faute qui transformerait tous les titres du document en entrées de sommaire.
 
@@ -210,7 +210,7 @@ Le document initial affirmait « 7/7 documents testés ». Les chiffres ci-desso
 **Travail restant** :
 1. ~~Consommer `is_list_style`~~ → **fait** (branche `feature/sommaire-detection`).
 2. ~~Ouvrir une plage à ignorer pour `SOMMAIRE`~~ → **fait** par le filtre de contenu.
-3. **Mesurer sur l'ensemble des 1 347 contenus distincts** le nombre d'entrées de sommaire encore classées comme titres, avant/après. La mesure n'a porté que sur le document de référence — insuffisant pour généraliser (principe 4).
+3. ~~**Mesurer sur l'ensemble des contenus distincts** le nombre d'entrées de sommaire encore classées comme titres, avant/après.~~ → **fait le 2026-09-29** sur les **1 573 contenus distincts** (voir §4.4).
 4. **Ajouter le test des tableaux numériques** (faux positif possible, non couvert).
 
 ### 2.3 Gestion des marges
@@ -260,7 +260,7 @@ Le système lit déjà les en-têtes, pieds de page et numéros de page, et peut
 2. **Aucune action destructive globale** (ex. : suppression complète de la mise en forme d'un document) ne doit se déclencher automatiquement sur la base d'une seule règle heuristique. Cibler la correction, réserver le reset complet à un mode explicite choisi par l'utilisateur.
 3. **Score de confiance global**, pas de règles binaires isolées pouvant chacune déclencher seule une action à fort impact. *Implémenté : seuil 0,85 dans `config/document.php`, `ClassificationPolicy`, `Block::AUTO_ACCEPT_THRESHOLD`.*
 4. **Toute nouvelle règle doit être validée sur un corpus documenté**, pas sur une anecdote isolée. *Le corpus de mesure existe — mais sa base doit être CORRIGÉE : voir la note ci-dessous.*
-   - ⚠️ **Correction du 2026-09-29.** Les règles en place sont justifiées par des chiffres cités « sur 526 documents ». Or le corpus contient **2 241 fichiers pour 1 347 contenus distincts** : la duplication est de 33 %. Les chiffres de fréquence portent donc sur des FICHIERS, et surestiment la réalité d'environ un tiers. Ils restent utiles comme ordres de grandeur, mais ne doivent pas servir à trancher un seuil sans être refaits sur les contenus distincts.
+   - ⚠️ **Correction du 2026-09-29.** Les règles en place sont justifiées par des chiffres cités « sur 526 documents ». Or le corpus contient **2 388 fichiers pour 1 573 contenus distincts** : la duplication est de 33 %. Les chiffres de fréquence portent donc sur des FICHIERS, et surestiment la réalité d'environ un tiers. Ils restent utiles comme ordres de grandeur, mais ne doivent pas servir à trancher un seuil sans être refaits sur les contenus distincts.
    - *Observation (inférence, non règle documentée)* : les défauts jugés prioritaires dans l'historique du code se situent tous autour de 40 % du corpus — 19 fichiers XML invalides sur 51 (37 %), 43 % des légendes à distance ≥ 3, 861 légendes sans lien sur 861. Cela suggère un seuil de décision de fait (~40 % = défaut majeur), mais **ce seuil n'est écrit nulle part** et reste à formaliser si l'équipe veut s'y référer explicitement.
 5. **Séparer explicitement** dans toute documentation future : ce qui est implémenté et testé / ce qui est prévu mais non codé / ce qui est dette assumée consciemment écartée.
 6. **(nouveau)** **Une fonctionnalité n'est « livrée » que si elle est atteignable par un utilisateur réel.** Toute ligne d'un état des lieux doit préciser : codé ? testé ? **actif en production ?**
@@ -270,6 +270,8 @@ Le système lit déjà les en-têtes, pieds de page et numéros de page, et peut
 8. **(nouveau, 2026-09-29)** **Un signal proposé doit être testé sur le cas MÊME qui l'a fait proposer.** La version précédente retenait les points de suite comme signal principal de reconnaissance d'un sommaire. Mesure sur le document cité en référence par ce même document : **0 détection sur 49 entrées**. Le signal n'avait jamais été éprouvé sur le cas d'où il venait.
 9. **(nouveau, 2026-09-29)** **Mesurer par composant, pas par total.** Sur la facturation IA, un compteur global de 4 requêtes HTTP a fait attribuer les appels au mauvais composant, et la conclusion était l'inverse de la réalité. Un total ne dit pas QUI a produit quoi.
 10. **(nouveau, 2026-09-29)** **Un test qui échoue selon la charge de la machine crée un défaut au lieu d'en révéler un.** `PaymentLinkTest` comparait une durée en JOURS calculée depuis `created_at` (posé par la base) à partir de `now()` (calculé en PHP avant l'insertion) : l'écart de quelques millisecondes suffisait à faire retourner 2 au lieu de 3. Le test passait seul et échouait en suite complète. Correction : comparer à une seconde près, **après avoir vérifié que le test détecte toujours une durée fausse** (sinon on a supprimé le signal au lieu du bruit).
+11. **(nouveau, 2026-09-29)** **Ne jamais RECALCULER une valeur que la base enregistre déjà.** Mesurer le coût IA en recalculant les prix à partir des tokens a produit « les échecs pèsent 82,8 % du coût » — alors que la colonne `cost_usd`, issue de la réponse du fournisseur, dit **0 %** : ces appels avaient échoué avant tout traitement (SSL, `402`, `404`) et n'ont jamais été facturés. Le recalcul avait substitué une **hypothèse** (le prix *s'il avait abouti*) à un **fait** (le prix payé). Recalculer n'est légitime que pour *vérifier* une valeur enregistrée.
+12. **(nouveau, 2026-09-29)** **Un taux aberrant accuse d'abord l'instrument, pas le code.** Trois cas le même jour : « 100 % des reclassements suspects » (l'audit comptait les pages de frontispice comme faux positifs), « 82,8 % du coût en échecs » (recalcul d'un coût inexistant), « 100 % natif, 0 repli » (comparaison 1 = 1 ignorant 36 lignes hors périmètre). Un taux trop propre (0 % ou 100 %) est **plus suspect** qu'un taux intermédiaire. Avant de rapporter un taux : se demander ce que l'instrument mesure réellement, et sur quelle base.
 
 ---
 
@@ -299,20 +301,20 @@ Toute nouvelle règle doit être évaluée **avant/après sur les contenus DISTI
 
 **Réellement ouvertes :**
 
-1. **Quand passer `pipeline.v2` de `auto` à `true` ?** Le critère est le nombre de replis. **Partiellement mesuré** le 2026-09-29 : sur 8 432 conversions loggées, **1 seule a échoué** — et c'était un script de mesure interne (`document_id: "enquete"`), depuis corrigé. Aucun repli sur un document utilisateur.
-
-   **Mais l'échantillon ne permet pas encore de trancher** : en base, seules **1 structure sur 37** a traversé le choix de moteur (les 36 autres portent `pipeline = NULL`, antérieures à l'intégration et donc sans valeur probante). Un échantillon de 1 ne prouve pas l'absence de repli. Le critère du plan (« volume suffisant ») n'est **pas** atteint.
-3. **Coût réel en tokens et en crédits par document** de la double-vérification IA (nombre de blocs sous 0,85 × coût unitaire). Données partielles (12 % de blocs ambigus), pas de conversion. **Cette question a pris de l'importance** : la facturation du mode « assistance IA » repose sur une *estimation*, pas sur cette mesure.
-4. **Fréquence réelle des problèmes de marges** : à mesurer sur les contenus distincts. Reste en dette assumée tant que le chiffre manque.
-5. **Le filtre de contenu reclasserait-il un tableau de données numériques ?** Faux positif identifié mais **non testé**. Le seuil de densité (4 lignes dans 12 blocs) le rend improbable, pas impossible.
-6. **Les diagrammes du document de référence sont-ils des images aplaties ou des formes éditables ?** Question non instruite (voir §5.3) — conditionne le classement en dette.
+1. ~~**Quand passer `pipeline.v2` de `auto` à `true` ?**~~ → **MESURÉE le 2026-09-29, DÉCISION : rester en `auto`.** La mesure ne montre aucun repli (0 sur 1 643 contenus, §4.5), donc `true` serait justifiable. La décision retenue est néanmoins de **conserver le repli** : les contenus mesurés sont des documents **déjà en base**, pas les fichiers que de nouveaux utilisateurs téléverseront. Un `.docx` corrompu ou produit par un outil exotique ne s'y trouve peut-être pas — or c'est précisément le cas que le repli protège. À réexaminer quand du trafic réel existera.
+2. **Coût réel en tokens et en crédits par document** de la double-vérification IA. **Mesuré partiellement le 2026-09-29** (§4.6) : coût moyen **0,001512 USD** par appel `function_calling` et **0,003266 USD** par génération d'image, sur les données d'usage existantes. **Non mesuré** : le coût par *document* traité, car aucun débit documentaire réel n'existe en base de développement. **Aucune fuite de marge détectée** : les 14 appels échoués n'ont rien coûté.
+3. **Fréquence réelle des problèmes de marges** : à mesurer sur les contenus distincts. Reste en dette assumée tant que le chiffre manque.
+4. **Le filtre de contenu reclasserait-il un tableau de données numériques ?** Faux positif identifié mais **non testé**. Le seuil de densité (4 lignes dans 12 blocs) le rend improbable, pas impossible.
+5. **Les diagrammes du document de référence sont-ils des images aplaties ou des formes éditables ?** Question non instruite (voir §5.3) — conditionne le classement en dette.
 
 ### 4.3 Critère de sortie avant d'attaquer une nouvelle phase
 
 1. **Refaire les fréquences sur les contenus distincts** (1 573 — et non 1 347 : la mesure a été affinée), pas sur les fichiers (2 388).
 2. ~~**Mesurer le correctif du sommaire sur l'ensemble du corpus**~~ → **fait** (voir §4.4).
-3. **Trancher la question 1 (`auto` → `true`)** : impossible en l'état, l'échantillon est de 1 document. Il faut d'abord que davantage de documents traversent le choix de moteur.
+3. ~~**Trancher la question 1 (`auto` → `true`)**~~ → **fait** (voir §4.5).
 4. Ne pas coder de nouvelle règle de détection sans chiffre sur le corpus à l'appui (principe 4).
+
+**Les quatre critères de sortie sont désormais satisfaits.** La phase suivante peut être attaquée.
 
 ### 4.4 Mesure du correctif de sommaire sur le corpus *(2026-09-29)*
 
@@ -347,6 +349,51 @@ Dans les deux cas, la leçon est la même : **vérifier que l'instrument mesure 
 **Troisième défaut, trouvé par le test posé au bon niveau.** `BlockType::TocEntry` a deux producteurs (par style, par contenu). Seul le second retirait le numéro de page : une entrée `toc 1` conservait donc `"CHAPITRE I : PRESENTATION\t2"`, et ce numéro serait recopié dans le sommaire généré — le défaut même que L1.1 devait corriger.
 
 Les tests de `StyleReader` ne pouvaient pas le voir : le style était **correctement** reconnu, c'est son **usage** qui était incomplet. Il a fallu un test **de bout en bout sur `DocxNativeAdapter`**, à l'endroit où les blocs sont réellement produits. **Un composant correct branché à un usage incomplet produit quand même un résultat faux** — d'où la règle : tester au niveau qui produit le résultat, pas seulement sur les pièces intermédiaires.
+
+**Correctif complémentaire (branche `fix/sommaire-numero-de-page`)** : le numéro de page est désormais retiré sur **les deux** chemins. Mesure du risque : le chemin par style ne contrôle pas la longueur du texte, une entrée réduite à un numéro aurait pu devenir vide → **0 vidage sur 1 621 contenus** (216 entrées observées, aucune ne descend sous 4 caractères). Aucun garde-fou ajouté, la mesure ne le justifiant pas.
+
+### 4.5 Replis du pipeline : la question `auto` → `true` est tranchée *(2026-09-29)*
+
+**Le critère du plan** était de compter les replis sur un « volume suffisant ». Le comptage en base était inexploitable : **36 structures sur 37** portent `pipeline = NULL` — elles sont antérieures à l'intégration du choix de moteur et ne prouvent rien. L'échantillon réellement jugeable était de **1 document**.
+
+La mesure a donc été faite **directement sur le corpus**, en mode `auto`, où un retour `null` **signifie** un repli.
+
+| Mesure | Valeur |
+| --- | --- |
+| Fichiers parcourus | 2 675 |
+| **Contenus distincts** | **1 648** |
+| Contenus `.docx` distincts | 1 643 |
+| Conversions réussies | **1 643** |
+| **Replis** | **0 (0 %)** |
+| Formats non supportés | 5 (`.txt` — repli attendu, ce n'est pas un défaut) |
+
+**Le pipeline complet a été mesuré, pas seulement l'adaptateur.** Un premier passage portait sur `DocxNativeAdapter::convert()` (0 échec sur 1 643 contenus) ; mais ce n'est pas le chemin de production. `DocumentPipeline::convert()` englobe l'adaptateur **et** les étages suivants, et c'est lui qui décide du repli. Les deux mesures donnent 0, mais seule la seconde répond à la question posée — **mesurer le bon composant est la moitié du travail**.
+
+**Verdict : `auto` → `true` est justifiable.** Le repli automatique n'a jamais eu à travailler sur 1 643 contenus `.docx` distincts, ce qui dépasse largement le « volume suffisant » exigé. Reste à décider *quand* opérer le basculement (il change le comportement en cas d'échec futur : l'erreur remonterait au lieu d'être absorbée) — c'est une décision d'exploitation, plus une question de mesure.
+
+**Décision retenue : rester en `auto`.** La mesure autorise le basculement, mais l'échantillon est composé de documents **déjà en base**. Ce ne sont pas les fichiers que de nouveaux utilisateurs téléverseront. Un `.docx` corrompu, tronqué ou produit par un outil exotique ne s'y trouve peut-être pas — or c'est exactement le cas que le repli absorbe. Conserver le filet tant que du trafic réel n'a pas fourni l'échantillon qui manque.
+
+### 4.6 Coûts IA réels et fuites de marge *(2026-09-29)*
+
+**Ce qui est mesurable aujourd'hui**, à partir du registre `ai_usage_ledger` (44 appels enregistrés) :
+
+| Tâche | Appels | Coût total (USD) | Tokens moyens | Coût moyen |
+| --- | --- | --- | --- | --- |
+| `function_calling` | 28 | 0,033267 | 8 318 entrée / 190 sortie | **0,001512 USD** |
+| `image_generation` | 16 | 0,026124 | 66 entrée / 3 157 sortie | **0,003266 USD** |
+| **Total** | **44** | **0,059391** | — | — |
+
+Crédits débités correspondants : **79**, pour un coût fournisseur de 0,059391 USD.
+
+**Aucune fuite de marge sur les fallbacks.** 9 appels ont basculé de modèle (`is_fallback`). La migration avertit qu'« un modèle facturé différent du modèle voulu est une fuite de marge invisible ». Vérification : pour les 9, le coût enregistré correspond exactement au prix du modèle **réellement appelé**. Le commentaire d'avertissement est donc couvert par la facturation.
+
+**Aucune fuite de marge sur les échecs.** 14 appels ont `succeeded = false`, et **tous** portent `cost_usd = 0.000000`. Ils ont échoué **avant tout traitement** : certificat SSL absent en local, `402` (crédits insuffisants), `404` (modèle inexistant). Le fournisseur n'a rien traité, donc rien facturé. Aucun n'a été facturé à l'utilisateur.
+
+**Un chiffre faux, produit par mon propre instrument — et c'est la leçon de cette section.** Ma première mesure **recalculait** le coût de chaque appel à partir des tokens (`costUsdFor($modèle, $tokens…)`). Sur les appels échoués, ce recalcul donnait le prix que l'appel aurait coûté **s'il avait abouti** — soit une dépense jamais engagée. Verdict produit : « les échecs pèsent **82,8 %** du coût total, fuite de marge structurelle ». Le chiffre réel est **0 %**.
+
+La colonne `cost_usd` provient de la **réponse du fournisseur**. Elle est la seule source fiable : recalculer substitue une **hypothèse** à un **fait**. Recalculer n'est légitime que pour *vérifier* une valeur enregistrée — et l'écart doit alors être rapporté, jamais pris pour la valeur.
+
+**Ce qui reste non mesuré.** Le coût **par document** traité (mode « assistance IA » et « pleine précision ») ne peut pas être établi ici : aucun débit documentaire n'existe en base de développement. La question 2 du §4.2 reste donc **partiellement** ouverte, et exigera des données de production.
 
 ---
 

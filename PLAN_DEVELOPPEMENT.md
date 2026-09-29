@@ -230,7 +230,7 @@ CAHIER_DES_CHARGES.md
 - MAJ `UsageCostCalculatorTest` (marge 0.20 → 0.60, coefficient ×1.84).
 - `QuotaServiceTest` (18 tests : canUse/consume, reset mensuel, illimité, verrouillage) + factories `PlanFactory` / `SubscriptionFactory` créées.
 - `ClaudeSkillsServiceTest` (13 tests : parsing file_id, échec, coût majoré min 5 min, isEligible Pro-only).
-- `ChatToolsServiceTest` (9 tests : schemas, availableTools, execute, outil inconnu, web.search, image.generate, cover_page, structure.correct, table_of_contents).
+- `ChatToolsServiceTest` (9 tests : schemas, availableTools, execute, outil inconnu, web.search, image.generate, structure.correct, table_of_contents).
 - Suite complète : **248 tests, 944 assertions** — verte.
 
 ---
