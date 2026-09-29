@@ -78,6 +78,9 @@
             <a href="{{ route('admin.payment-links.index') }}" class="{{ request()->routeIs('admin.payment-links*') ? 'active' : '' }}">
                 <i data-lucide="link"></i> Liens de paiement
             </a>
+            <a href="{{ route('admin.templates.index') }}" class="{{ request()->routeIs('admin.templates*') ? 'active' : '' }}">
+                <i data-lucide="layout-template"></i> Gabarits
+            </a>
             <a href="{{ route('admin.settings') }}" class="{{ request()->routeIs('admin.settings*') ? 'active' : '' }}">
                 <i data-lucide="sliders-horizontal"></i> Configuration
             </a>

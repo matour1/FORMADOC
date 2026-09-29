@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\MonitoringController;
 use App\Http\Controllers\Admin\PaymentLinkAdminController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\TemplateAdminController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\ClarificationController;
 use App\Http\Controllers\DashboardController;
@@ -99,6 +100,29 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::post('/users/{user}/admin', [UserController::class, 'toggleAdmin'])->name('users.admin');
     Route::post('/users/{user}/suspension', [UserController::class, 'toggleSuspension'])->name('users.suspension');
     Route::post('/users/{user}/credits', [UserController::class, 'adjustCredits'])->name('users.credits');
+
+    // --- Gabarits de mise en forme ------------------------------------------
+    // Routes ÉCRITURE, et c'est leur raison d'être ici : modifier un gabarit
+    // change la mise en forme de TOUS les documents à venir, pour tous les
+    // utilisateurs. Ce n'est pas une action d'utilisateur mais d'exploitation,
+    // alors que `/templates` (public) ne fait que les consulter.
+    //
+    // Auparavant, ajouter ou corriger un gabarit supposait un accès à la base ou
+    // un seeder : le moindre réglage passait par un accès technique.
+    Route::get('/templates', [TemplateAdminController::class, 'index'])->name('templates.index');
+    Route::get('/templates/create', [TemplateAdminController::class, 'create'])->name('templates.create');
+    Route::post('/templates', [TemplateAdminController::class, 'store'])->name('templates.store');
+    Route::get('/templates/{template}/edit', [TemplateAdminController::class, 'edit'])->name('templates.edit');
+    Route::put('/templates/{template}', [TemplateAdminController::class, 'update'])->name('templates.update');
+    // `delete` et non `destroy` : la route publique des documents utilise déjà
+    // le verbe DELETE, et deux noms différents pour la même action compliquent
+    // la lecture des journaux.
+    Route::delete('/templates/{template}', [TemplateAdminController::class, 'destroy'])->name('templates.destroy');
+    // Publication : action séparée. Dépublier est la réponse COURANTE à « ce
+    // gabarit ne doit plus être proposé », et elle ne touche à aucun réglage —
+    // la mêler au formulaire obligerait à tout réenregistrer pour un simple
+    // retrait de la liste.
+    Route::post('/templates/{template}/publication', [TemplateAdminController::class, 'togglePublic'])->name('templates.publication');
 
     // --- Liens de paiement ---------------------------------------------------
     // KPay n'expose aucun endpoint de « lien de paiement » : l'objet est une
