@@ -656,7 +656,17 @@ final class DocxNativeAdapter implements InputAdapter
             return new Block(
                 blockId: (string) $analysis['block_id'],
                 type: BlockType::TocEntry,
-                text: $text,
+                // **Le numéro de page est retiré, comme pour le reclassement de
+                // contenu.** Les deux chemins produisent le MÊME type de bloc : ils
+                // doivent produire le même texte. Une entrée « CHAPITRE I : …  2 »
+                // laisse intacte, et c'est ce numéro qui se retrouverait recopié
+                // dans le sommaire qu'on génère — le défaut même que ce
+                // branchement existe pour corriger.
+                //
+                // Défaut trouvé par un test de bout en bout sur l'adaptateur. Les
+                // tests de `StyleReader` ne pouvaient pas le voir : le style était
+                // correctement reconnu, c'est l'USAGE qui l'était à moitié.
+                text: $this->sansNumeroDePage($text),
                 // Le niveau est CONSERVÉ : il distingue un sommaire (niveaux 1-2)
                 // d'une table des matières complète (tous niveaux). Le jeter
                 // priverait le générateur de la distinction documentée dans le

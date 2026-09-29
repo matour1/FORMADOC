@@ -545,6 +545,67 @@ class DocxNativeAdapterTest extends TestCase
         $this->assertSame($document->count(), StructuralDocument::fromJson($json)->count());
     }
 
+    // -------------------------------------------------------------------------
+    // Entrées de sommaire — la frontière entre PUCE et SOMMAIRE
+    // -------------------------------------------------------------------------
+
+    /**
+     * **Un paragraphe de puce ne devient PAS une entrée de sommaire.**
+     *
+     * Test de bout en bout de la régression la plus coûteuse de cette fonction :
+     * `list paragraph` est le style que Word applique à toute liste à puces, et
+     * le consommer comme signal de sommaire a reclassé **175 paragraphes de
+     * contenu** sur un document réel du corpus — toute la liste à puces du corps.
+     *
+     * Le test est placé ici, et non seulement sur `StyleReader`, parce que c'est
+     * `DocxNativeAdapter` qui produit les blocs : un `StyleReader` correct branché
+     * au mauvais signal produirait quand même des blocs faux. La régression vivait
+     * exactement à cet endroit, et aucun test ne traversait ce chemin.
+     */
+    public function test_un_paragraphe_de_puce_n_est_pas_une_entree_de_sommaire(): void
+    {
+        $document = $this->convertFixture(
+            DocxFixture::paragraph('Promouvoir les entreprises locales ;', styleId: 'Liste')
+            .DocxFixture::paragraph('Proposer des services modernes ;', styleId: 'Liste')
+            .DocxFixture::paragraph('Créer des emplois pour les jeunes.', styleId: 'Liste'),
+            DocxFixture::style('Liste', 'list paragraph'),
+        );
+
+        $this->assertCount(3, $document->blocks,
+            'Les puces doivent rester des blocs — les supprimer viderait le document.');
+
+        foreach ($document->blocks as $block) {
+            $this->assertNotSame(BlockType::TocEntry, $block->type,
+                '« '.mb_substr($block->text, 0, 40).' » est une PUCE. La reclasser en '
+                .'entrée de sommaire retire le contenu listé du document.');
+        }
+    }
+
+    /**
+     * Contrôle positif : une VRAIE entrée de sommaire est bien reclassée.
+     *
+     * Distinguer puce et sommaire ne doit pas casser L1.1 — c'est tout son objet.
+     * Une entrée stylée `toc 1` porte un `outlineLevel`, donc la règle de titre la
+     * capturerait en premier si le test de style n'était pas placé AVANT elle.
+     */
+    public function test_une_entree_de_sommaire_stylee_toc_est_reclassee(): void
+    {
+        $document = $this->convertFixture(
+            DocxFixture::paragraph("CHAPITRE I : PRESENTATION\t2", styleId: 'Toc1')
+            .DocxFixture::paragraph("CONCLUSION GENERALE\t36", styleId: 'Toc1'),
+            DocxFixture::style('Toc1', 'toc 1', outlineLevel: 0),
+        );
+
+        $this->assertSame(BlockType::TocEntry, $document->blocks[0]->type);
+        $this->assertSame('CHAPITRE I : PRESENTATION', $document->blocks[0]->text,
+            'Le numéro de page doit être retiré : laissé tel quel, il serait recopié '
+            .'dans le sommaire généré.');
+
+        // Une entrée de sommaire n'est pas un titre : elle ne doit pas alimenter
+        // la table des matières qu'on génère, sinon elle s'y cite elle-même.
+        $this->assertSame([], $document->headings());
+    }
+
     /**
      * Fichier de relations contenant une image.
      */
