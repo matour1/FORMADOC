@@ -277,9 +277,9 @@ Le système lit déjà les en-têtes, pieds de page et numéros de page, et peut
 
 ### 4.1 Le corpus est mesuré — mais sur une base à CORRIGER
 
-Le document initial demandait une grille de test sur « 15+ documents ». Une version ultérieure a mesuré « 526 documents ». **La base de cette mesure est fausse** : le corpus contient **2 241 fichiers** pour **1 347 contenus distincts** (duplication de 33 %, un fichier y figure jusqu'à 9 fois).
+Le document initial demandait une grille de test sur « 15+ documents ». Une version ultérieure a mesuré « 526 documents ». **La base de cette mesure est fausse** : le corpus contient **2 388 fichiers** pour **1 573 contenus distincts** (duplication de 33 %, un fichier y figure jusqu'à 9 fois). *(Chiffres réaffinés le 2026-09-29 ; une mesure intermédiaire donnait 2 241 / 1 347.)*
 
-Les 526 « documents » étaient donc des FICHIERS. La base réelle est d'environ **350 contenus distincts** — ou 1 347 si l'on prend le corpus entier, ce qui n'a jamais été fait.
+Les 526 « documents » étaient donc des FICHIERS. La base réelle est d'environ **350 contenus distincts** — ou 1 573 si l'on prend le corpus entier, ce qui n'a été fait intégralement qu'en §4.4.
 
 **Conséquence directe** : toute fréquence exprimée en pourcentage sur 526 doit être revue. Une règle qui touche « 98 documents sur 526 » (18,6 %) peut représenter une proportion très différente de contenus distincts.
 
@@ -293,13 +293,15 @@ Toute nouvelle règle doit être évaluée **avant/après sur les contenus DISTI
 - ~~Fréquence de la règle de position « sommaire p.1 » ?~~ → **obsolète** : la position n'est pas un critère retenu (principe 1). De plus, le signal proposé à la place (`toc N`) ne couvrait **pas** le cas le plus fréquent, et les **points de suite** — signal « principal » de la version précédente — détectaient **0 entrée sur 49** sur le document même cité en référence.
 - ~~Le seuil de confiance est-il défini ?~~ → oui : 0,85, configurable.
 - ~~Le pipeline natif est-il actif ?~~ → **oui** (`auto`), mesuré : 693 blocs produits. La question devient « quand passer de `auto` à `true` ? » (voir question 1 ci-dessous).
-- ~~Les entrées de sommaire sont-elles prises pour des titres ?~~ → **oui, et corrigé** : 58 des 80 titres du document de référence (72,5 %) → **0**. Corrigé sur `feature/sommaire-detection`.
+- ~~Les entrées de sommaire sont-elles prises pour des titres ?~~ → **oui, et corrigé** : 58 des 80 titres du document de référence (72,5 %) → **0**. Fusionné dans `main` le 2026-09-29 (`734b82e`).
 - ~~Un sommaire tapé à la main produit-il un classement silencieux ?~~ → **il en produisait un** (le document de référence EST ce cas), et il est désormais couvert par le filtre de contenu.
+- ~~Combien d'entrées de sommaire restent mal classées sur l'ensemble du corpus ?~~ → **mesuré** le 2026-09-29 sur les **1 573 contenus distincts** (et non 1 347 : la duplication est de 33 % sur 2 388 fichiers). Résultat : 3 contenus touchés (0,19 %), 216 reclassements, dont **1 seul suspect (0,5 %)**. Le défaut est donc réel mais **marginal en volume** — il n'était pas de 72 % du corpus, seulement du document de référence. Détail en §4.4.
 
 **Réellement ouvertes :**
 
-1. **Quand passer `pipeline.v2` de `auto` à `true` ?** Le repli automatique protège mais masque une divergence entre deux moteurs. Le critère mesurable : compter les lignes `Pipeline natif : échec, l'ancien pipeline fait foi` dans les logs. Tant que ce compte est nul sur un volume suffisant, `true` est justifiable ; s'il ne l'est pas, le repli travaille et il faut savoir pourquoi.
-2. **Combien d'entrées de sommaire restent mal classées sur l'ensemble du corpus ?** Le correctif n'a été mesuré que sur **un** document. C'est insuffisant pour généraliser (principe 4) — il faut mesurer sur les **1 347 contenus distincts**, avant/après.
+1. **Quand passer `pipeline.v2` de `auto` à `true` ?** Le critère est le nombre de replis. **Partiellement mesuré** le 2026-09-29 : sur 8 432 conversions loggées, **1 seule a échoué** — et c'était un script de mesure interne (`document_id: "enquete"`), depuis corrigé. Aucun repli sur un document utilisateur.
+
+   **Mais l'échantillon ne permet pas encore de trancher** : en base, seules **1 structure sur 37** a traversé le choix de moteur (les 36 autres portent `pipeline = NULL`, antérieures à l'intégration et donc sans valeur probante). Un échantillon de 1 ne prouve pas l'absence de repli. Le critère du plan (« volume suffisant ») n'est **pas** atteint.
 3. **Coût réel en tokens et en crédits par document** de la double-vérification IA (nombre de blocs sous 0,85 × coût unitaire). Données partielles (12 % de blocs ambigus), pas de conversion. **Cette question a pris de l'importance** : la facturation du mode « assistance IA » repose sur une *estimation*, pas sur cette mesure.
 4. **Fréquence réelle des problèmes de marges** : à mesurer sur les contenus distincts. Reste en dette assumée tant que le chiffre manque.
 5. **Le filtre de contenu reclasserait-il un tableau de données numériques ?** Faux positif identifié mais **non testé**. Le seuil de densité (4 lignes dans 12 blocs) le rend improbable, pas impossible.
@@ -307,11 +309,44 @@ Toute nouvelle règle doit être évaluée **avant/après sur les contenus DISTI
 
 ### 4.3 Critère de sortie avant d'attaquer une nouvelle phase
 
-1. **Refaire les fréquences sur les contenus distincts** (1 347), pas sur les fichiers (2 241) ni sur l'ancienne base de 526.
-2. **Mesurer le correctif du sommaire sur l'ensemble du corpus**, pas sur un document — c'est la condition pour savoir si le défaut était de 72 % (cas particulier) ou marginal.
-3. Trancher la question 1 (`auto` → `true`) avec le comptage des lignes de repli.
+1. **Refaire les fréquences sur les contenus distincts** (1 573 — et non 1 347 : la mesure a été affinée), pas sur les fichiers (2 388).
+2. ~~**Mesurer le correctif du sommaire sur l'ensemble du corpus**~~ → **fait** (voir §4.4).
+3. **Trancher la question 1 (`auto` → `true`)** : impossible en l'état, l'échantillon est de 1 document. Il faut d'abord que davantage de documents traversent le choix de moteur.
 4. Ne pas coder de nouvelle règle de détection sans chiffre sur le corpus à l'appui (principe 4).
-3. Ne pas coder de nouvelle règle de détection sans chiffre sur le corpus à l'appui (principe 4).
+
+### 4.4 Mesure du correctif de sommaire sur le corpus *(2026-09-29)*
+
+| Base | Valeur |
+| --- | --- |
+| Fichiers `.docx` | 2 388 |
+| **Contenus distincts** | **1 573** |
+| Contenus touchés par le défaut | 3 (0,19 %) |
+| Entrées reclassées (avant correctif) | 489 |
+| Entrées reclassées (après correctif) | **216** |
+| Reclassements suspects après correctif | **1 sur 216 (0,5 %)** |
+| Document de référence | 80 titres+entrées, **0 faux titre**, inchangé |
+| Suite de tests | 1 085 tests, 1 083 passés, 2 ignorés, **0 échec** |
+
+**Les 3 contenus touchés, et la légitimité de chaque reclassement** (vérifié individuellement) :
+
+| Contenu | Reclassés | Jugement |
+| --- | --- | --- |
+| `fn7Ze5U5…` | 102 | **légitime** — ce document porte **deux** sommaires réels : blocs #1–#11 en style `toc 1` (frontispice) et blocs #542–#630 en style `toc 4` (table des matières complète) |
+| `3Zn8KgCc…` | 103 | **légitime** — même structure ; le seul « suspect » est une phrase de corps isolée |
+| `0yST9jio…` | 11 | **légitime** — 7 entrées de sommaire (#43–#49) + 4 lignes de table des figures (#11–#14) |
+
+**La conclusion à en tirer est plus importante que le chiffre.** Le défaut « sommaire pris pour des titres » était de **72 % sur le document de référence** — mais il ne touche que **0,19 % du corpus**. La référence n'est donc pas représentative de sa fréquence : c'est un cas particulier, pas un cas général.
+
+**Deux pièges de mesure rencontrés pendant cette campagne** (à ne pas reproduire) :
+
+1. **Un contrôle de faux positif mal conçu rend un verdict FAUX.** Le premier audit déclarait « 100 % des reclassements suspects, ne pas fusionner ». Il exigeait que chaque entrée de sommaire existe **ailleurs** comme titre — donc il comptait les pages de frontispice (`DEDICACE`, `REMERCIEMENTS`, `SOMMAIRE`) comme faux positifs : leur titre n'existe nulle part, c'est **leur propre page**. Il mesurait « page de frontispice », pas « faux positif ». Réécrit pour cibler le risque réel (retirer du **contenu**), le taux tombe à 0,5 %.
+2. **Un test de régression doit être prouvé en échec.** Le premier essai de vérification a simulé l'ancien comportement avec un remplacement de chaîne incomplet et a rapporté un échec trompeur. Simuler **fidèlement**, constater l'échec **et son message**, restaurer.
+
+Dans les deux cas, la leçon est la même : **vérifier que l'instrument mesure ce qu'on croit qu'il mesure**, avant de conclure du résultat.
+
+**Troisième défaut, trouvé par le test posé au bon niveau.** `BlockType::TocEntry` a deux producteurs (par style, par contenu). Seul le second retirait le numéro de page : une entrée `toc 1` conservait donc `"CHAPITRE I : PRESENTATION\t2"`, et ce numéro serait recopié dans le sommaire généré — le défaut même que L1.1 devait corriger.
+
+Les tests de `StyleReader` ne pouvaient pas le voir : le style était **correctement** reconnu, c'est son **usage** qui était incomplet. Il a fallu un test **de bout en bout sur `DocxNativeAdapter`**, à l'endroit où les blocs sont réellement produits. **Un composant correct branché à un usage incomplet produit quand même un résultat faux** — d'où la règle : tester au niveau qui produit le résultat, pas seulement sur les pièces intermédiaires.
 
 ---
 

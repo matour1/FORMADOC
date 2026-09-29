@@ -44,3 +44,10 @@ Les confondre retire le contenu listé du document. Mesure (2026-09-29, `fn7Ze5U
 
 Écrire la séparation en groupe non capturant et le numéro en groupe 1 :
 `'/(?:\t|\x{00A0}| {2,})(\d{1,3}|[ivxlcdmIVXLCDM]{1,6})\.?$/u'`.
+
+## Deux chemins vers un même type de bloc doivent produire le même texte
+`BlockType::TocEntry` a **deux** producteurs dans `DocxNativeAdapter` : le reclassement par **style** (`tocStyleLevel`) et le reclassement par **contenu** (`reclasserEntreesSommaire`). Le second retirait le numéro de page, le premier non.
+
+Conséquence : une entrée `toc 1` gardait `"CHAPITRE I : PRESENTATION\t2"`, et ce numéro de page se retrouvait **recopié dans le sommaire généré** — le défaut même que le branchement existait pour corriger.
+
+**Un type de bloc partagé par plusieurs producteurs est un point de divergence.** Quand on en ajoute un, aligner tous les chemins sur la même transformation (`sansNumeroDePage()` ici), et le tester **au niveau de l'adaptateur** — pas seulement sur les composants intermédiaires. Un `StyleReader` correct branché à un usage incomplet produit quand même un bloc faux.
