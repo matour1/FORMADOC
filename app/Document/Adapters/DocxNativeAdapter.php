@@ -45,22 +45,29 @@ final class DocxNativeAdapter implements InputAdapter
     private const ZIP_SIGNATURE = "PK\x03\x04";
 
     /**
-     * Largeur de l'intervalle glissant qui délimite une zone de sommaire.
+     * Écart maximal entre deux entrées consécutives d'un MÊME sommaire.
      *
-     * Mesuré sur le document de référence : les entrées d'un sommaire réel sont
-     * entrelacées (une sur deux sans numéro de page). Une fenêtre de 12 blocs
-     * couvre confortablement une interruption, sans jamais couvrir une page
-     * entière de contenu rédigé.
+     * Au-delà, on considère qu'il y a une coupure et que la zone est terminée.
+     *
+     * **Pourquoi 6.** Les entrées d'un sommaire réel sont entrelacées : une ligne
+     * sur deux n'a pas de numéro de page (page absente, texte reporté). Un écart
+     * de 6 blocs couvre confortablement ces interruptions, tout en restant très
+     * inférieur à la distance qui sépare un sommaire du corps rédigé — le
+     * document mesuré a une coupure de plus de 40 blocs entre les deux.
+     *
+     * Une valeur trop grande fait déborder la zone sur le corps (c'est le défaut
+     * corrigé : la plage allait jusqu'au bloc #632 sur 693) ; trop petite, elle
+     * coupe le sommaire en morceaux et laisse des entrées en titres.
      */
-    private const FENETRE_SOMMAIRE = 12;
+    private const ECART_MAX_SOMMAIRE = 6;
 
     /**
-     * Nombre de lignes candidates à partir duquel une fenêtre est « dense ».
+     * Nombre de lignes candidates à partir duquel une zone est un sommaire.
      *
      * Fixé à 4 : en dessous, un titre isolé finissant par un chiffre légitime
-     * pourrait former une fausse fenêtre. À 4, il faudrait quatre titres
-     * légitimement terminés par un nombre dans un intervalle de 12 blocs — cas
-     * improbable, alors qu'un sommaire en produit des dizaines.
+     * pourrait former une fausse zone. À 4, il faudrait quatre titres
+     * légitimement terminés par un nombre rapprochés — cas improbable, alors
+     * qu'un sommaire en produit des dizaines.
      */
     private const DENSITE_MINIMALE = 4;
 
@@ -72,7 +79,7 @@ final class DocxNativeAdapter implements InputAdapter
      * Lecteur de styles de la conversion EN COURS.
      *
      * **Pourquoi une propriété temporaire.** `toBlock()` doit pouvoir reconnaître
-     * une entrée de sommaire (`is_list_style`), et pour cela interroger le lecteur
+     * une entrée de sommaire (`tocStyleLevel`), et pour cela interroger le lecteur
      * de styles — qui n'est disponible que pendant `convert()`. Le repasser en
      * paramètre à travers `readBody()` puis les lecteurs de tableaux alourdirait
      * cinq signatures pour une information sans rapport avec elles.
@@ -364,37 +371,53 @@ final class DocxNativeAdapter implements InputAdapter
             return $blocks;
         }
 
-        // --- 2. Repérer les FENÊTRES DENSES ----------------------------------
-        // Une fenêtre est un intervalle glissant de `FENETRE` blocs ; elle est
-        // « dense » si elle contient au moins `DENSITE_MINIMALE` candidats. Un
-        // titre isolé finissant par un chiffre légitime ne forme jamais une
-        // fenêtre dense : c'est la répétition qui atteste d'un sommaire.
-        $reclasser = [];
-        $debutFenetre = null;
+        // --- 2. SEGMENTER en zones de sommaire --------------------------------
+        //
+        // **Défaut corrigé ici, et il vidait le document de ses titres.**
+        // La première version faisait grandir une plage depuis le PREMIER
+        // candidat dense jusqu'au dernier, sans jamais la refermer. Sur un
+        // document réel du corpus, elle a fini par couvrir les blocs #1 à #632 —
+        // TOUT le document — et 277 blocs ont été reclassés, dont des lignes de
+        // corps (« Promouvoir les entreprises locales… »). Mesure : 88 titres
+        // légitimes subsistaient DANS la plage, donc reclassés à tort.
+        //
+        // Le défaut ne se voyait PAS sur le document de référence, où le sommaire
+        // est compact : un correctif validé sur un seul document est un correctif
+        // non validé. C'est exactement ce que le principe 4 du projet prescrit de
+        // mesurer avant de généraliser.
+        //
+        // La segmentation est la bonne lecture : un sommaire est une zone
+        // CONTIGUË, pas un ensemble de lignes éparpillées. Les entrées se suivent,
+        // et une coupure franche signale la fin du sommaire.
+        $zones = [];
+        $zone = [];
 
-        foreach ($candidats as $position => $index) {
-            $dernier = $candidats[$position] ?? $index;
-            $premier = $index;
-
-            // Nombre de candidats dans [premier, premier + FENETRE].
-            $dansFenetre = 0;
-            foreach ($candidats as $autre) {
-                if ($autre >= $premier && $autre <= $premier + self::FENETRE_SOMMAIRE) {
-                    $dansFenetre++;
+        foreach ($candidats as $index) {
+            if ($zone !== [] && ($index - end($zone)) > self::ECART_MAX_SOMMAIRE) {
+                // Coupure franche : la zone courante s'arrête ici.
+                if (count($zone) >= self::DENSITE_MINIMALE) {
+                    $zones[] = $zone;
                 }
+                $zone = [];
             }
 
-            if ($dansFenetre >= self::DENSITE_MINIMALE) {
-                $debutFenetre ??= $premier;
-                $finFenetre = $premier + self::FENETRE_SOMMAIRE;
+            $zone[] = $index;
+        }
 
-                // Tous les blocs de la fenêtre sont candidats au reclassement :
-                // c'est ce qui capte les lignes intercalées sans numéro de page.
-                for ($i = $debutFenetre; $i <= $finFenetre && $i < count($blocks); $i++) {
+        if (count($zone) >= self::DENSITE_MINIMALE) {
+            $zones[] = $zone;
+        }
+
+        $reclasser = [];
+
+        foreach ($zones as $zone) {
+            // La zone reclassée va du premier au dernier candidat de la zone :
+            // c'est ce qui capte les lignes INTERCALÉES sans numéro de page, qui
+            // sont majoritaires dans un sommaire réel (une sur deux).
+            foreach (range($zone[0], end($zone)) as $i) {
+                if ($i < count($blocks)) {
                     $reclasser[$i] = true;
                 }
-            } else {
-                $debutFenetre = null;
             }
         }
 
@@ -444,42 +467,73 @@ final class DocxNativeAdapter implements InputAdapter
     /**
      * La ligne se termine-t-elle par un numéro de page ?
      *
-     * **Deux systèmes de numérotation, et c'est le modèle du projet lui-même.**
-     * Le frontispice d'un mémoire est paginé en chiffres ROMAINS (`i`, `ii`,
-     * `iii`, `viii`, `ix`), le corps en chiffres ARABES. Ne reconnaître que les
-     * arabes laissait passer toutes les entrées des pages liminaires :
-     * « REMERCIEMENTS  iii », « RESUME  viii », « ABSTRACT  ix » subsistaient
-     * comme titres après le premier correctif — mesuré sur le document de
-     * référence, où la pagination romaine est précisément celle employée.
+     * **Ce que la mesure du corpus a imposé, et c'est un durcissement.**
+     * La première version acceptait tout numéro de 1 à 3 chiffres. Sur un
+     * document réel du corpus, cela a reclassé **des lignes de corps et de
+     * listes** : « de logiciels de graphisme ; », « Le Journal De Caisse ; »,
+     * « Définition » — des lignes qui finissent par un chiffre sans être des
+     * entrées de sommaire. Résultat : 277 blocs reclassés sur 366 blocs
+     * « à numéro », et **88 titres légitimes subsistaient dans la plage
+     * reclassée**. Le correctif vidait le document de ses titres.
      *
-     * Les romains sont cherchés sans exiger le mode strict de bout en bout :
-     * `i`, `v`, `x`, `l`, `c`, `d`, `m` en minuscules, au moins une lettre. Cela
-     * évite d'attraper un mot se terminant par une lettre romaine isolée
-     * (« ANASTASIE  v » serait ambigu), mais la condition de fenêtre dense
-     * écarte de toute façon les cas isolés.
+     * Trois exigences supplémentaires, chacune tirée de cette mesure :
      *
-     * Il doit rester du TEXTE devant le numéro — sinon la chaîne « 2026 » ou
-     * « iv » seule serait prise pour un numéro de page.
+     *  1. **Une séparation nette avant le numéro** (au moins 2 blancs ou une
+     *     tabulation). Une entrée de sommaire a ses points de suite ou un
+     *     alignement à droite ; un montant en fin de phrase est séparé par UN
+     *     espace. C'est ce qui écarte « Équipements Quantité Ordinateurs 2 ».
      *
-     * @param  int  $longueurMinimale  Caractères de texte exigés devant le numéro.
-     *                                 Le seuil de 8 écarte les faux positifs sur
-     *                                 les titres, mais il écarte aussi des
-     *                                 intitulés courts (« RESUME  viii » : 6
-     *                                 caractères). Les appelants qui traitent des
-     *                                 intitulés connus peuvent donc l'abaisser.
+     *  2. **Le texte avant le numéro ne doit pas être une phrase.** Une entrée
+     *     de sommaire est un intitulé : elle ne se termine par ni `;` ni `,` ni
+     *     `:`. C'est ce qui écarte « de logiciels de graphisme ; » et
+     *     « D'assurer Le Suivi Financier ; ».
+     *
+     *  3. **Un intitulé d'une seule ligne sans séparation est refusé.** « Définition »
+     *     seul, « Indice de sécurité » seul : rien ne distingue ces titres
+     *     légitimes d'une entrée — et les reclasser retirerait un vrai titre.
+     *     On les laisse donc en titres, car l'erreur est ASYMÉTRIQUE : un titre
+     *     manquant casse la hiérarchie du document, une entrée de sommaire
+     *     laissée en titre se voit et se corrige.
+     *
+     * @param  int  $longueurMinimale  Caractères de texte exigés devant le numéro
      */
     private function finitParNumeroDePage(string $texte, int $longueurMinimale = 8): bool
     {
-        $motif = '/[\t\s](?:(\d{1,3})|([ivxlcdm]{1,6}))\.?$/u';
+        // Le numéro doit être SÉPARÉ du texte : au moins deux blancs, une
+        // tabulation ou un espace insécable. C'est la signature d'un alignement
+        // de sommaire.
+        //
+        // La séparation est dans un groupe NON capturant et le numéro dans le
+        // groupe 1. Une première version écrivait l'alternance à l'envers
+        // (`[\t]{1}|[\x{00A0}]{1}| {2,}(\d+)$`) : les deux premières branches
+        // matchaient alors une simple tabulation SANS numéro, et `$m[1]`
+        // n'existait pas — `Undefined array key 1` faisait échouer la
+        // conversion du document entier.
+        $motif = '/(?:\t|\x{00A0}| {2,})(\d{1,3}|[ivxlcdmIVXLCDM]{1,6})\.?$/u';
 
         if (preg_match($motif, trim($texte), $m) !== 1) {
             return false;
         }
 
-        $numero = (string) ($m[1] !== '' ? $m[1] : ($m[2] ?? ''));
+        $numero = $m[1];
         $avant = trim(mb_substr(trim($texte), 0, -mb_strlen($numero)));
 
-        return mb_strlen($avant) >= $longueurMinimale && preg_match('/\p{L}/u', $avant) === 1;
+        if (mb_strlen($avant) < $longueurMinimale) {
+            return false;
+        }
+
+        if (preg_match('/\p{L}/u', $avant) !== 1) {
+            return false;
+        }
+
+        // Un intitulé ne se termine pas par une ponctuation de prose. Un
+        // point-virgule ou une virgule finale signalent une énumération, pas
+        // une entrée de sommaire.
+        if (preg_match('/[;,.]$/u', $avant) === 1) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -590,7 +644,13 @@ final class DocxNativeAdapter implements InputAdapter
         // On teste AVANT les règles de titre, et c'est indispensable : un style
         // `toc 2` porte un `outlineLevel`, donc `heading_level` est renseigné, et
         // la règle de titre ci-dessous le capturerait en premier.
-        $listLevel = $this->stylesEnCours?->listStyleLevel($analysis['style_id'] ?? null);
+        //
+        // **`tocStyleLevel()` et non `listStyleLevel()`.** La seconde répond
+        // aussi pour `list paragraph`, le style que Word applique à TOUTE liste à
+        // puces : l'utiliser ici reclassait 175 blocs de contenu en sommaire sur
+        // `fn7Ze5U5…docx` (mesuré le 2026-09-29). Seul un style de SOMMAIRE
+        // autorise ce reclassement — une liste à puces n'est pas un sommaire.
+        $listLevel = $this->stylesEnCours?->tocStyleLevel($analysis['style_id'] ?? null);
 
         if ($listLevel !== null) {
             return new Block(

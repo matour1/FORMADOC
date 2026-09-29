@@ -151,6 +151,70 @@ class TocEntryDetectionTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // L1.1 — La frontière entre LISTE et SOMMAIRE
+    // -------------------------------------------------------------------------
+
+    /**
+     * **`list paragraph` n'est PAS une entrée de sommaire.**
+     *
+     * C'est le test qui manquait, et son absence a laissé passer une régression
+     * mesurée sur `fn7Ze5U5…docx` : en consommant `isListStyle()` pour reclasser
+     * les blocs, **175 paragraphes** sont devenus des entrées de sommaire. Or
+     * c'était **toute la liste à puces du corps** du document (« Promouvoir les
+     * entreprises locales… », blocs 55 à 142).
+     *
+     * `list paragraph` est le style que Word applique à toute liste à puces ou
+     * numérotée. Il dit « ce paragraphe est une puce », jamais « c'est une ligne
+     * de sommaire ». Une liste à puces n'est pas un sommaire : les confondre
+     * retire des centaines de blocs de contenu du document.
+     *
+     * Ce test échouait avant le correctif — c'est ce qui lui donne sa valeur.
+     */
+    public function test_un_style_de_puce_n_est_pas_une_entree_de_sommaire(): void
+    {
+        $lecteur = $this->lecteurDeStyles([
+            'S1' => 'list paragraph',
+            'S2' => 'ParagrapheDeListe',
+        ]);
+
+        foreach (['S1', 'S2'] as $styleId) {
+            $this->assertNull($lecteur->tocStyleLevel($styleId),
+                '« '.$styleId.' » est un style de PUCE : le reclasser en entrée de '
+                .'sommaire retirerait tout le contenu listé du document.');
+
+            // Il reste un style de liste — c'est un diagnostic légitime, mais il
+            // n'autorise aucune décision de reclassement.
+            $this->assertTrue($lecteur->isListStyle($styleId),
+                'Le style doit rester identifiable comme style de liste (diagnostic).');
+        }
+    }
+
+    /**
+     * Un style de SOMMAIRE reste reconnu par les deux méthodes.
+     *
+     * Contrôle positif du correctif : distinguer puce et sommaire ne doit pas
+     * casser la détection des vrais sommaires — c'est tout l'objet de L1.1.
+     */
+    public function test_un_style_de_sommaire_reste_reconnu_par_les_deux_methodes(): void
+    {
+        $lecteur = $this->lecteurDeStyles([
+            'S1' => 'toc 1',
+            'S2' => 'toc 4',
+            'S3' => 'Table of figures',
+            'S4' => 'Sommaire 2',
+        ]);
+
+        foreach (['S1', 'S2', 'S3', 'S4'] as $styleId) {
+            $this->assertNotNull($lecteur->tocStyleLevel($styleId),
+                "« {$styleId} » est un vrai style de sommaire : il doit autoriser le reclassement.");
+            $this->assertTrue($lecteur->isListStyle($styleId));
+        }
+
+        $this->assertSame(4, $lecteur->tocStyleLevel('S2'));
+        $this->assertSame(2, $lecteur->tocStyleLevel('S4'));
+    }
+
+    // -------------------------------------------------------------------------
     // Le type de bloc
     // -------------------------------------------------------------------------
 
