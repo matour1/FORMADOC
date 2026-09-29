@@ -9,13 +9,13 @@
 > | Affirmation du 2026-09-20 | Réalité mesurée le 2026-09-29 |
 > |---|---|
 > | §1.2bis : « aucune variable `DOCUMENT_PIPELINE_V2` n'existe dans `.env` » → 3 fonctions non livrées | **FAUX.** `DOCUMENT_PIPELINE_V2=auto` (`.env:113`) et `=false` (`.env.example:192`). Le pipeline natif **tourne** : 693 blocs produits en base sur un document réel. Les fonctions 2/3/4 **sont atteignables** ; ce qui reste à évaluer est leur *qualité*, pas leur *accès*. |
-> | §2.2 : « le corpus a déjà été mesuré, sur **526 documents** » | **FAUX.** Le corpus compte **2 241 fichiers**, soit **1 347 contenus distincts** — 33 % de duplication (un même fichier y figure jusqu'à 9 fois). Toute fréquence calculée sur le nombre de *fichiers* est donc surestimée. |
+> | §2.2 : « le corpus a déjà été mesuré, sur **526 documents** » | **FAUX.** Le corpus compte **2 388 fichiers**, soit **1 573 contenus distincts** — 33 % de duplication (un même fichier y figure jusqu'à 9 fois). Toute fréquence calculée sur le nombre de *fichiers* est donc surestimée. |
 > | §2.2 : « `is_list_style` calculé mais jamais consommé » | **VRAI, et corrigé** le 2026-09-29 (branche `feature/sommaire-detection`). Voir §2.2 pour la mesure avant/après. |
 >
 > **Deux précisions que la révision précédente ignorait :**
 >
 > 1. **La renumérotation ne s'exécute pas à l'analyse, mais à l'EXPORT** (`FormattedDocumentExporter` → `ReExportCoordinator`). Les `finalNumber` vides dans les structures stockées sont donc **normaux** et ne prouvent aucune panne.
-> 2. **Le corpus est dupliqué.** Mesurer « sur 2 241 fichiers » revient à compter des copies. Les fréquences ci-dessous portent sur les **contenus distincts**, sauf mention contraire — c'est la seule base honnête, et l'absence de cette précaution explique très probablement l'écart entre le « 7/7 documents » d'origine et les 0,22 % mesurés depuis.
+> 2. **Le corpus est dupliqué.** Mesurer « sur 2 388 fichiers » revient à compter des copies. Les fréquences ci-dessous portent sur les **contenus distincts**, sauf mention contraire — c'est la seule base honnête, et l'absence de cette précaution explique très probablement l'écart entre le « 7/7 documents » d'origine et les 0,22 % mesurés depuis.
 
 ---
 
@@ -177,7 +177,7 @@ La **position dans le document n'intervient pas** — le « sommaire en premièr
 
 Les 22 titres restants sont tous légitimes (chapitres, sections, conclusion, annexes), et les numéros de page ont été retirés du texte des entrées reclassées.
 
-**Ce que le document initial appelait « 7/7 documents »** — le corpus est **dupliqué à 33 %** (2 241 fichiers pour 1 347 contenus distincts, un même fichier y figure jusqu'à 9 fois). Sept **copies** d'un même document ont très probablement été prises pour sept documents distincts. Toute fréquence calculée sur des *fichiers* doit donc être refaite sur les *contenus distincts*.
+**Ce que le document initial appelait « 7/7 documents »** — le corpus est **dupliqué à 33 %** (2 388 fichiers pour 1 573 contenus distincts, un même fichier y figure jusqu'à 9 fois). Sept **copies** d'un même document ont très probablement été prises pour sept documents distincts. Toute fréquence calculée sur des *fichiers* doit donc être refaite sur les *contenus distincts*.
 
 **Preuve du correctif** : `tests/Unit/Document/Classification/TocEntryDetectionTest.php` (7 tests), dont le contrôle négatif central — *un style de titre ne doit PAS être pris pour un style de liste*, faute qui transformerait tous les titres du document en entrées de sommaire.
 
@@ -210,7 +210,7 @@ Le document initial affirmait « 7/7 documents testés ». Les chiffres ci-desso
 **Travail restant** :
 1. ~~Consommer `is_list_style`~~ → **fait** (branche `feature/sommaire-detection`).
 2. ~~Ouvrir une plage à ignorer pour `SOMMAIRE`~~ → **fait** par le filtre de contenu.
-3. **Mesurer sur l'ensemble des 1 347 contenus distincts** le nombre d'entrées de sommaire encore classées comme titres, avant/après. La mesure n'a porté que sur le document de référence — insuffisant pour généraliser (principe 4).
+3. ~~**Mesurer sur l'ensemble des contenus distincts** le nombre d'entrées de sommaire encore classées comme titres, avant/après.~~ → **fait le 2026-09-29** sur les **1 573 contenus distincts** (voir §4.4).
 4. **Ajouter le test des tableaux numériques** (faux positif possible, non couvert).
 
 ### 2.3 Gestion des marges
@@ -260,7 +260,7 @@ Le système lit déjà les en-têtes, pieds de page et numéros de page, et peut
 2. **Aucune action destructive globale** (ex. : suppression complète de la mise en forme d'un document) ne doit se déclencher automatiquement sur la base d'une seule règle heuristique. Cibler la correction, réserver le reset complet à un mode explicite choisi par l'utilisateur.
 3. **Score de confiance global**, pas de règles binaires isolées pouvant chacune déclencher seule une action à fort impact. *Implémenté : seuil 0,85 dans `config/document.php`, `ClassificationPolicy`, `Block::AUTO_ACCEPT_THRESHOLD`.*
 4. **Toute nouvelle règle doit être validée sur un corpus documenté**, pas sur une anecdote isolée. *Le corpus de mesure existe — mais sa base doit être CORRIGÉE : voir la note ci-dessous.*
-   - ⚠️ **Correction du 2026-09-29.** Les règles en place sont justifiées par des chiffres cités « sur 526 documents ». Or le corpus contient **2 241 fichiers pour 1 347 contenus distincts** : la duplication est de 33 %. Les chiffres de fréquence portent donc sur des FICHIERS, et surestiment la réalité d'environ un tiers. Ils restent utiles comme ordres de grandeur, mais ne doivent pas servir à trancher un seuil sans être refaits sur les contenus distincts.
+   - ⚠️ **Correction du 2026-09-29.** Les règles en place sont justifiées par des chiffres cités « sur 526 documents ». Or le corpus contient **2 388 fichiers pour 1 573 contenus distincts** : la duplication est de 33 %. Les chiffres de fréquence portent donc sur des FICHIERS, et surestiment la réalité d'environ un tiers. Ils restent utiles comme ordres de grandeur, mais ne doivent pas servir à trancher un seuil sans être refaits sur les contenus distincts.
    - *Observation (inférence, non règle documentée)* : les défauts jugés prioritaires dans l'historique du code se situent tous autour de 40 % du corpus — 19 fichiers XML invalides sur 51 (37 %), 43 % des légendes à distance ≥ 3, 861 légendes sans lien sur 861. Cela suggère un seuil de décision de fait (~40 % = défaut majeur), mais **ce seuil n'est écrit nulle part** et reste à formaliser si l'équipe veut s'y référer explicitement.
 5. **Séparer explicitement** dans toute documentation future : ce qui est implémenté et testé / ce qui est prévu mais non codé / ce qui est dette assumée consciemment écartée.
 6. **(nouveau)** **Une fonctionnalité n'est « livrée » que si elle est atteignable par un utilisateur réel.** Toute ligne d'un état des lieux doit préciser : codé ? testé ? **actif en production ?**
