@@ -248,4 +248,87 @@ class DocumentModePricingTest extends TestCase
     {
         $this->assertSame('mode-renomme', $this->pricing()->label('mode-renomme'));
     }
+
+    // -------------------------------------------------------------------------
+    // Cohérence entre le prix AFFICHÉ et le coût RÉELLEMENT débité
+    // -------------------------------------------------------------------------
+
+    /**
+     * **Le prix affiché de « pleine précision » INCLUT la mise en forme complète.**
+     *
+     * Ce mode enchaîne deux opérations : l'analyse complète du document, puis sa
+     * mise en forme (`LongFormattingJob`, tâche `document_full_format`, facturée
+     * séparément). N'afficher que la première donnerait un prix inférieur au
+     * débit — et l'utilisateur le découvrirait sur son solde.
+     *
+     * **Ce test existe à cause d'une erreur réelle.** Le prix affiché est passé de
+     * 21 à 36 crédits sans que rien d'autre ne change : la taille transmise à
+     * `estimationMiseEnForme()` était multipliée par 4 « pour simuler un
+     * fichier », alors que la fonction DIVISE ce paramètre par 4 pour obtenir des
+     * tokens. `caracteres × 4 ÷ 4` redonnait le nombre de caractères, lu comme
+     * autant de tokens — trois fois trop.
+     *
+     * Un prix qui varie sans raison de code doit échouer, pas passer inaperçu :
+     * c'est ce que vérifie ce test, en recomposant le total depuis ses deux
+     * composantes au lieu de comparer à une constante.
+     */
+    public function test_le_prix_de_la_pleine_precision_inclut_la_mise_en_forme(): void
+    {
+        $pricing = $this->pricing();
+
+        foreach ([5000, 40000, 150000] as $chars) {
+            $total = $pricing->estimate(DocumentModePricing::MODE_PRECISION, $chars, 'default');
+
+            // La composante « mise en forme », calculée par la MÊME fonction que
+            // celle utilisée pour créer le job. Si les deux chemins divergeaient,
+            // l'utilisateur verrait un prix et en paierait un autre.
+            $miseEnForme = DocumentModePricing::estimationMiseEnForme($chars, $chars, 'default');
+
+            // Sans mise en forme, l'analyse seule serait forcément moins chère.
+            $assistance = $pricing->estimate(DocumentModePricing::MODE_ASSISTE, $chars, 'default');
+
+            $this->assertGreaterThan($miseEnForme, $total['credits'],
+                "À {$chars} caractères, le prix doit dépasser la seule mise en forme : il couvre "
+                .'AUSSI l\'analyse du document entier.');
+
+            $this->assertGreaterThan($assistance['credits'], $total['credits'],
+                "À {$chars} caractères, la pleine précision doit coûter plus que l'assistance, "
+                .'qui n\'envoie que les éléments ambigus.');
+        }
+    }
+
+    /**
+     * La mise en forme devient moins chère quand le document est plus petit.
+     *
+     * Le coût de la mise en forme suit la taille envoyée. Une fonction qui
+     * ignorerait ce paramètre donnerait le même prix à un devis d'une page et à
+     * un mémoire de 300 pages.
+     */
+    public function test_le_cout_de_mise_en_forme_suit_la_taille(): void
+    {
+        $petit = DocumentModePricing::estimationMiseEnForme(5000, 5000, 'default');
+        $moyen = DocumentModePricing::estimationMiseEnForme(40000, 40000, 'default');
+        $grand = DocumentModePricing::estimationMiseEnForme(200000, 200000, 'default');
+
+        $this->assertLessThan($moyen, $petit, 'Un petit document doit coûter moins cher à mettre en forme.');
+        $this->assertLessThan($grand, $moyen, 'Un document moyen doit coûter moins cher qu\'un gros.');
+    }
+
+    /**
+     * Le détail affiché mentionne les DEUX opérations.
+     *
+     * L'utilisateur doit pouvoir comprendre pourquoi la pleine précision coûte
+     * plus de deux fois l'assistance. Un montant sans explication est un montant
+     * qu'on ne peut ni vérifier ni accepter.
+     */
+    public function test_le_detail_de_la_pleine_precision_annonce_les_deux_operations(): void
+    {
+        $detail = $this->pricing()
+            ->estimate(DocumentModePricing::MODE_PRECISION, 40000, 'default')['detail'];
+
+        $this->assertStringContainsString('entier', mb_strtolower($detail));
+        $this->assertStringContainsString('mise en forme', mb_strtolower($detail),
+            'Le détail doit annoncer la mise en forme complète : c\'est la seconde opération '
+            .'facturée, et sans elle le prix paraîtrait arbitrairement élevé.');
+    }
 }

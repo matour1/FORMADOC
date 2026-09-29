@@ -211,10 +211,18 @@ final class DocumentModePricing
         // Pleine précision : le coût de la mise en forme complète s'AJOUTE à
         // celui de l'analyse. Les deux opérations ont lieu, les deux sont
         // facturées, et n'afficher que la première tromperait l'utilisateur sur
-        // la dépense réelle. On suppose ici que le texte occupe environ 4 fois la
-        // taille du fichier compressé, hypothèse partagée avec le déclenchement.
+        // la dépense réelle.
+        //
+        // On passe la taille du TEXTE pour les deux paramètres : l'affichage ne
+        // connaît que le nombre de caractères, pas la taille du fichier. La
+        // première version multipliait par 4 pour « simuler » un fichier — or la
+        // fonction DIVISE ce paramètre par 4 pour obtenir des tokens, donc
+        // `chars * 4 / 4` redonnait le nombre de caractères, interprété comme des
+        // tokens : trois fois trop. Le prix affiché passait de 21 à 36 crédits
+        // sans que rien d'autre ne change. Une valeur inventée pour « faire
+        // réaliste » produisait exactement une surestimation silencieuse.
         $creditsMiseEnForme = $mode === self::MODE_PRECISION
-            ? self::estimationMiseEnForme($documentChars * 4, $documentChars, $plan)
+            ? self::estimationMiseEnForme($documentChars, $documentChars, $plan)
             : 0;
 
         return [
