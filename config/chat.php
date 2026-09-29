@@ -47,6 +47,41 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Libellés des outils, pour l'affichage APRÈS traitement
+    |--------------------------------------------------------------------------
+    | Chaque réponse de l'assistant enregistre les outils qui ont RÉELLEMENT
+    | tourné (clé `tools_used` de ses métadonnées). Ces libellés servent à les
+    | afficher sous le message.
+    |
+    | Pourquoi APRÈS et non pendant : l'envoi d'un message est une requête
+    | synchrone unique — le navigateur ne reçoit rien tant que le serveur n'a
+    | pas terminé. Le client ne peut donc pas savoir quel outil s'exécute, et
+    | afficher une étape « analyse en cours » serait une invention. En revanche,
+    | une fois la réponse arrivée, les noms d'outils sont connus avec certitude.
+    |
+    | Le nom technique reste affiché en infobulle : « Analyse de la structure »
+    | est lisible, mais « document_analyze » est ce qu'un rapport de support ou
+    | un ticket doit citer pour être exploitable.
+    |
+    | Un nom absent de cette table est affiché tel quel, sans être masqué : une
+    | erreur ici doit se voir, pas faire disparaître une trace.
+    */
+    'tool_labels' => [
+        'document_analyze' => 'Analyse de la structure',
+        'document_reconstruct' => 'Reconstruction du document',
+        'document_to_docx' => 'Conversion en Word',
+        'document_to_pdf' => 'Conversion en PDF',
+        'document_edit' => 'Modification du document',
+        'document_create' => 'Création de document',
+        'structure_correct' => 'Correction de la structure',
+        'table_of_contents' => 'Génération du sommaire',
+        'web_search' => 'Recherche web',
+        'image_generate' => 'Génération d\'image',
+        'document_skill_generate' => 'Skills documentaires Claude',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Compression du contexte de conversation
     |--------------------------------------------------------------------------
     | Pour ne pas trop consommer de crédits sur les longues conversations,

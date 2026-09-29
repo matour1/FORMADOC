@@ -56,6 +56,17 @@ use Illuminate\Support\Facades\Blade;
 class ChatMarkdownRenderer
 {
     /**
+     * Répertoires dont les fichiers sont téléchargeables par
+     * `ChatController::downloadFile()`.
+     *
+     * Déclaré UNE fois et réutilisé par les deux formes de lien — chemin écrit
+     * seul, et lien markdown dont la cible est ce chemin. Une seconde copie du
+     * motif aurait pu accepter un répertoire que la route refuse, produisant un
+     * lien cliquable qui renvoie une erreur 404.
+     */
+    private const CHEMIN_TELECHARGEABLE = '(?:chat/generated|claude-skills)/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*';
+
+    /**
      * Motif d'un chemin de fichier généré, éventuellement noyé dans une phrase
      * (« Télécharger : chat/generated/x.docx »).
      *
@@ -64,7 +75,7 @@ class ChatMarkdownRenderer
      * l'utilisateur ne pouvait pas cliquer. Ces chemins deviennent des liens vers la
      * route de téléchargement sécurisée (propriété vérifiée côté contrôleur).
      */
-    private const MOTIF_CHEMIN = '#(chat/generated/[A-Za-z0-9._/-]+|claude-skills/[A-Za-z0-9._/-]+)#';
+    private const MOTIF_CHEMIN = '#('.self::CHEMIN_TELECHARGEABLE.')#';
 
     /**
      * Rend un message en HTML sûr.
@@ -273,37 +284,61 @@ class ChatMarkdownRenderer
      */
     private function liensDeTelechargement(string $ligne): string
     {
-        $route = route('chat.files.download');
-
         return (string) preg_replace_callback(
             self::MOTIF_CHEMIN,
-            function (array $m) use ($route): string {
-                $chemin = $m[1];
-                $nom = basename($chemin);
-
-                // `urlencode` : un nom de fichier peut contenir des espaces ou des
-                // accents, et l'URL serait invalide sans encodage.
-                return '<a href="'.$route.'?file='.urlencode($chemin).'"'
-                    .' class="msg-file-link"'
-                    .' download="'.e($nom).'">'
-                    .e($nom)
-                    .'</a>';
-            },
+            fn (array $m): string => $this->lienDeFichier($m[1]),
             $ligne
         );
     }
 
     /**
-     * Liens markdown `[libellé](url)`.
+     * Construit le lien de téléchargement d'un fichier généré.
      *
-     * **Seuls `http` et `https` sont acceptés.** Un `javascript:` est un vecteur
-     * d'exécution, et le contenu vient d'un modèle qui a lu un document non fiable.
+     * Mutualisé parce que DEUX chemins de code produisent ce même lien : un chemin
+     * écrit seul dans une phrase, et un lien markdown dont la cible est ce chemin.
+     * Les laisser diverger produirait deux liens qui se ressemblent sans se
+     * comporter pareil.
+     */
+    private function lienDeFichier(string $chemin): string
+    {
+        $nom = basename($chemin);
+
+        // `urlencode` : un nom de fichier peut contenir des espaces ou des
+        // accents, et l'URL serait invalide sans encodage.
+        return '<a href="'.route('chat.files.download').'?file='.urlencode($chemin).'"'
+            .' class="msg-file-link"'
+            .' download="'.e($nom).'">'
+            .e($nom)
+            .'</a>';
+    }
+
+    /**
+     * Liens markdown `[libellé](cible)`.
      *
-     * Un schéma non autorisé n'est PAS rendu en lien, mais il est aussi retiré de
-     * l'affichage du libellé : laissé tel quel, l'utilisateur lirait
-     * `[clique](javascript:alert(1))` — du balisage technique dans une réponse
-     * destinée à un étudiant. On ne conserve que le libellé, ce qui donne
-     * « clique » : lisible, et sans lien.
+     * **Trois cas, et l'ordre entre eux compte.**
+     *
+     * 1. `http`/`https` : rendu en lien, `noopener` obligatoire. Un `javascript:`
+     *    est un vecteur d'exécution, et le contenu vient d'un modèle qui a lu un
+     *    document non fiable.
+     *
+     * 2. **Cible = chemin de fichier généré.** Le prompt système demande au modèle
+     *    la liste des fichiers générés « avec leur lien de téléchargement (au
+     *    format chat/generated/...) ». Le modèle obéit donc — mais il produit un
+     *    lien markdown dont la CIBLE est un chemin relatif, pas une URL. Ce cas
+     *    n'était pas reconnu, et le résultat était visible à l'écran dans une
+     *    conversation réelle : l'utilisateur lisait
+     *    `[Télécharger document modifié](document_modifie.docx)` en texte brut,
+     *    crochets et parenthèses compris, juste avant un bouton de téléchargement
+     *    parfaitement fonctionnel. Le lien était donc DOUBLEMENT contradictoire :
+     *    du balisage technique dans une réponse destinée à un étudiant, et
+     *    l'affichage d'un lien inerte à côté du lien qui fonctionne.
+     *
+     * 3. Schéma refusé : on ne garde que le libellé.
+     *
+     * Le cas 2 est traité AVANT le cas 3, et c'est nécessaire : sans schéma, une
+     * cible de fichier serait attrapée par la règle de nettoyage, qui lui
+     * retirerait sa cible et ne laisserait que « Télécharger document modifié » —
+     * lisible, mais sans lien, alors que le fichier existe.
      */
     private function liensMarkdown(string $ligne): string
     {
@@ -315,7 +350,23 @@ class ChatMarkdownRenderer
             $ligne
         );
 
-        // 2. Liens à schéma refusé : on ne garde que le libellé.
+        // 2. Liens vers un fichier généré : la cible est un chemin, pas une URL.
+        //    On utilise le NOM DU FICHIER comme libellé plutôt que le texte du
+        //    modèle : c'est lui qui identifie le fichier, et il correspond aux
+        //    autres pastilles de téléchargement du message.
+        //
+        //    Délimiteur `#` et NON `/` : la constante ci-dessus contient des barres
+        //    obliques (`chat/generated`). Avec `/` comme délimiteur, PHP voit la fin
+        //    du motif après « chat » et lit « generated » comme des modificateurs de
+        //    recherche, ce qui échoue avec « Unknown modifier 'g' ». L'erreur avait
+        //    été interceptée par le test d'intégration de la page, en erreur 500.
+        $ligne = (string) preg_replace_callback(
+            '#\[[^\]]+\]\(\.?/?('.self::CHEMIN_TELECHARGEABLE.')\)#',
+            fn (array $m): string => $this->lienDeFichier($m[1]),
+            $ligne
+        );
+
+        // 3. Liens à schéma refusé : on ne garde que le libellé.
         return (string) preg_replace(
             '/\[([^\]]+)\]\((?!https?:\/\/)[a-zA-Z][a-zA-Z0-9+.-]*:[^\s)]*\)/',
             '\\1',

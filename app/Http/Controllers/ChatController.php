@@ -526,13 +526,30 @@ class ChatController extends Controller
         $toolCallsSucceeded = 0;
         $toolCallsFailed = 0;
 
-        $executor = function (array $toolCall, int $turn) use ($user, $plan, &$generatedFiles, &$toolCallsSucceeded, &$toolCallsFailed): array {
+        // Q-OUTILS : noms des outils qui ont RÉELLEMENT abouti, dans l'ordre. Ils
+        // sont affichés sous la réponse (« Analyse de la structure », « Recherche
+        // web ») : l'utilisateur peut ainsi vérifier ce qui a été fait sur son
+        // document, et un ticket de support dispose du nom technique.
+        //
+        // On enregistre les outils RÉUSSIS seulement. Lister un outil dont
+        // l'exécution a échoué laisserait croire que l'action a eu lieu ; le
+        // nombre d'échecs est déjà tracé séparément (`tool_calls_failed`).
+        $toolsUsed = [];
+
+        $executor = function (array $toolCall, int $turn) use ($user, $plan, &$generatedFiles, &$toolCallsSucceeded, &$toolCallsFailed, &$toolsUsed): array {
             $result = $this->executeTool($toolCall, $user, $plan);
 
             if (! empty($result['error'])) {
                 $toolCallsFailed++;
             } else {
                 $toolCallsSucceeded++;
+
+                // `$toolCall['name']` est normalisé par `NormalizesToolCalls`
+                // (l'API imbrique le nom dans `function.name`).
+                $nom = (string) ($toolCall['name'] ?? '');
+                if ($nom !== '' && ! in_array($nom, $toolsUsed, true)) {
+                    $toolsUsed[] = $nom;
+                }
             }
 
             // Le résultat d'un outil peut contenir un chemin de fichier généré
@@ -683,6 +700,10 @@ class ChatController extends Controller
                 // l'ajustement soit lisible côté utilisateur (support, litiges).
                 'tool_calls_succeeded' => $toolCallsSucceeded,
                 'tool_calls_failed' => $toolCallsFailed,
+                // Q-OUTILS : quels outils ont abouti, dans l'ordre. Affiché sous la
+                // réponse — c'est la seule information « par outil » qui soit VRAIE,
+                // l'envoi synchrone ne permettant pas de suivre l'exécution en direct.
+                'tools_used' => $toolsUsed,
                 'refunded_credits' => $refundPartiel,
                 // P0-4 : fichiers générés pendant ce message (téléchargement sécurisé)
                 'generated_files' => array_values(array_unique($generatedFiles)),

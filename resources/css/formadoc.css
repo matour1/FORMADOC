@@ -113,6 +113,115 @@
 
     --navbar-height: 56px;
     --sidebar-width: 260px;
+
+    /* Barres de defilement personnalisees.
+       ------------------------------------
+       Les barres par defaut sont larges (15-17 px selon le systeme), opaques, et
+       ignorent completement la palette : un bloc gris clair au milieu d'une
+       interface ardoise et cobalt. Elles apparaissaient en plus sur des zones
+       ou elles n'ont rien a faire — la liste des conversations et la zone de
+       messages — et mangeaient une part visible de la largeur sur mobile.
+
+       Elles ne sont PAS supprimees. `scrollbar-width: none` ou
+       `overflow: hidden` retirerait l'indication de position et de longueur, qui
+       sert a savoir ou l'on se trouve dans une longue conversation, et rendrait
+       le defilement impossible au clavier et a la souris. On les rend fines et
+       discretes, avec la bonne couleur.
+
+       UNE exception, et une seule : le champ de saisie du chat (`.composer-box
+       textarea`). Il s'agrandit tout seul avec son contenu, donc la barre n'y
+       indique jamais une position utile ; elle ne fait que retrecir le champ de
+       plusieurs pixels. L'exception est expliquee sur place, dans la regle
+       concernee.
+
+       L'epaisseur passe par une variable pour rester reglable en un endroit. */
+    --scrollbar-size: 8px;
+    --scrollbar-size-thin: 6px;
+    --scrollbar-thumb: var(--color-border-strong);
+    --scrollbar-track: transparent;
+}
+
+/* ============ Barres de defilement ============
+   Declarees HORS de :root : `scrollbar-width` et `scrollbar-color` sont des
+   proprietes de mise en forme, pas des jetons. Les placer dans le bloc de
+   variables produit une erreur de syntaxe CSS qui fait echouer tout le build. */
+html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/*
+  GARDE-FOU : aucun enfant de conteneur flex ou grid ne doit pouvoir elargir
+  la page.
+  ---------------------------------------------------------------------------
+  Un enfant de `display: flex` ou `display: grid` a `min-width: auto` par
+  defaut, ce qui l'EMPECHE de devenir plus etroit que son contenu. Un element
+  large — un graphique de 90 barres, un tableau de 6 colonnes, une grille de
+  plans — impose donc sa largeur a son parent, et de proche en proche a la page
+  entiere.
+
+  Consequence MESUREE avant correction :
+    - `/admin/analytics` : 2322 px de large pour un ecran de 1440 px, soit
+      882 px de defilement HORIZONTAL sur grand moniteur ;
+    - `/account` sur mobile : 728 px pour 390 px d'ecran ;
+    - `/templates` sur mobile : 677 px pour 390 px.
+
+  Corriger les 24 grilles du fichier une par une aurait laisse le probleme
+  revenir a la prochaine grille ajoutee. La regle ci-dessous vise tous les
+  enfants, ou qu'ils soient : une nouvelle grille est protegee par
+  construction.
+
+  Elle est sure parce que `min-width: 0` ne fait que RETIRER une limite : un
+  element dont le contenu est plus petit que la colonne n'est pas affecte, et
+  un element qui doit conserver sa largeur (`flex-shrink: 0`, `min-width: Npx`
+  explicite) la garde — une declaration explicite est plus specifique.
+*/
+.app :where(.sidebar, .main, .page-container) :where(div, section, article, aside, main, form, ul, ol, li, table, figure) {
+    min-width: 0;
+}
+
+/*
+  Un TABLEAU large doit defiler DANS son cadre, jamais elargir la page.
+
+  `.table-wrap` porte deja `overflow-x: auto`, mais cela ne suffisait pas : sans
+  `min-width: 0` sur le conteneur, celui-ci prenait la largeur du tableau au lieu
+  de le contenir. Mesure sur `/admin/payment-links` en mobile : la page faisait
+  439 px pour 390 px d'ecran, et le tableau 652 px.
+
+  Le tableau, lui, garde une largeur minimale : comprimer six colonnes dans
+  360 px les rendrait illisibles. Le defilement horizontal est le comportement
+  CORRECT ici — la donnee reste accessible, et c'est le seul endroit de
+  l'interface ou une barre de defilement horizontale est legitime.
+*/
+.table-wrap { min-width: 0; -webkit-overflow-scrolling: touch; }
+table.data-table { min-width: max-content; }
+
+/* Sur mobile, les tableaux de donnees se lisent mal comprimes : on reduit
+   l'espacement pour limiter le defilement necessaire, sans supprimer
+   d'information. */
+@media (max-width: 900px) {
+    table.data-table th, table.data-table td { padding: .6rem .65rem; font-size: .78rem; }
+}
+
+/* WebKit (Safari, Chrome, Edge) — necessite des pseudo-elements. */
+::-webkit-scrollbar { width: var(--scrollbar-size); height: var(--scrollbar-size); }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb); border-radius: var(--radius-full);
+    /* La bordure transparente cree une marge interieure : la barre parait plus
+       fine que sa largeur reelle, sans reduire la zone de clic. */
+    border: 2px solid transparent; background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); background-clip: padding-box; }
+/* Le coin entre barres horizontale et verticale : sans cette regle, il reste
+   un carre opaque du systeme, visible sur les tableaux larges. */
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* Sur mobile, les barres natives sont de toute facon invisibles pendant le
+   defilement : on les rend plus fines encore, pour ne pas empieter sur une
+   largeur d'ecran deja reduite. */
+@media (max-width: 900px) {
+    :root { --scrollbar-size: var(--scrollbar-size-thin); }
 }
 
 [data-theme="dark"] {
@@ -404,6 +513,22 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
    graphiques) et une colonne étroite à droite (listes, résumés). Utilisée par
    le tableau de bord d'exploitation. */
 .split-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 1.5rem; align-items: start; }
+
+/*
+  `min-width: 0` sur les ENFANTS de la grille, et ce n'est pas cosmetique.
+
+  Un element de grille a `min-width: auto` par defaut, ce qui l'EMPECHE de
+  devenir plus etroit que son contenu. Un graphique de 90 barres imposait donc a
+  sa colonne une largeur de 1001 px.
+
+  Consequence MESUREE sur `/admin/analytics` : la page faisait 2322 px de large
+  pour un ecran de 1440 px, soit une barre de defilement horizontale de 882 px
+  — sur TOUT l'ecran, y compris sur grand moniteur. La colonne de droite etait
+  repoussee hors de vue.
+
+  C'est le meme piege que dans un conteneur flex, et il est invisible a la
+  lecture : rien dans le CSS n'annonce que la grille refuse de retrecir. */
+.split-grid > * { min-width: 0; }
 @media (max-width: 1024px) {
     .split-grid { grid-template-columns: 1fr; }
 }
@@ -420,11 +545,25 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
 .badge-info { background: var(--color-primary-tint); color: var(--color-primary); }
 
 /* ============ Onglets ============ */
-.tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--color-border); margin-bottom: 1.5rem; }
+.tabs {
+    display: flex; gap: .25rem; border-bottom: 1px solid var(--color-border); margin-bottom: 1.5rem;
+    /* Les onglets defilent HORIZONTALEMENT au lieu d'elargir la page.
+       Mesure avant correction : sur `/templates` en mobile (390 px), cinq onglets
+       de 95 a 128 px portaient la page a 677 px — soit 287 px de defilement
+       horizontal, et les derniers onglets inaccessibles.
+       `flex-shrink: 0` sur les onglets : sans lui, ils se comprimeraient jusqu'a
+       un mot par ligne au lieu de defiler lisiblement. */
+    overflow-x: auto; flex-wrap: nowrap;
+}
 .tab {
     padding: .6rem 1.1rem; font-size: .88rem; font-weight: 600; color: var(--color-text-muted);
     border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent;
     transition: all var(--transition); font-family: var(--font-body);
+    white-space: nowrap; flex-shrink: 0;
+}
+@media (max-width: 900px) {
+    .tabs { margin-bottom: 1rem; }
+    .tab { padding: .5rem .8rem; font-size: .82rem; }
 }
 .tab:hover { color: var(--color-text); }
 .tab.active { color: var(--color-accent); border-bottom-color: var(--color-accent); }
@@ -641,9 +780,24 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
 }
 .chat-sidebar .chat-item.active .chat-item-icon { background: var(--color-primary); color: var(--color-on-primary); }
 .chat-sidebar .chat-item .badge { flex-shrink: 0; font-size: .66rem; padding: .12rem .45rem; }
+/* Le bouton de suppression n'apparait qu'au survol — ce qui le rend
+   INATTEIGNABLE au toucher : un ecran tactile ne produit pas de `:hover`, et
+   mesure sur mobile il ne faisait que 18x18 px avec `opacity: 0`.
+
+   Deux corrections : il est visible en permanence quand le pointeur ne peut pas
+   survoler, et sa cible passe a 44 px (la taille recommandee pour un doigt).
+   On ne le masque plus sur tactile : le risque de suppression accidentelle est
+   deja couvert par la confirmation `onsubmit` du formulaire. */
 .chat-sidebar .chat-item .chat-item-del {
     border: none; background: none; color: var(--color-text-muted); cursor: pointer; opacity: 0;
     padding: .15rem; border-radius: 6px; flex-shrink: 0; display: inline-flex; transition: all var(--transition);
+}
+@media (hover: none), (pointer: coarse) {
+    .chat-sidebar .chat-item .chat-item-del { opacity: 1; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
+    .msg-action-btn, .msg-reaction-btn { min-width: 44px; min-height: 44px; }
+    /* Les meta d'un message ne doivent pas rester invisible au toucher non plus :
+       elles portent les seules actions disponibles (copier, reactions). */
+    .message .meta { opacity: 1; }
 }
 .chat-sidebar .chat-item:hover .chat-item-del { opacity: 1; }
 .chat-sidebar .chat-item .chat-item-del:hover { color: var(--color-correction); background: var(--color-correction-tint); }
@@ -667,6 +821,28 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
 .chat-context strong { font-weight: 600; color: var(--color-text); }
 .chat-context .chat-context-info { color: var(--color-text-muted); font-size: .76rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-header-actions { display: flex; gap: .35rem; align-items: center; }
+
+/* Bouton d'ouverture du tiroir des conversations.
+   Masque sur grand ecran : la liste y est deja visible en colonne, donc un
+   bouton ferait doublon et occuperait l'en-tete pour rien. */
+.chat-drawer-toggle {
+    display: none; align-items: center; justify-content: center;
+    width: 34px; height: 34px; flex-shrink: 0;
+    border: 1px solid var(--color-border); background: var(--color-surface-2);
+    color: var(--color-text-secondary); border-radius: 10px; cursor: pointer;
+    transition: all var(--transition);
+}
+.chat-drawer-toggle:hover { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-tint); }
+.chat-drawer-toggle svg { width: 16px; height: 16px; }
+
+/* Overlay du tiroir : inexistant sur grand ecran. */
+.chat-sidebar-overlay { display: none; }
+
+/* Fermeture du tiroir : masquee sur grand ecran, ou il n'y a rien a fermer. */
+.chat-drawer-close { display: none; }
+@media (max-width: 900px) {
+    .chat-drawer-close { display: inline-flex; }
+}
 
 .chat-messages {
     flex: 1; padding: 1.75rem 1.5rem; overflow-y: auto;
@@ -787,6 +963,7 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
     .chat-model-note { font-size: 0; gap: 0; padding: .3rem .5rem; }
     .chat-model-note i { font-size: initial; }
 }
+
 .message .msg-bubble pre {
     background: var(--color-surface-2); border: 1px solid var(--color-border);
     border-radius: 10px; padding: .8rem 1rem; overflow-x: auto; margin: .55rem 0;
@@ -827,6 +1004,30 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
     border: 1px solid var(--color-border); border-radius: var(--radius-full); box-shadow: var(--shadow-1);
     animation: fadeSlide .25s ease;
 }
+/* Le temps ecoule est une MESURE, pas une decoration : il reste en chiffres
+   tabulaires pour que le compteur ne fasse pas sauter la pastille a chaque
+   changement d'unite (9 s -> 10 s change le nombre de caracteres). */
+.thinking-indicator .thinking-elapsed {
+    font-size: .72rem; color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums lining-nums;
+    padding-left: .6rem; border-left: 1px solid var(--color-border);
+}
+/* Avertissement d'attente longue. Il n'apparait qu'au-dela d'un seuil, et dit
+   POURQUOI l'attente est normale — un simple sablier qui dure fait croire a une
+   panne et pousse a recharger la page, ce qui interrompt le traitement. */
+.thinking-notice {
+    display: flex; align-items: flex-start; gap: .55rem; align-self: stretch;
+    margin: .5rem 0 0 48px; padding: .7rem .9rem;
+    background: var(--color-accent-tint); color: var(--color-accent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
+    border-radius: var(--radius-sm); font-size: .8rem; line-height: 1.5;
+    animation: fadeSlide .25s ease;
+}
+.thinking-notice svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: .1rem; }
+@media (max-width: 900px) {
+    .thinking-indicator { margin-left: 0; }
+    .thinking-notice { margin-left: 0; }
+}
 .thinking-dots { display: flex; gap: 3px; }
 .thinking-dots span {
     width: 5px; height: 5px; background: var(--color-text-muted);
@@ -865,6 +1066,21 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
     color: var(--color-text); font: inherit; font-size: .93rem; line-height: 1.5;
     resize: none; outline: none; max-height: 140px; min-height: 24px;
 }
+/*
+  16 px est un SEUIL, pas une preference.
+
+  Safari sur iOS zoome automatiquement la page des qu'on place le curseur dans
+  un champ dont la taille de police est inferieure a 16 px. Le champ du chat
+  mesurait 14,88 px : ecrire un message declenchait donc un zoom involontaire,
+  et la page restait zoomee apres l'envoi — une gene tres visible, et un motif
+  classique d'abandon sur mobile.
+
+  On ne corrige pas en desactivant le zoom (`user-scalable=no` dans le viewport),
+  ce qui supprimerait la possibilite de zoomer pour les personnes malvoyantes.
+*/
+@media (max-width: 900px) {
+    .composer-box textarea, .composer-box textarea::placeholder { font-size: 16px; }
+}
 .composer-box textarea::placeholder { color: var(--color-text-muted); }
 .composer-tools { display: flex; align-items: center; gap: .15rem; flex-shrink: 0; }
 .composer-tool-btn {
@@ -894,11 +1110,41 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
     background: var(--color-surface-2); border-bottom-width: 2px; border-radius: 5px;
     padding: .05rem .4rem; color: var(--color-text-secondary);
 }
+/*
+  L'indice de cout se replie ENTRE ses elements, jamais au milieu d'un mot.
+  ---------------------------------------------------------------------------
+  `.chat-cost-preview` est un conteneur flex dont les enfants sont l'icone, le
+  libelle « Cout estime : », le montant et la precision. En `flex-wrap: nowrap`
+  (valeur par defaut), ces elements ne peuvent pas passer a la ligne : quand leur
+  largeur totale depasse la place disponible, ils se COMPRIMENT a la place.
+
+  Or un element flex plus etroit que son mot le plus long le coupe en plein mot.
+  C'etait visible a l'ecran, a 390 px : l'indice s'affichait sur
+  « C o û t  e s t i m e », « Cout » scinde en deux.
+
+  `flex-wrap: wrap` laisse chaque element se replier ENTIER sur la ligne
+  suivante. Le repli se fait donc aux limites des mots, et non dedans. */
 .chat-cost-preview {
-    display: inline-flex; align-items: center; gap: .35rem;
+    display: inline-flex; align-items: center; gap: .35rem; flex-wrap: wrap;
     color: var(--color-text-muted); font-family: var(--font-mono); font-size: .7rem;
 }
-.chat-cost-preview svg { width: 12px; height: 12px; }
+/* La forme courte de la precision n'est utilisee que sur ecran etroit. */
+.cost-precision-court { display: none; }
+/* Le libelle « Cout estime : » ne se comprime pas non plus : sous sa largeur
+   naturelle, le navigateur le couperait en plein mot. */
+.cost-label { flex-shrink: 0; white-space: nowrap; }
+/*
+  L'icone ne se comprime pas.
+  ---------------------------------------------------------------------------
+  `.chat-cost-preview` est un conteneur flex dont le texte est plus large que la
+  colonne sur un ecran etroit. Sans `flex-shrink: 0`, le seul element flexible
+  de la ligne — le `<svg>` de l'icone — absorbait TOUT le manque a gagner : mesure
+  a 284 px, l'icone faisait 4 px de large au lieu de 12, donc invisible.
+
+  Un texte qui passe a la ligne est lisible ; une icone ecrasee ne l'est pas. On
+  empeche donc la compression de l'icone et on laisse le texte s'organiser.
+*/
+.chat-cost-preview svg { width: 12px; height: 12px; flex-shrink: 0; }
 .chat-disclaimer { font-size: .68rem; color: var(--color-text-muted); text-align: center; }
 /* État vide d'une liste de conversations (aucune conversation, ou aucune ne
    correspond au filtre). Les deux éléments portaient leurs styles en attribut
@@ -1008,19 +1254,222 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
     .sidebar { position: fixed; transform: translateX(-100%); width: 270px; height: 100vh; z-index: 200; box-shadow: var(--shadow-3); }
     .sidebar.open { transform: translateX(0); }
     .navbar-menu-toggle { display: flex; }
+    /*
+      La recherche de la barre de navigation RESTE visible sur mobile.
+      -----------------------------------------------------------------------
+      Elle a ete retiree un moment, puis remise : la mesure ne justifiait pas de
+      la retirer.
+
+      Mesure a 390 px de large (largeur d'un iPhone) : la barre de navigation
+      contient le bouton de menu, le champ de recherche (~135 px), le solde de
+      credits, le bouton de theme, l'avatar et la deconnexion. Tous tiennent, et
+      aucun ne depasse le bord droit (verifie element par element). A 347 px,
+      largeur la plus etroite que le navigateur de test accepte, les quatre
+      elements de droite vont de 160 px a 321 px : il reste 16 px de marge.
+
+      Le champ n'etait donc PAS casse aux largeurs de telephone reelles. Il ne
+      l'etait qu'a 284 px — plus etroit que n'importe quel telephone du marche
+      (le plus petit courant, l'iPhone SE, fait 375 px). Retirer une
+      fonctionnalite GLOBALE pour un cas qui n'existe pas sur un vrai appareil
+      aurait ete une surcorrection : la recherche filtre les documents, les
+      conversations et les gabarits de la page courante, et rien ne prouve
+      qu'elle soit redondante partout.
+
+      On garde `flex: 1` et `min-width: auto` sur mobile : le champ s'adapte a la
+      place disponible au lieu d'imposer ses 260 px et de pousser les autres
+      elements hors de la barre. C'est ce comportement qui rendait la largeur
+      fixe problematic. */
     .navbar-search { min-width: auto; flex: 1; }
     .navbar-search span.search-label { display: none; }
-    .chat-layout { grid-template-columns: 1fr; height: auto; gap: 1rem; }
     .page-container { padding: 1.5rem 1rem; }
     .stat-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ============================================================
+   Chat mobile — le defaut le plus grave de l'interface
+   ============================================================
+   MESURE avant correction, sur une conversation reelle de 50 messages :
+   le conteneur `.chat-layout` faisait 25 499 px de haut et le composer se
+   trouvait a 25 462 px du haut de la page. L'utilisateur devait donc faire
+   defiler une trentaine d'ecrans pour atteindre le champ de saisie.
+
+   Cause : la media query posait `.chat-layout { height: auto }`. Sur grand
+   ecran, la hauteur fixe (`calc(100vh - ...)`) borne `.chat-messages`, qui
+   defile alors INTERIEUREMENT. En `height: auto`, cette borne disparait : le
+   conteneur s'etire sur la hauteur de tout son contenu, et la page entiere
+   defile a la place de la zone de messages.
+
+   La correction ne supprime pas la contrainte, elle la REND EXPLICITE :
+   la conversation occupe la hauteur restante sous la barre de navigation, les
+   messages defilent dedans, et le composer reste visible en permanence.
+
+   `100dvh` et non `100vh` : sur mobile, `100vh` designe la hauteur SANS les
+   barres d'adresse du navigateur — celles-ci apparaissent et disparaissent au
+   defilement, donc une hauteur en `vh` fait sauter la mise en page. `dvh` est
+   la hauteur REELLEMENT visible, et se met a jour avec les barres. */
+@media (max-width: 900px) {
+    .chat-layout {
+        grid-template-columns: 1fr;
+
+        /* `grid-template-rows: auto 1fr` n'est pas cosmetique : SANS elle, les deux
+           rangées de la grille (liste des conversations, puis conversation) sont en
+           `auto`, donc dimensionnees par leur CONTENU. Le composer, pousse vers le
+           bas par la zone de messages, faisait alors deborder `.chat-main` — mesure :
+           le conteneur de messages tombait a 32 px de haut et le composer a 995 px
+           pour un ecran de 844 px, donc toujours hors de vue.
+
+           Avec `auto 1fr`, la liste prend sa hauteur naturelle (bornee par son
+           `max-height`) et la conversation occupe TOUT le reste, sans pouvoir
+           depasser : c'est ce qui rend le composer visible en permanence. */
+        grid-template-rows: auto 1fr;
+
+        /* Hauteur reservee a l'exterieur de la conversation : barre de navigation
+           (56 px), marge haute de `.page-container` (24 px), en-tete de page
+           compacte (116 px) et sa marge basse (18 px), soit 214 px = 13.4 rem.
+
+           Valeur MESUREE et non estimee : avec 9 rem (144 px) le composer
+           depassait de 13 px sous un ecran de 844 px — invisible a l'oeil, mais
+           le bouton d'envoi n'etait plus cliquable sans un leger defilement.
+
+           13.5 rem laisse une marge de surete de 2 px, et l'en-tete est compacte
+           juste en dessous pour que la valeur reste vraie si son contenu varie. */
+        height: calc(100dvh - 13.5rem);
+        min-height: 380px;
+        gap: .75rem;
+
+        /* UNE SEULE COLONNE, et la liste des conversations sort du flux.
+           -----------------------------------------------------------------
+           Mesure avant correction, sur un ecran de 712 px de haut :
+             - liste des conversations : 180 px, EN PERMANENCE ;
+             - zone de messages : 102 px, soit 14 % de l'ecran.
+           Autrement dit, la liste des conversations occupait presque deux fois
+           plus de place que la conversation elle-meme.
+
+           ChatGPT et Claude sur mobile procedent autrement, et c'est le bon
+           modele : la liste est un TIROIR, ouverte a la demande, et la
+           conversation occupe tout l'espace restant. On applique le meme
+           mecanisme, en reutilisant le pattern deja present dans l'application
+           pour la navigation principale (`.sidebar` + `.sidebar-overlay`) —
+           coherent avec le reste du produit, et deja accessible au clavier. */
+        grid-template-rows: 1fr;
+    }
+
+    .chat-sidebar {
+        position: fixed; inset: 0 auto 0 0; z-index: 260;
+        width: min(86vw, 330px); max-height: none; height: 100dvh;
+        border-radius: 0 18px 18px 0;
+        transform: translateX(-102%);
+        transition: transform .28s cubic-bezier(.4, 0, .2, 1);
+        box-shadow: var(--shadow-3);
+    }
+    .chat-sidebar.open { transform: translateX(0); }
+
+    /* L'overlay assombrit la conversation et, surtout, ferme le tiroir au
+       toucher : sans lui, il faudrait viser a nouveau le bouton d'ouverture
+       pour refermer — geste peu decouvrable sur un ecran tactile. */
+    .chat-sidebar-overlay {
+        display: none; position: fixed; inset: 0; z-index: 250;
+        background: rgba(15, 23, 42, .45);
+    }
+    .chat-sidebar-overlay.open { display: block; }
+
+    /* Le bouton d'ouverture n'existe que sur mobile : sur grand ecran, la liste
+       est deja visible en colonne et un bouton ferait doublon. */
+    .chat-drawer-toggle { display: inline-flex; }
+
+    /* L'en-tete de page disparait sur mobile : il portait le titre de la
+       conversation et un lien « Mes conversations » — deux informations que
+       l'en-tete du chat et le tiroir fournissent deja. Il occupait 114 px, soit
+       plus que la zone de messages entiere. */
+    .page-header { display: none; }
+    .page-container { padding-top: .5rem; }
+
+    /* La hauteur reservee ne compte donc plus que la barre de navigation et les
+       marges : 56 + 8 + 8 = 72 px, plus la marge basse. */
+    .chat-layout { height: calc(100dvh - 5.5rem); }
+
+    /* `overflow: hidden` + `min-height: 0` : sans les deux, un enfant de grille
+       refuse de retrecir sous sa taille de contenu, et la zone de messages
+       deborderait au lieu de defiler. */
+    .chat-main { min-height: 0; overflow: hidden; }
+    .chat-messages { padding: 1rem .85rem; gap: 1rem; min-height: 0; }
+    .message, .message.user { max-width: 94%; }
+
+    /* --- Le composer sur mobile : trois blocs secondaires en trop ------------
+       Mesure avant correction : le composer faisait 404 px de haut pour un ecran
+       de 844 px, soit pres de la moitie. Detail : zone de saisie 98, actions
+       rapides 117, indices de cout 69, mention legale 70.
+
+       Or les actions rapides DOUBLONNENT les puces de suggestion deja affichees
+       au centre d'une conversation vide, et les deux autres blocs sont des
+       informations que l'utilisateur a deja lues. Les garder sur un ecran etroit
+       repousse la conversation et le champ de saisie hors de vue, pour un
+       contenu deja present ailleurs.
+
+       On les masque donc sur mobile — pas parce qu'ils sont inutiles, mais parce
+       que l'espace manque et que l'information est disponible a un autre endroit. */
+    .composer-actions { display: none; }
+    .chat-disclaimer { display: none; }
+    .composer-hint { font-size: .68rem; gap: .4rem; }
+    .hint-keys { display: none; }
+
+    /*
+      La precision du cout passe a sa forme COURTE.
+      -----------------------------------------------------------------------
+      Mesure a 360 px : la forme longue
+      « Cout estime : 1 credit(s) (modeles du plan, ajuste apres usage) »
+      occupe 52 px de haut contre 17 px pour la forme courte, soit deux lignes de
+      plus — le bloc d'indice devient alors plus haut que le champ de saisie
+      lui-meme (40 px).
+
+      On echange la forme, on ne supprime rien : « ajuste apres usage » est
+      conserve parce qu'il change le sens de la phrase (le montant est une
+      estimation), alors que « modeles du plan » ne fait que l'expliquer. Aucune
+      information sur le montant lui-meme ne disparait.
+    */
+    .cost-precision { display: none; }
+    .cost-precision-court { display: inline; }
+    .chat-cost-preview { font-size: .68rem; }
+    .chat-composer { padding: .6rem .75rem .75rem; gap: .4rem; }
+
+    /* Le bouton emoji est masque sur mobile : les claviers tactiles (iOS,
+       Android) integrent un acces natif aux emojis, donc ce bouton fait
+       doublon. Le retirer rend ~40 px au champ de saisie, ou le placeholder
+       « Pose ta question ou demande une action… » ne tenait plus et se coupait
+       sur deux lignes. */
+    #chatEmojiBtn { display: none; }
+    .composer-box { padding: .4rem .45rem .4rem .8rem; gap: .35rem; }
+    /* Le placeholder est raccourci en CSS : la version longue ne rentre pas dans
+       la largeur restante sur un ecran de 360 px. */
+    .composer-box textarea { font-size: 16px; }
+
+    /* Les actions au toucher, regroupees ici par LARGEUR et non par capacite.
+       `@media (hover: none)` seul ne suffit pas : un navigateur de bureau
+       redimensionne en fenetre etroite rapporte `hover: hover`, et le bouton
+       restait alors invisible et minuscule — precisement le cas d'un
+       developpeur qui teste le rendu mobile. */
+    .chat-sidebar .chat-item .chat-item-del {
+        opacity: 1; min-width: 44px; min-height: 44px;
+        align-items: center; justify-content: center;
+    }
+    .msg-action-btn, .msg-reaction-btn { min-width: 44px; min-height: 44px; }
+    .message .meta { opacity: 1; }
 }
 @media (max-width: 560px) {
     .stat-grid { grid-template-columns: 1fr; }
     .navbar { padding: 0 1rem; }
     .navbar-actions { gap: .45rem; }
     .credits-badge span.credits-label { display: none; }
-    .message, .message.user { max-width: 95%; }
-    .chat-layout { min-height: 0; }
+    .message, .message.user { max-width: 96%; }
+
+    /* Le champ de saisie passe au-dessus de la zone de securite iOS, sinon le
+       clavier virtuel recouvre le bouton d'envoi. */
+    .chat-composer { padding-bottom: max(.6rem, env(safe-area-inset-bottom)); }
+    .chat-main-header { padding: .6rem .75rem; }
+    .chat-context .chat-context-info { display: none; }
+    .chat-attach-btn { width: 40px; height: 40px; }
+    .composer-tool-btn { width: 40px; height: 40px; }
+    .composer-send { width: 42px; height: 42px; }
 }
 
 /* ============================================================
@@ -1350,6 +1799,56 @@ a.flow-step:hover { background: var(--color-surface-2); color: var(--color-text)
 .attach-chip .attach-size { font-family: var(--font-mono); font-size: .66rem; opacity: .75; }
 .attach-chip button { border: none; background: none; cursor: pointer; color: inherit; padding: 2px; display: flex; border-radius: 50%; opacity: .7; }
 .attach-chip button:hover { opacity: 1; }
+
+/*
+  PIECES JOINTES DANS UN MESSAGE : elles doivent pouvoir se reduire.
+
+  Mesure sur mobile : le libelle d'une piece jointe mesurait 185 px dans un
+  conteneur de 150 px, soit 35 px de debordement — d'ou une barre de defilement
+  HORIZONTALE dans la zone de messages, et un nom de fichier coupe en plein
+  milieu au lieu d'etre abrege par des points de suspension.
+
+  `min-width: 0` est la cle, et elle n'est pas intuitive : un enfant de
+  conteneur flex a par defaut `min-width: auto`, ce qui l'EMPECHE de devenir
+  plus etroit que son contenu. Sans cette ligne, `text-overflow: ellipsis` ne
+  s'applique jamais — la propriete est presente, mais sans effet.
+*/
+.msg-attachments { min-width: 0; }
+.msg-attachments .attach-chip { max-width: 100%; min-width: 0; }
+.msg-attachments .attach-chip .attach-name { min-width: 0; }
+
+/* Le lien vers un fichier genere (rendu par ChatMarkdownRenderer) doit lui aussi
+   se reduire : un nom de fichier long debordait de la bulle. */
+.msg-file-link { max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Outils reellement utilises pendant un message (Q-OUTILS).
+
+   Affiches SOUS la reponse, apres coup : l'envoi est synchrone, donc le client
+   ne peut pas savoir quel outil s'execute tant que le serveur n'a pas repondu.
+   Ce qui est affiche ici est donc un FAIT (l'outil a tourne, il a reussi), pas
+   une etape simulee.
+
+   Pas de `max-width` sur les pastilles : un libelle traduit est court, et le
+   conteneur se replie deja (`flex-wrap: wrap` en attribut dans la vue). */
+.msg-tools { min-width: 0; }
+.msg-tools-label {
+    font-size: .68rem; color: var(--color-text-muted);
+    font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .03em;
+}
+
+/* Un nom de fichier n'a aucune raison de forcer la largeur d'une bulle : il se
+   coupe la ou il faut plutot que d'elargir la conversation.
+
+   `anywhere` et non `break-word` : mesure sur mobile, une URL de 90 caracteres
+   sans espace debordait de la bulle avec `break-word`, qui ne coupe que les
+   mots trop longs pour la ligne — pas une chaine continue. `anywhere` autorise
+   la coupure en n'importe quel point, ce qui est le comportement voulu pour un
+   chemin de fichier ou une URL.
+
+   La propriete est appliquee a la BULLE et non a tout le message : les mots
+   ordinaires ne sont pas coupes au milieu, seules les chaines sans espace le
+   sont. */
+.msg-bubble { overflow-wrap: anywhere; word-break: normal; }
 
 /* --- Chat : sélecteur de modèle --- */
 .chat-model-picker { position: relative; }
@@ -1731,3 +2230,30 @@ a.flow-step:hover { background: var(--color-surface-2); color: var(--color-text)
     .landing-page .hero-actions .btn { width: 100%; justify-content: center; }
     .landing-page .doc-sheet.after { display: none; }
 }
+
+/* ============================================================
+   Selecteur de mode d'analyse d'un document (avec tarif)
+   ============================================================
+   Trois modes cohabitent, et l'utilisateur doit pouvoir comparer leur prix
+   AVANT de choisir. Le tarif est donc un element de premier rang dans chaque
+   carte, avec un style distinct du texte descriptif.
+
+   `min-width: 0` sur les cartes : sans lui, une carte de grille ne peut pas
+   devenir plus etroite que son contenu, et une description longue elargirait
+   la page (defaut deja mesure ailleurs dans ce fichier). */
+.mode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .9rem; }
+.mode-grid .mode-card { min-width: 0; }
+.mode-grid .mode-card > span:last-child { min-width: 0; }
+.mode-price {
+    display: inline-flex; align-items: center; gap: .35rem; flex-wrap: wrap;
+    margin: .3rem 0 .35rem; padding: .2rem .55rem;
+    border-radius: var(--radius-full); font-size: .72rem; font-weight: 600;
+    font-family: var(--font-mono);
+    background: var(--color-primary-tint); color: var(--color-primary);
+}
+.mode-price.is-free { background: var(--color-secondary-tint); color: var(--color-secondary); }
+.mode-price svg { width: 12px; height: 12px; flex-shrink: 0; }
+/* Le detail du calcul : discret, mais present — un montant qu'on ne peut pas
+   verifier est un montant qu'on ne peut pas contester non plus. */
+.mode-detail { display: block; margin-top: .25rem; font-size: .69rem; color: var(--color-text-muted); }
+.mode-note { margin-top: .7rem; font-size: .72rem; color: var(--color-text-muted); }
