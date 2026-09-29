@@ -392,4 +392,96 @@ class ReconstructionPayloadBuilderTest extends TestCase
         $this->assertSame('ocr', $payload['analysis']['meta']['source_type']);
         $this->assertSame('reconstructed', $payload['analysis']['meta']['fidelity']);
     }
+
+    // -------------------------------------------------------------------------
+    // Exhaustivité des types de bloc
+    // -------------------------------------------------------------------------
+
+    /**
+     * **Chaque type de bloc est accepté, sans exception.**
+     *
+     * **Le défaut que ce test rend impossible, et il était grave.** L'adaptateur
+     * de blocs utilise un `match ($block->type)` qui n'avait PAS de `default`.
+     * Introduire un nouveau type — `BlockType::TocEntry`, ajouté pour reclasser
+     * les entrées de sommaire — faisait donc lever `UnhandledMatchError`, et
+     * **la génération du document échouait entièrement**.
+     *
+     * Il est passé inaperçu malgré 1 477 tests verts : **aucun** ne générait un
+     * document contenant une entrée de sommaire. C'est exactement le profil
+     * d'échec que le principe 7 du projet vise — un défaut qui n'apparaît que sur
+     * une donnée réelle précise, et qui BLOQUE l'utilisateur au lieu de dégrader.
+     *
+     * Le test parcourt `BlockType::cases()` au lieu de lister les types : un type
+     * ajouté à l'avenir sera donc couvert sans que personne ne pense à mettre ce
+     * test à jour. C'est ce qui distingue un garde-fou d'un test de circonstance.
+     */
+    public function test_tous_les_types_de_bloc_sont_acceptes(): void
+    {
+        $echecs = [];
+        $types = [];
+
+        foreach (BlockType::cases() as $type) {
+            $types[] = $type->value;
+
+            // Un contenu représentatif : un bloc vide pourrait emprunter un
+            // chemin de repli et masquer le défaut. Chaque type reçoit la donnée
+            // que son contrat exige — un bloc `Table` sans `tableData` lève une
+            // exception, ce qui testerait la validité du bloc et non le `match`.
+            $bloc = new Block(
+                blockId: 'b_0001',
+                type: $type,
+                text: 'SECTION I : PRESENTATION GENERALE    2',
+                headingLevel: in_array($type, [BlockType::Heading, BlockType::TocEntry], true) ? 1 : null,
+                tableData: $type === BlockType::Table
+                    ? TableData::fromGrid([['En-tête', 'Valeur'], ['A', '1']])
+                    : null,
+                imageRef: in_array($type, [BlockType::Figure, BlockType::Image], true) ? 'img_001.png' : null,
+            );
+
+            try {
+                $payload = (new ReconstructionPayloadBuilder)->build($this->rendered([$bloc]));
+                $this->assertIsArray($payload);
+            } catch (\UnhandledMatchError) {
+                $echecs[] = $type->value;
+            }
+        }
+
+        // On vérifie aussi que le parcours a bien couvert tous les cas : un
+        // `BlockType::cases()` vide passerait le test en ne testant rien.
+        $this->assertGreaterThanOrEqual(10, count($types),
+            'Le parcours doit couvrir tous les types de bloc connus.');
+
+        $this->assertSame([], $echecs,
+            'Ces types de bloc ne sont pas gérés : '.implode(', ', $echecs).'. '
+            .'Un `match` sans `default` fait ÉCHOUER la génération du document entier '
+            .'au lieu de dégrader proprement. Ajouter un `default`, ou traiter le '
+            .'type explicitement.');
+    }
+
+    /**
+     * Une entrée de sommaire n'est PAS recopiée dans le document généré.
+     *
+     * Elle est la copie d'un titre, présente dans la source pour en donner la
+     * pagination. La reproduire recopierait des numéros de page d'origine — faux
+     * dès que la mise en forme change la pagination — et entrerait en
+     * contradiction avec le sommaire que le générateur produit lui-même.
+     */
+    public function test_une_entree_de_sommaire_n_est_pas_recopiee(): void
+    {
+        $entree = new Block(
+            blockId: 'b_toc',
+            type: BlockType::TocEntry,
+            text: 'SECTION I : PRESENTATION GENERALE    2',
+            headingLevel: 1,
+        );
+
+        $payload = (new ReconstructionPayloadBuilder)->build($this->rendered([$entree]));
+
+        $this->assertSame([], $payload['analysis']['body_complet'],
+            'Une entrée de sommaire ne doit pas figurer dans le corps reconstruit : '
+            .'son numéro de page serait faux dès que la pagination change.');
+
+        $this->assertSame([], $payload['analysis']['titres'],
+            'Une entrée de sommaire ne doit pas alimenter la liste des titres.');
+    }
 }

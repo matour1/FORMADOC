@@ -153,6 +153,26 @@ final class ReconstructionPayloadBuilder
 
             // En-têtes et pieds sont rendus par `applyHeaderFooter`, pas dans le corps.
             BlockType::Header, BlockType::Footer => null,
+
+            // **Une entrée de sommaire n'est PAS rendue dans le corps.**
+            //
+            // Elle est la copie d'un titre, présente dans le document SOURCE pour
+            // en donner la pagination. Le reproduire tel quel recopierait les
+            // numéros de page d'origine — faux dès que la mise en forme change la
+            // pagination, et en contradiction avec le sommaire que le générateur
+            // produit lui-même (`RenderCoordinator`).
+            //
+            // ⚠️ Ce cas a été AJOUTÉ après coup, et son absence était un défaut :
+            // `match` sans `default` lève `UnhandledMatchError` sur un type non
+            // prévu. Introduire `BlockType::TocEntry` sans cette ligne aurait
+            // cassé la génération de tout document contenant un sommaire — et
+            // AUCUN test ne le voyait, parce qu'aucun ne générait un tel document.
+            BlockType::TocEntry => null,
+
+            // Repli explicite : un type non prévu est ignoré plutôt que de faire
+            // échouer la génération. Une entrée manquante se voit et se corrige ;
+            // un document qui ne se génère pas bloque l'utilisateur.
+            default => null,
         };
     }
 
