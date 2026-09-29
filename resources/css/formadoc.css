@@ -2257,3 +2257,21 @@ a.flow-step:hover { background: var(--color-surface-2); color: var(--color-text)
    verifier est un montant qu'on ne peut pas contester non plus. */
 .mode-detail { display: block; margin-top: .25rem; font-size: .69rem; color: var(--color-text-muted); }
 .mode-note { margin-top: .7rem; font-size: .72rem; color: var(--color-text-muted); }
+
+/* ============================================================
+   Grille de champs de formulaire
+   ============================================================
+   Plusieurs champs courts sur une meme ligne (tailles, marges, couleurs). Sans
+   grille, chaque `.form-group` occupe toute la largeur et un gabarit a 20
+   reglages produit un formulaire de 20 ecrans : l'administrateur perd la vue
+   d'ensemble des valeurs, qui est justement ce qu'il vient comparer.
+
+   `auto-fit` + `minmax(200px, 1fr)` plutot qu'un nombre fixe de colonnes : le
+   nombre de champs varie d'une section a l'autre (3 pour les espacements, 6
+   pour les marges), et une grille fixe laisserait des trous.
+
+   `min-width: 0` sur les enfants : sans lui, un enfant de grille ne peut pas
+   devenir plus etroit que son contenu, et un libelle long elargirait la page.
+   Le defaut a deja ete mesure ailleurs dans ce fichier. */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+.form-grid > * { min-width: 0; }
