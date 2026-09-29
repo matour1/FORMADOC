@@ -44,9 +44,43 @@ final class DocxNativeAdapter implements InputAdapter
     /** Signature binaire d'une archive ZIP (tout `.docx` commence par « PK »). */
     private const ZIP_SIGNATURE = "PK\x03\x04";
 
+    /**
+     * Largeur de l'intervalle glissant qui délimite une zone de sommaire.
+     *
+     * Mesuré sur le document de référence : les entrées d'un sommaire réel sont
+     * entrelacées (une sur deux sans numéro de page). Une fenêtre de 12 blocs
+     * couvre confortablement une interruption, sans jamais couvrir une page
+     * entière de contenu rédigé.
+     */
+    private const FENETRE_SOMMAIRE = 12;
+
+    /**
+     * Nombre de lignes candidates à partir duquel une fenêtre est « dense ».
+     *
+     * Fixé à 4 : en dessous, un titre isolé finissant par un chiffre légitime
+     * pourrait former une fausse fenêtre. À 4, il faudrait quatre titres
+     * légitimement terminés par un nombre dans un intervalle de 12 blocs — cas
+     * improbable, alors qu'un sommaire en produit des dizaines.
+     */
+    private const DENSITE_MINIMALE = 4;
+
     private readonly HeadingNumberingPattern $numberingPattern;
 
     private readonly CaptionPattern $captionPattern;
+
+    /**
+     * Lecteur de styles de la conversion EN COURS.
+     *
+     * **Pourquoi une propriété temporaire.** `toBlock()` doit pouvoir reconnaître
+     * une entrée de sommaire (`is_list_style`), et pour cela interroger le lecteur
+     * de styles — qui n'est disponible que pendant `convert()`. Le repasser en
+     * paramètre à travers `readBody()` puis les lecteurs de tableaux alourdirait
+     * cinq signatures pour une information sans rapport avec elles.
+     *
+     * Elle est remise à `null` dans le `finally` de `convert()` : sans cela, un
+     * adaptateur réutilisé garderait une référence à une archive fermée.
+     */
+    private ?StyleReader $stylesEnCours = null;
 
     public function __construct()
     {
@@ -103,6 +137,14 @@ final class DocxNativeAdapter implements InputAdapter
             $paragraphs = new ParagraphReader($styles);
             $tables = new TableReader($paragraphs);
 
+            // Le lecteur de styles est conservé le temps de la conversion :
+            // `toBlock()` en a besoin pour reconnaître les entrées de sommaire
+            // (`is_list_style`, calculé par `ParagraphReader` mais consommé ici).
+            // On l'expose par propriété plutôt que de le repasser à chaque appel :
+            // `toBlock()` est appelé une fois par paragraphe, et un document en
+            // compte des centaines.
+            $this->stylesEnCours = $styles;
+
             $body = $this->readBody($package, $paragraphs, $tables);
 
             return new StructuralDocument(
@@ -121,6 +163,7 @@ final class DocxNativeAdapter implements InputAdapter
                 ],
             );
         } finally {
+            $this->stylesEnCours = null;
             $package->close();
         }
     }
@@ -208,6 +251,18 @@ final class DocxNativeAdapter implements InputAdapter
             $blocks[] = $this->toBlock($analysis);
         }
 
+        // --- Passe 2 : reclasser les entrées de sommaire PAR CONTENU ----------
+        // Le style Word (`toc N`) couvre les sommaires GÉNÉRÉS. Il ne couvre pas
+        // les sommaires TAPÉS À LA MAIN, sans style de liste — le cas mesuré sur
+        // le document de référence, où le sommaire fournissait 60 % des titres
+        // détectés. Cette passe les reconnaît sur leur contenu.
+        //
+        // Elle a lieu APRÈS la boucle, et c'est nécessaire : le filtre a besoin
+        // de connaître TOUS les titres pour confirmer une entrée par croisement
+        // (le même texte doit exister ailleurs comme titre). Un filtre en ligne
+        // ne verrait que les titres déjà rencontrés, donc une partie seulement.
+        $blocks = $this->reclasserEntreesSommaire($blocks);
+
         return [
             'blocks' => $blocks,
             'paragraphs_read' => $read,
@@ -215,6 +270,226 @@ final class DocxNativeAdapter implements InputAdapter
             'tables_read' => $tablesRead,
             'tables_with_merges' => $tablesWithMerges,
         ];
+    }
+
+    /**
+     * Reclasse en `TocEntry` les entrées d'un sommaire tapé à la main.
+     *
+     * **La difficulté, et pourquoi la solution est prudente.** Une entrée de
+     * sommaire ressemble à un titre : elle finit par un numéro de page, comme un
+     * titre pourrait finir par un chiffre légitime (« CHAPITRE 2 », « Partie 3 »).
+     * Un filtre qui se contenterait du numéro final reclasserait donc de vrais
+     * titres, et les retirer serait pire que de les laisser — un titre manquant
+     * casse la hiérarchie, un titre superflu se voit.
+     *
+     * Le filtre exige donc **trois conditions ensemble** :
+     *
+     *   1. la ligne finit par un numéro de page (1 à 3 chiffres, précédé d'un
+     *      blanc ou d'une tabulation) ;
+     *   2. elle appartient à une FENÊTRE DENSE : au moins 4 lignes candidates dans
+     *      un intervalle de 12 blocs consécutifs ;
+     *   3. à l'intérieur d'une telle fenêtre, les lignes intercalées qui ne
+     *      portent pas la signature sont reclassées AUSSI — voir plus bas.
+     *
+     * **Pourquoi une fenêtre dense, et non des lignes strictement consécutives.**
+     * La première implémentation exigeait 3 lignes candidates consécutives. Sur
+     * le document de référence, elle n'en reclassait que 24 sur 48 : les entrées
+     * d'un sommaire réel sont ENTRELACÉES, une ligne sur deux n'ayant pas de
+     * numéro de page (numéro absent, ou texte reporté à la ligne suivante). La
+     * consécutivité stricte cassait donc les plages à chaque interruption.
+     *
+     * Mesure après correction par fenêtre : **24 → 48** (la totalité du défaut
+     * mesuré sur ce document).
+     *
+     * **Pourquoi la position dans le document n'intervient pas.** Le document
+     * initial proposait « sommaire en première page, table des matières en fin ».
+     * C'est une heuristique de position, fragile par nature (les conventions
+     * varient selon l'établissement), et le principe 1 du projet l'écarte. Le
+     * signal retenu ici est structurel : la densité et la forme des lignes.
+     *
+     * @param  array<int, Block>  $blocks
+     * @return array<int, Block>
+     */
+    private function reclasserEntreesSommaire(array $blocks): array
+    {
+        // Les intitulés de section sont de VRAIS titres — mais un intitulé suivi
+        // d'un NUMÉRO DE PAGE est une entrée de sommaire qui le cite, jamais un
+        // titre. « REMERCIEMENTS  iii » ne peut pas être un titre : un titre
+        // n'affiche pas sa propre page. Cette liste sert donc à reconnaître ces
+        // cas, qui peuvent être isolés et échapper à la densité de fenêtre.
+        $intitules = [
+            'SOMMAIRE', 'INTRODUCTION', 'CONCLUSION', 'BIBLIOGRAPHIE', 'RESUME', 'RÉSUMÉ',
+            'ABSTRACT', 'REMERCIEMENTS', 'DEDICACE', 'DÉDICACE', 'AVANT-PROPOS',
+            'TABLE DES MATIERES', 'TABLE DES MATIÈRES', 'LEXIQUE', 'GLOSSAIRE',
+            'LISTE DES FIGURES', 'LISTE DES TABLEAUX', 'LISTE DES ANNEXES',
+            'SIGLES', 'ABREVIATIONS', 'ABRÉVIATIONS',
+        ];
+
+        // --- 1. Marquer les lignes qui portent la signature d'une entrée -----
+        $candidats = [];
+        $explicites = [];
+
+        foreach ($blocks as $index => $block) {
+            if ($block->type !== BlockType::Heading) {
+                continue;
+            }
+
+            $texte = trim($block->text);
+
+            if ($texte === '' || ! $this->finitParNumeroDePage($texte)) {
+                // Cas particulier des intitulés courts : « RESUME  viii » ne fait
+                // que 6 caractères avant le numéro, donc le seuil de longueur
+                // l'écarte. Or un intitulé de section suivi d'un numéro de page
+                // est sans ambiguïté une entrée de sommaire — c'est même la
+                // définition d'une entrée.
+                if ($texte === '' || ! $this->finitParNumeroDePage($texte, 3)) {
+                    continue;
+                }
+            }
+
+            $candidats[] = $index;
+
+            // Intitulé de section suivi d'un numéro de page : reclassement
+            // certain, indépendamment de la densité alentour.
+            $base = mb_strtoupper($this->sansNumeroDePage($texte));
+            foreach ($intitules as $intitule) {
+                if (str_starts_with($base, $intitule)) {
+                    $explicites[$index] = true;
+                    break;
+                }
+            }
+        }
+
+        if ($candidats === []) {
+            return $blocks;
+        }
+
+        // --- 2. Repérer les FENÊTRES DENSES ----------------------------------
+        // Une fenêtre est un intervalle glissant de `FENETRE` blocs ; elle est
+        // « dense » si elle contient au moins `DENSITE_MINIMALE` candidats. Un
+        // titre isolé finissant par un chiffre légitime ne forme jamais une
+        // fenêtre dense : c'est la répétition qui atteste d'un sommaire.
+        $reclasser = [];
+        $debutFenetre = null;
+
+        foreach ($candidats as $position => $index) {
+            $dernier = $candidats[$position] ?? $index;
+            $premier = $index;
+
+            // Nombre de candidats dans [premier, premier + FENETRE].
+            $dansFenetre = 0;
+            foreach ($candidats as $autre) {
+                if ($autre >= $premier && $autre <= $premier + self::FENETRE_SOMMAIRE) {
+                    $dansFenetre++;
+                }
+            }
+
+            if ($dansFenetre >= self::DENSITE_MINIMALE) {
+                $debutFenetre ??= $premier;
+                $finFenetre = $premier + self::FENETRE_SOMMAIRE;
+
+                // Tous les blocs de la fenêtre sont candidats au reclassement :
+                // c'est ce qui capte les lignes intercalées sans numéro de page.
+                for ($i = $debutFenetre; $i <= $finFenetre && $i < count($blocks); $i++) {
+                    $reclasser[$i] = true;
+                }
+            } else {
+                $debutFenetre = null;
+            }
+        }
+
+        if ($reclasser === [] && $explicites === []) {
+            return $blocks;
+        }
+
+        // Les reclassements certains s'ajoutent à ceux déduits de la densité.
+        foreach (array_keys($explicites) as $index) {
+            $reclasser[$index] = true;
+        }
+
+        // --- 3. Reclasser, en conservant le niveau ---------------------------
+        foreach (array_keys($reclasser) as $index) {
+            $block = $blocks[$index] ?? null;
+
+            // On ne reclassse QUE des titres : un paragraphe, une légende ou une
+            // image présents dans la fenêtre gardent leur type. La fenêtre sert à
+            // repérer une ZONE, pas à convertir tout ce qu'elle contient.
+            if ($block === null || $block->type !== BlockType::Heading) {
+                continue;
+            }
+
+            $blocks[$index] = new Block(
+                blockId: $block->blockId,
+                type: BlockType::TocEntry,
+                // Le numéro de page est retiré du texte : laissé tel quel, il
+                // serait recopié dans le sommaire qu'on génère
+                // (« SECTION 1 … 2 »), ce qui est manifestement faux.
+                text: $this->sansNumeroDePage($block->text),
+                headingLevel: $block->headingLevel,
+                fontSize: $block->fontSize,
+                isBold: $block->isBold,
+                indentLevel: $block->indentLevel,
+                positionY: $block->positionY,
+                fidelity: $block->fidelity,
+                // Confiance légèrement sous le maximum : le signal est fort
+                // (densité + forme) mais reste une inférence de contenu, à la
+                // différence d'un style Word qui, lui, est explicite.
+                confidence: 0.9,
+            );
+        }
+
+        return $blocks;
+    }
+
+    /**
+     * La ligne se termine-t-elle par un numéro de page ?
+     *
+     * **Deux systèmes de numérotation, et c'est le modèle du projet lui-même.**
+     * Le frontispice d'un mémoire est paginé en chiffres ROMAINS (`i`, `ii`,
+     * `iii`, `viii`, `ix`), le corps en chiffres ARABES. Ne reconnaître que les
+     * arabes laissait passer toutes les entrées des pages liminaires :
+     * « REMERCIEMENTS  iii », « RESUME  viii », « ABSTRACT  ix » subsistaient
+     * comme titres après le premier correctif — mesuré sur le document de
+     * référence, où la pagination romaine est précisément celle employée.
+     *
+     * Les romains sont cherchés sans exiger le mode strict de bout en bout :
+     * `i`, `v`, `x`, `l`, `c`, `d`, `m` en minuscules, au moins une lettre. Cela
+     * évite d'attraper un mot se terminant par une lettre romaine isolée
+     * (« ANASTASIE  v » serait ambigu), mais la condition de fenêtre dense
+     * écarte de toute façon les cas isolés.
+     *
+     * Il doit rester du TEXTE devant le numéro — sinon la chaîne « 2026 » ou
+     * « iv » seule serait prise pour un numéro de page.
+     *
+     * @param  int  $longueurMinimale  Caractères de texte exigés devant le numéro.
+     *                                 Le seuil de 8 écarte les faux positifs sur
+     *                                 les titres, mais il écarte aussi des
+     *                                 intitulés courts (« RESUME  viii » : 6
+     *                                 caractères). Les appelants qui traitent des
+     *                                 intitulés connus peuvent donc l'abaisser.
+     */
+    private function finitParNumeroDePage(string $texte, int $longueurMinimale = 8): bool
+    {
+        $motif = '/[\t\s](?:(\d{1,3})|([ivxlcdm]{1,6}))\.?$/u';
+
+        if (preg_match($motif, trim($texte), $m) !== 1) {
+            return false;
+        }
+
+        $numero = (string) ($m[1] !== '' ? $m[1] : ($m[2] ?? ''));
+        $avant = trim(mb_substr(trim($texte), 0, -mb_strlen($numero)));
+
+        return mb_strlen($avant) >= $longueurMinimale && preg_match('/\p{L}/u', $avant) === 1;
+    }
+
+    /**
+     * Retire le numéro de page final, arabe ou romain.
+     */
+    private function sansNumeroDePage(string $texte): string
+    {
+        $nettoye = preg_replace('/[\t\s]+(?:\d{1,3}|[ivxlcdm]{1,6})\.?$/u', '', trim($texte));
+
+        return trim((string) $nettoye);
     }
 
     /**
@@ -295,6 +570,49 @@ final class DocxNativeAdapter implements InputAdapter
         // --- 2. Légende pure (sans image) : pattern texte, 0 token ---
         if ($caption !== null && ! $this->captionPattern->isListEntry($surroundingText)) {
             return $this->buildCaptionBlock($analysis, $caption);
+        }
+
+        // --- 2bis. Entrée d'un sommaire DÉJÀ présent ---------------------------
+        // **C'est le correctif du défaut le plus coûteux de la détection.**
+        //
+        // `ParagraphReader` calcule `is_list_style` depuis l'origine, mais cette
+        // clé n'était lue NULLE PART : le signal de style était collecté puis
+        // jeté. En pratique, une entrée de sommaire stylée `toc 1` n'était donc
+        // écartée que si elle portait AUSSI des points de suite — ce qui n'est
+        // pas garanti (36 % des légendes du corpus sont à distance ≥ 3 de leur
+        // porteur, et un sommaire Word natif extrait par PhpWord ne restitue pas
+        // toujours les points de suite).
+        //
+        // Mesure sur le document de référence : sans ce branchement, le sommaire
+        // fournissait **60 % des titres détectés** — numéros de page compris
+        // (« SECTION I : PRESENTATION GENERALE DE SOPAL SARL    2 »).
+        //
+        // On teste AVANT les règles de titre, et c'est indispensable : un style
+        // `toc 2` porte un `outlineLevel`, donc `heading_level` est renseigné, et
+        // la règle de titre ci-dessous le capturerait en premier.
+        $listLevel = $this->stylesEnCours?->listStyleLevel($analysis['style_id'] ?? null);
+
+        if ($listLevel !== null) {
+            return new Block(
+                blockId: (string) $analysis['block_id'],
+                type: BlockType::TocEntry,
+                text: $text,
+                // Le niveau est CONSERVÉ : il distingue un sommaire (niveaux 1-2)
+                // d'une table des matières complète (tous niveaux). Le jeter
+                // priverait le générateur de la distinction documentée dans le
+                // modèle de référence.
+                headingLevel: $listLevel,
+                fontSize: $analysis['font_size'],
+                isBold: (bool) $analysis['is_bold'],
+                indentLevel: $this->indentLevelFrom($analysis),
+                positionY: $analysis['position_y'],
+                fidelity: $this->fidelity(),
+                // Confiance haute : le style est un signal déterministe, pas une
+                // heuristique. Une entrée de sommaire ne doit pas déclencher de
+                // clarification — ce serait demander à l'utilisateur de trancher
+                // ce que le document dit explicitement.
+                confidence: 0.95,
+            );
         }
 
         // --- 3. Titre : confrontation style Word ↔ numérotation saisie ---

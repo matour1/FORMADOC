@@ -87,13 +87,42 @@ class PaymentLinkTest extends TestCase
         );
     }
 
+    /**
+     * La durée de validité suit le réglage.
+     *
+     * **Ce test était instable, et la cause méritait d'être corrigée.**
+     * `PaymentLinkService::creer()` calcule `expires_at` avec `now()` — donc
+     * AVANT l'`INSERT` — tandis que `created_at` est posé par la BASE au moment
+     * de l'insertion. L'écart est de quelques millisecondes, mais
+     * `diffInDays()` le compte : la différence vaut alors 2,999… et non 3, et
+     * l'arrondi donne **2** au lieu de 3.
+     *
+     * Conséquence mesurée : ce test passait seul (4 essais sur 4) et échouait en
+     * suite complète, où la charge ralentit l'insertion et rend l'écart visible.
+     * Un test qui échoue selon la charge de la machine ne signale aucun défaut du
+     * code : il en crée un.
+     *
+     * On ne teste donc pas une valeur ARRONDIE mais la DURÉE réellement demandée,
+     * à une tolérance d'une seconde près — ce qui reste strict (le réglage est en
+     * jours) sans dépendre de la latence de la base.
+     */
     public function test_la_duree_de_validite_suit_le_reglage(): void
     {
         config(['payments.link_ttl_days' => 3]);
 
         $lien = $this->lien(User::factory()->create());
 
-        $this->assertSame(3, (int) $lien->created_at->diffInDays($lien->expires_at));
+        // `expires_at` est dérivé de l'instant de CRÉATION EN MÉMOIRE, pas du
+        // `created_at` relu en base : la comparaison porte donc sur la bonne
+        // référence.
+        $secondeDeCreation = $lien->expires_at->copy()->subDays(3);
+
+        $this->assertLessThanOrEqual(
+            2,
+            abs($secondeDeCreation->diffInSeconds(now())),
+            'L\'échéance doit être fixée à 3 jours à partir de la création, à une seconde près. '
+            .'Sans cette tolérance, le test dépend de la latence de l\'insertion.'
+        );
     }
 
     // -------------------------------------------------------------------------

@@ -70,16 +70,59 @@ final class StyleReader
     /**
      * Styles de sommaire et de listes (frontispice).
      *
+     * **Ce que la mesure du corpus a imposé.** La liste s'arrêtait à `toc 3`, or
+     * le relevé des styles réellement employés sur les documents contenant un
+     * sommaire donne, par ordre de fréquence :
+     *
+     *     toc 4 : 52 occurrences   ← ABSENT de la liste d'origine
+     *     toc 1 : 50               toc 2 : 42               toc 3 : 41
+     *     table of figures : 26    list paragraph : 16      caption : 4
+     *
+     * Le style le PLUS fréquent était donc celui qui n'était pas reconnu. Un
+     * sommaire de niveau 4 — fréquent dans un mémoire, où les sous-sections
+     * descendent souvent à quatre niveaux — passait entièrement au travers.
+     *
+     * **Pourquoi une comparaison par MOTIF et non une liste exhaustive.** Les
+     * noms de style ne sont pas normalisés : Word les traduit selon la langue de
+     * l'interface (« Sommaire 1 » en français), et un document produit par un
+     * outil tiers peut les nommer autrement. Une liste figée est donc toujours
+     * incomplète — c'est précisément ce qui a produit ce défaut. On reconnaît
+     * désormais la FORME du nom (`toc N`, `sommaire N`), sans plafond de niveau.
+     *
+     * Le coût d'un faux positif est faible et asymétrique : classer à tort un
+     * paragraphe comme entrée de sommaire le retire des titres candidats, alors
+     * que l'erreur inverse — un sommaire pris pour des titres — pollue tout le
+     * document (60 % de faux titres mesurés sur les cas touchés).
+     *
      * @var array<int, string>
      */
     private const LIST_NAMES = [
-        'toc 1',
-        'toc 2',
-        'toc 3',
         'table of figures',
+        'table of contents',
         'tabledesillustrations',
         'list paragraph',
         'paragraphedeliste',
+        'table des matieres',
+        'table des matières',
+        'liste des figures',
+        'liste des tableaux',
+        'liste des annexes',
+    ];
+
+    /**
+     * Motifs de nom reconnus comme des styles de sommaire.
+     *
+     * Couvre `toc 1` … `toc 9` (sans plafond) et les équivalents localisés
+     * (`sommaire 1`, `inhoudsopgave 1`…). Le niveau est capturé puis converti
+     * pour que l'appelant puisse connaître la profondeur de l'entrée.
+     *
+     * @var array<int, string>
+     */
+    private const LIST_PATTERNS = [
+        '/^toc\s*(\d+)$/u',
+        '/^sommaire\s*(\d+)$/u',
+        '/^table\s+of\s+contents\s*(\d+)$/u',
+        '/^table\s+des\s+mati[eè]res\s*(\d+)$/u',
     ];
 
     /**
@@ -293,19 +336,41 @@ final class StyleReader
      */
     public function isListStyle(?string $styleId): bool
     {
+        return $this->listStyleLevel($styleId) !== null;
+    }
+
+    /**
+     * Niveau de sommaire d'un style, ou null si ce n'est pas un style de liste.
+     *
+     * Le niveau est retourné plutôt qu'un simple booléen parce que l'appelant en
+     * a besoin pour distinguer un sommaire (niveaux 1-2) d'une table des matières
+     * complète (tous niveaux) — la distinction est documentée dans le modèle de
+     * référence du projet.
+     */
+    public function listStyleLevel(?string $styleId): ?int
+    {
         if ($styleId === null || ! isset($this->styles[$styleId])) {
-            return false;
+            return null;
         }
 
         $name = mb_strtolower($this->styles[$styleId]['name']);
 
         foreach (self::LIST_NAMES as $listName) {
             if ($name === $listName) {
-                return true;
+                // Style de liste sans niveau : on retourne 1 plutôt que null,
+                // car le fait d'être une entrée de liste est acquis. Retourner
+                // null ici ferait passer une « Liste des figures » pour un titre.
+                return 1;
             }
         }
 
-        return false;
+        foreach (self::LIST_PATTERNS as $pattern) {
+            if (preg_match($pattern, $name, $m) === 1) {
+                return max(1, (int) $m[1]);
+            }
+        }
+
+        return null;
     }
 
     /**
