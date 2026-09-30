@@ -16,6 +16,7 @@ namespace App\Services\DocumentGeneration;
  *     "interligne": 1.5,
  *     "espacements": { "avant_titre": 240, "apres_titre": 120, "apres_paragraphe": 120 },
  *     "alignement_titres": "left",
+ *     "alignement_corps": "both",
  *     "marges": { "top": 1440, "right": 1440, "bottom": 1440, "left": 1440, "header": 720, "footer": 720 },
  *     "tableau": { "style": "TableGrid", "header_couleur": "1F3864", "header_texte": "FFFFFF", "bordure": true }
  *   }
@@ -53,6 +54,17 @@ class TemplateStyleResolver
                 'apres_paragraphe' => 120,
             ],
             'alignement_titres' => 'left',
+            // **Le corps est JUSTIFIÉ par défaut, et c'est une décision.**
+            //
+            // La clé n'existait pas dans ce resolver — donc `bodyParagraphStyle()`
+            // ne portait aucun alignement, et tout le corps des documents sortait
+            // aligné à gauche, quels que soient les réglages. Le défaut est
+            // désormais `both` (justifié), la convention d'un rapport.
+            //
+            // L'absence de clé dans un gabarit ENREGISTRÉ (créé avant cette
+            // correction) retombe sur ce défaut : les documents déjà traités
+            // seront donc justifiés au prochain export, sans migration de données.
+            'alignement_corps' => 'both',
             'marges' => [
                 'top' => 1440,
                 'right' => 1440,
@@ -138,7 +150,20 @@ class TemplateStyleResolver
     }
 
     /**
-     * Style de paragraphe pour le corps (interligne + espacement après).
+     * Style de paragraphe pour le corps (alignement, interligne, espacement après).
+     *
+     * **L'alignement manquait, et son absence rendait tout réglage inopérant.**
+     * Cette méthode ne retournait que l'espacement et l'interligne : PhpWord
+     * applique alors son alignement par défaut (à gauche), quel que soit ce que
+     * le gabarit dit du corps. Un utilisateur qui choisissait « justifié » — ou
+     * qui ne choisissait rien — obtenait le même rendement : un texte ferré à
+     * gauche, contraire à la convention d'un rapport.
+     *
+     * Le défaut est `both` : un contenu de rapport se justifie, et c'est la règle
+     * du propriétaire pour TOUS les documents traités. Une valeur vide est
+     * traitée comme absente (`?:` et non `??`), sans quoi un champ de formulaire
+     * laissé vide écraserait le défaut par une chaîne vide — et PhpWord
+     * retomberait silencieusement sur l'alignement à gauche.
      *
      * @param  array<string, mixed>  $gabarit
      * @return array<string, mixed>
@@ -148,9 +173,33 @@ class TemplateStyleResolver
         $spacing = $gabarit['espacements'] ?? [];
 
         return [
+            'alignment' => self::alignementCorps($gabarit),
             'spaceAfter' => (int) ($spacing['apres_paragraphe'] ?? 120),
             'lineHeight' => (float) ($gabarit['interligne'] ?? 1.5),
         ];
+    }
+
+    /**
+     * Alignement du corps, avec repli sur « justifié ».
+     *
+     * **La valeur « inside » est `both`, pas `justify`.** PhpWord valide
+     * l'alignement (`Jc::isValid()`) et n'écrit QUE ses propres constantes :
+     * `both` est celle de la justification. `justify` est accepté en entrée mais
+     * ne doit pas être ce qu'on ÉCRIT, sans quoi le rendu dépendrait d'un alias
+     * plutot que de la valeur documentée.
+     *
+     * Extrait dans une méthode parce que les listes (`addListItem`) doivent
+     * recevoir le MÊME alignement que les paragraphes : deux lectures séparées
+     * de la même clé finiraient par diverger, et une liste alignée autrement que
+     * le corps se voit immédiatement.
+     *
+     * @param  array<string, mixed>  $gabarit
+     */
+    public static function alignementCorps(array $gabarit): string
+    {
+        $valeur = trim((string) ($gabarit['alignement_corps'] ?? ''));
+
+        return $valeur !== '' ? $valeur : 'both';
     }
 
     /**

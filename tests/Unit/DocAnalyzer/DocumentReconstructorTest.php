@@ -208,8 +208,12 @@ class DocumentReconstructorTest extends TestCase
         $this->assertStringContainsString('w:fmt="decimal"', $xml);
         $this->assertStringContainsString('w:start="1"', $xml);
 
-        // Il doit y avoir exactement 2 sections (frontispice + corps)
-        $this->assertSame(2, substr_count($xml, '<w:sectPr'));
+        // **Trois sections, et non deux.** La troisième a été ajoutée pour la
+        // TABLE DES MATIÈRES de fin de document (règle de mise en forme du
+        // propriétaire : « la table des matières doit se trouver à la fin du
+        // document »). Elle est distincte du sommaire du frontispice, qui reste
+        // limité aux niveaux 1-2 pour tenir sur une page.
+        $this->assertSame(3, substr_count($xml, '<w:sectPr'));
     }
 
     public function test_le_champ_page_du_pied_utilise_le_bon_format(): void
@@ -395,11 +399,23 @@ class DocumentReconstructorTest extends TestCase
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
 
-        // Exactement deux sections : frontispice (romain) + corps (arabe).
-        // Une troisième section signalerait une couverture réintroduite.
-        $this->assertSame(2, substr_count($xml, '<w:sectPr'));
+        // **Trois sections : frontispice (romain), corps (arabe), table des
+        // matières de fin (arabe).**
+        //
+        // Ce test servait à détecter la RÉINTRODUCTION d'une page de garde, en
+        // s'appuyant sur « exactement deux sections ». Ce compteur n'est plus un
+        // signal fiable : la table des matières de fin ajoute légitimement une
+        // troisième section. On teste donc directement ce qui compte — l'ABSENCE de
+        // page de garde — en vérifiant qu'aucune section ne porte la marque d'une
+        // couverture, et que les formats de numérotation attendus sont présents.
+        $this->assertSame(3, substr_count($xml, '<w:sectPr'),
+            'Trois sections attendues : frontispice, corps, table des matières.');
         $this->assertStringContainsString('w:fmt="lowerRoman"', $xml);
         $this->assertStringContainsString('w:fmt="decimal"', $xml);
+
+        // Aucun élément de couverture (le module a été retiré du produit).
+        $this->assertStringNotContainsString('PageDeGarde', $xml);
+        $this->assertStringNotContainsString('pageDeGarde', $xml);
     }
 
     public function test_la_signature_ne_prend_plus_de_couverture(): void
@@ -540,7 +556,7 @@ class DocumentReconstructorTest extends TestCase
         return $fichiers;
     }
 
-    public function test_sans_couverture_le_document_reste_a_deux_sections(): void
+    public function test_sans_couverture_le_document_compte_trois_sections(): void
     {
         $outputPath = $this->tempDir.'/sans_couverture.docx';
 
@@ -548,7 +564,11 @@ class DocumentReconstructorTest extends TestCase
 
         $xml = $this->readPart($outputPath, 'word/document.xml');
 
-        $this->assertSame(2, substr_count($xml, '<w:sectPr'));
+        // La table des matières de fin est TOUJOURS ajoutée quand le document a
+        // des titres : elle en dépend, pas de la page de garde.
+        $this->assertSame(3, substr_count($xml, '<w:sectPr'),
+            'Le document doit compter trois sections : frontispice, corps, table '
+            .'des matières de fin.');
         $this->assertStringContainsString('w:fmt="lowerRoman"', $xml);
         $this->assertStringContainsString('w:fmt="decimal"', $xml);
     }
@@ -693,6 +713,77 @@ class DocumentReconstructorTest extends TestCase
         $xml = $this->readPart($outputPath, 'word/document.xml');
         $this->assertStringContainsString('TITRE AVEC GABARIT', $xml);
         $this->assertStringContainsString('Corps de texte mis en forme', $xml);
+    }
+
+    /**
+     * **Le corps du document est JUSTIFIÉ dans le DOCX produit.**
+     *
+     * Test de bout en bout, et c'est le niveau qui compte : `bodyParagraphStyle()`
+     * peut retourner un alignement sans qu'il parvienne au fichier si
+     * `writeElement` ne le transmet pas. Vérifier le resolver seul ne prouverait
+     * rien sur ce que l'utilisateur télécharge.
+     *
+     * On lit `w:jc` dans `word/document.xml` : c'est la balise que Word interprète
+     * pour l'alignement d'un paragraphe. `w:val="both"` est le code OOXML de la
+     * justification.
+     *
+     * **Le défaut est vérifié SANS gabarit explicite** : c'est le cas le plus
+     * fréquent (l'utilisateur ne choisit pas de gabarit), et celui où l'absence de
+     * la clé se serait fait sentir.
+     */
+    public function test_le_corps_du_document_est_justifie(): void
+    {
+        $analysis = $this->sampleAnalysis();
+        $analysis['body_complet'] = [
+            [
+                'type' => 'texte',
+                'text' => 'Un paragraphe de corps qui doit être justifié des deux côtés.',
+                'position' => ['section_index' => 1, 'element_index' => 5, 'parent' => 'body'],
+                'styles' => [],
+            ],
+        ];
+
+        $outputPath = $this->tempDir.'/justifie.docx';
+        (new DocumentReconstructor)->reconstruct($analysis, $outputPath);
+
+        $xml = $this->readPart($outputPath, 'word/document.xml');
+
+        $this->assertStringContainsString('Un paragraphe de corps qui doit être justifié', $xml);
+        $this->assertStringContainsString('w:val="both"', $xml,
+            'Le corps doit porter l\'alignement justifié (`w:jc w:val="both"`). Sans '
+            .'cette balise, Word aligne à gauche : le contenu d\'un rapport n\'est '
+            .'pas justifié, quels que soient les réglages du gabarit.');
+    }
+
+    /**
+     * Un alignement de corps explicitement différent est respecté jusqu'au fichier.
+     *
+     * Contrôle négatif : la règle du propriétaire est « justifié par défaut », pas
+     * « justifié de force ». Un gabarit qui demande l'alignement à gauche doit
+     * l'obtenir — sinon le réglage serait décoratif.
+     */
+    public function test_un_alignement_de_corps_different_est_applique(): void
+    {
+        $analysis = $this->sampleAnalysis();
+        $analysis['body_complet'] = [
+            [
+                'type' => 'texte',
+                'text' => 'Paragraphe aligné à gauche sur demande du gabarit.',
+                'position' => ['section_index' => 1, 'element_index' => 5, 'parent' => 'body'],
+                'styles' => [],
+            ],
+        ];
+
+        $outputPath = $this->tempDir.'/gauche.docx';
+        (new DocumentReconstructor)->reconstruct($analysis, $outputPath, [
+            'alignement_corps' => 'left',
+        ]);
+
+        $xml = $this->readPart($outputPath, 'word/document.xml');
+
+        $this->assertStringContainsString('w:val="left"', $xml,
+            'Un gabarit qui demande l\'alignement à gauche doit l\'obtenir : la '
+            .'règle est « justifié par défaut », jamais « justifié de force ».');
     }
 
     public function test_sans_gabarit_les_defauts_academiques_sont_utilises(): void

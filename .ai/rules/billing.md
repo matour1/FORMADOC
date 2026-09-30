@@ -65,3 +65,12 @@ Le comptage porte sur les appels d'OUTILS (`$toolCallsSucceeded`/`$toolCallsFail
 `OpenRouterService::chat()` détecte ce cas et lève `ToolChoiceIgnoredException` pour basculer sur le candidat suivant. Le tour reste enregistré en succès dans le registre (pas de `recordFailure` supplémentaire) : le fournisseur l'a bien facturé et a rapporté son usage.
 
 Quand le budget de tours (`tool_loop_max_turns`) est épuisé alors que le modèle demandait encore un outil, un appel de SYNTHÈSE FINAL est effectué sans outils : sinon l'utilisateur ne reçoit qu'un message neutre, sans analyse ni lien de téléchargement.
+
+## Montant minimum et devise sont propres a CHAQUE passerelle
+Chaque passerelle porte SES propres parametres metier : `montantMinimum()` et `devise()` lisent `config($prefixe.'.min_amount')` / `config($prefixe.'.currency')`, jamais une constante globale.
+
+Defaut corrige : `PaymentLinkService::creer()` fixait la devise avec `config('kpay.currency')`, donc un lien regle par Monetbil portait la devise de KPay — incident comptable, le rapprochement devenant impossible.
+
+Deux pieges concrets :
+- **Les cles de config ne doivent JAMAIS valoir `null`.** `null` est indiscernable d'une cle absente, et `SettingsRepository::applyToConfig()` ignore les cles inconnues : le reglage serait affiche, modifiable, et sans effet. L'invariant `SettingsTest::test_chaque_reglage_pointe_vers_une_configuration_existante` le refuse. Mettre un defaut explicite.
+- **`php artisan optimize` fige `bootstrap/cache/config.php`.** Une config modifiee ensuite est ignoree : `config()` lit le cache. Cela a fait echouer 43 tests (marges lues 0,9/0,8 au lieu de 0,60/0,15). Apres tout changement de `config/`, lancer `php artisan config:clear`.

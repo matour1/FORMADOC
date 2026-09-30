@@ -305,7 +305,9 @@ Toute nouvelle règle doit être évaluée **avant/après sur les contenus DISTI
 2. **Coût réel en tokens et en crédits par document** de la double-vérification IA. **Mesuré partiellement le 2026-09-29** (§4.6) : coût moyen **0,001512 USD** par appel `function_calling` et **0,003266 USD** par génération d'image, sur les données d'usage existantes. **Non mesuré** : le coût par *document* traité, car aucun débit documentaire réel n'existe en base de développement. **Aucune fuite de marge détectée** : les 14 appels échoués n'ont rien coûté.
 3. ~~**Fréquence réelle des problèmes de marges**~~ → **réponse du propriétaire (2026-09-29)** : peu fréquent, **et le pipeline actuel les prend en charge**. La question est donc close sans mesure : le traitement existe, et la fréquence ne justifie pas de travail supplémentaire. Les données mesurées le corroborent — le corpus ne contient que **3 contenus touchés sur 1 573** (0,19 %) par le défaut le plus proche, celui du sommaire.
 4. **Le filtre de contenu reclasserait-il un tableau de données numériques ?** Faux positif identifié mais **non testé**. Le seuil de densité (4 lignes dans 12 blocs) le rend improbable, pas impossible.
-5. ~~**Les diagrammes du document de référence sont-ils des images aplaties ou des formes éditables ?**~~ → **réponse du propriétaire (2026-09-29)** : les diagrammes sont des **images**, et non des formes éditables. Conséquence pour le pipeline : ils sont traités comme des blocs `image`/`figure` et leur contenu interne **n'est pas analysable** — il ne faut donc pas attendre de détection de texte à l'intérieur, et aucune dette n'est créée à ce titre (voir §5.3).
+5. ~~**Les diagrammes du document de référence sont-ils des images aplaties ou des formes éditables ?**~~ → **réponse du propriétaire (2026-09-30)** : **les deux cas existent** — il peut y avoir des **formes éditables**. Une réponse antérieure du 2026-09-29 affirmait « des images, pas des formes éditables » ; elle est **corrigée**. Conséquence : le pipeline doit gérer les DEUX, et la question technique n'est pas close (voir §5.3).
+
+   Ce que le code fait aujourd'hui, vérifié : `ParagraphReader` traite `w:drawing` et `w:pict` comme **image**, sans distinguer un bitmap d'une forme OOXML (`wps:wsp`). Un diagramme en formes reliées est donc soit ignoré, soit réduit à ce qu'une relation d'image veut bien donner — une **perte silencieuse** si les formes ne sont pas des images. Détail en §5.3.
 6. **Coût réel par document traité** (modes « assistance IA » et « pleine précision ») : **non mesurable en base de développement** (aucun débit documentaire réel). Exige des données de production. Voir §4.6.
 
 ### 4.3 Critère de sortie avant d'attaquer une nouvelle phase
@@ -396,6 +398,33 @@ La colonne `cost_usd` provient de la **réponse du fournisseur**. Elle est la se
 
 **Ce qui reste non mesuré.** Le coût **par document** traité (mode « assistance IA » et « pleine précision ») ne peut pas être établi ici : aucun débit documentaire n'existe en base de développement. La question 2 du §4.2 reste donc **partiellement** ouverte, et exigera des données de production.
 
+**Mais les TARIFS actuels sont calculables**, et ils le sont par le code de production lui-même (`DocumentModePricing::estimate()`), pas par une reconstitution. Mesure du 2026-09-30, en crédits (1 crédit = 1 FCFA) :
+
+| Taille du document | Détection (regex) | Assistance IA | Pleine précision (**plan `default`**) | Pleine précision (**plan `pro`**) |
+| --- | --- | --- | --- | --- |
+| Courrier (5 000 car.) | 0 | 1 | **4** | **167** |
+| Note (20 000 car.) | 0 | 2 | **7** | **275** |
+| Mémoire (60 000 car.) | 0 | 4 | **16** | **567** |
+| Rapport (120 000 car.) | 0 | 8 | **30** | **1 005** |
+| Thèse (300 000 car.) | 0 | 20 | **71** | **2 320** |
+
+**Le point à retenir : le plan change le prix d'un facteur 44.** Sur un courrier, la pleine précision coûte 4 crédits en `default` et **167 en `pro`**. La cause est le routage de modèle (`config/openrouter.php`) : la tâche `document_full_format` route vers `deepseek/deepseek-chat` en `default`, mais vers `anthropic/claude-3-opus` (15 $/M entrée, 75 $/M sortie) en `pro` — soit **58× le prix de DeepSeek**. Ce n'est pas un défaut de calcul : c'est le prix réel du modèle choisi.
+
+**Deux conséquences opérationnelles :**
+
+1. **Le prix affiché dépend du plan**, et l'écart est assez grand pour qu'un utilisateur `pro` doive le voir AVANT de valider. `estimate()` retourne déjà le modèle retenu — l'interface doit l'afficher, sinon un utilisateur découvre 567 crédits après coup.
+2. **L'estimation est prudente par construction** (elle majore, puis ajuste à la baisse après l'appel). L'écart entre le prix annoncé et le prix payé doit donc être **négatif ou nul**, jamais positif — c'est le sens de `ajusterApresAppel()`.
+
+**Détail d'un mémoire type (60 000 caractères, plan `default`)** :
+
+| Mode | Crédits | Coût USD | Modèle routé | Tokens envoyés |
+| --- | --- | --- | --- | --- |
+| Détection | 0 (gratuit) | 0 | aucun | 0 |
+| Assistance IA | 4 | 0,003499 | `deepseek/deepseek-chat` | 4 000 (20 % du document) |
+| Pleine précision | 16 | 0,006794 | `deepseek/deepseek-chat` | 20 000 (document entier) |
+
+La pleine précision se décompose en **analyse (≈ 8 crédits) + mise en forme complète (≈ 8 crédits)** : les deux opérations ont lieu, les deux sont facturées.
+
 ---
 
 ## 5. Cas de référence structurel — `RAPPORT_DE_STAGE_DQP_final.pdf`
@@ -442,23 +471,68 @@ Ce document réel sert de **double usage** : (a) référence de structure cible 
 
 ### 5.3 Point non résolu — éléments flottants dans les diagrammes
 
-Ce document contient des organigrammes et diagrammes de séquence (Figures 1, 8, 9, 10) construits, selon toute vraisemblance, avec des formes reliées par des flèches — le type d'élément que l'architecture actuelle évite pour les titres et la couverture, mais qui apparaît ici comme contenu légitime et fréquent dans ce type de rapport (organigrammes, UML, PERT, Gantt).
+Ce document contient des organigrammes et diagrammes de séquence (Figures 1, 8, 9, 10) construits avec des formes reliées par des flèches — organigrammes, UML, PERT, Gantt : contenu **légitime et fréquent** dans ce type de rapport.
 
-**À investiguer, statut non tranché** (ni dette assumée, ni implémenté) :
+**État de la question (mis à jour le 2026-09-30).** Une première réponse affirmait que ces diagrammes étaient des **images aplaties**, sans formes éditables. **Le propriétaire indique que les deux cas existent** — il peut y avoir des formes éditables. La question technique reste donc **ouverte**, et le pipeline ne gère aujourd'hui que le cas de l'image.
 
-- Le document source contient-il ces diagrammes comme **image aplatie** (capture d'écran) ou comme **formes Word éditables individuelles** ?
-- Les outils actuellement disponibles permettent-ils de détecter cette distinction et de gérer les deux cas sans casse ?
-- Si les formes éditables ne peuvent pas être prises en charge de façon fiable avec les outils actuels, formaliser ce point comme **dette assumée après investigation** — ne pas le classer avant d'avoir vérifié la faisabilité technique réelle.
+**Ce que le code fait réellement** (vérifié dans `ParagraphReader`) :
 
-**Éléments de méthode pour l'investigation** (aucune mesure faite à ce jour) :
+```php
+case 'w:drawing':
+case 'w:pict':
+    // → marqueur « image » posé, le binaire est lu ailleurs
+```
+
+`w:drawing` porte **deux contenus très différents** : une image liée (`<a:blip r:embed="rId5"/>`) **ou** des formes vectorielles (`wps:wsp` — rectangles, flèches, textes). Le lecteur ne distingue pas les deux : il cherche une relation d'image, et n'en trouve pas pour une forme. **Le texte porté par une forme n'est donc lu nulle part** — ni comme titre, ni comme légende, ni comme contenu.
+
+**Conséquence, et pourquoi le risque est asymétrique :**
+
+| Cas | Aujourd'hui | Effet |
+| --- | --- | --- |
+| Diagramme en image (bitmap) | Bloc `image`/`figure`, binaire ré-embarqué à l'identique | **Correct** |
+| Diagramme en formes OOXML | Aucune relation d'image trouvée | **Perte silencieuse** — le contenu disparaît sans erreur |
+
+Un texte dans une zone de texte (`w:txbxContent`) n'est pas non plus lu par le chemin des paragraphes : `DocumentParser::preferXmlText()` couvre le cas des **en-têtes et pieds**, pas celui des formes du corps.
+
+**Ce qui reste à faire, dans l'ordre :**
+
+1. ~~**Mesurer** la fréquence réelle~~ → **MESURÉ le 2026-09-30** (§5.4).
+2. **Décider** ensuite entre : lire le texte des formes (traitement comme contenu), ou préserver le XML de la forme tel quel (fidélité sans interprétation). La seconde option ne perd rien et n'exige aucune analyse de contenu — c'est probablement la plus sûre.
+3. Ne **pas** convertir une forme en image : c'est une dégradation irréversible, contraire au principe « aucune perte de contenu ».
+
+**Éléments de méthode pour l'investigation :**
 
 | Question | Comment y répondre |
 |---|---|
-| Image aplatie ou formes éditables ? | Ouvrir l'archive `.docx` et chercher `word/media/` (aplatie) contre `w:drawing/wps:wsp` (formes). Le nombre d'entrées dans `word/media/` est déjà compté par `DocxNativeAdapter` (`image_count`) |
-| Détectable sans casse ? | `DocxNativeAdapter` traite **toute** image comme figure ou décorative. Des formes `wps:wsp` ne sont ni l'un ni l'autre : elles seraient aujourd'hui **ignorées** — perte silencieuse, contraire au principe « aucune perte de contenu » |
-| Faisable ? | À trancher après la mesure ci-dessus. Le risque est asymétrique : ignorer une forme est une **perte**, la convertir en image est une **dégradation** |
+| Formes ou images ? | Chercher `word/media/` (bitmaps) **contre** `wps:wsp` / `w:txbxContent` dans `word/document.xml` |
+| Fréquence ? | Compter les documents concernés **sur les contenus distincts**, pas les fichiers (duplication de 33 %) |
+| Détectable sans casse ? | Oui : la distinction se lit sur le nœud (`wps:wsp` n'a pas de `r:embed`), sans toucher au chemin des images |
 
-**Priorité** : investigation avant classement (principe 4 — ne pas classer une dette sans mesure).
+### 5.4 Mesure : les diagrammes du corpus sont-ils des formes ou des images ? *(2026-09-30)*
+
+Mesure sur les **1 722 contenus distincts** du corpus, par lecture directe des archives (`word/document.xml` et `word/media/`) :
+
+| Constat | Valeur |
+| --- | --- |
+| Contenus contenant des **formes** (`wps:wsp`, `wpg:wgp`) | **4 (0,2 %)** |
+| Contenus avec images seules | 0 |
+| Contenus sans forme ni image | 1 718 |
+| Formes individuelles cumulées | **285** |
+| Groupes de formes (organigrammes complets) | 1 |
+| **Zones de texte** (`w:txbxContent`) | **250** |
+
+**Les 4 documents concernés sont tous dans la même famille** — ce sont les documents complexes déjà identifiés sur le sommaire (`0TN9uoM…`, `0yST9jio…`, `3Zn8KgCc…`, `fn7Ze5U5…`). Le plus fourni en compte **185 formes, 1 groupe et 134 zones de texte**.
+
+**Deux lectures, opposées, et il faut les tenir ensemble :**
+
+1. **En fréquence, le défaut est marginal** — 4 contenus sur 1 722 (0,2 %). Il ne justifie pas de réécrire le chemin de lecture des dessins.
+2. **En impact sur les documents touchés, il est total** — 250 zones de texte dont le contenu n'est lu par **aucun** chemin (ni titre, ni légende, ni paragraphe). Pour ces 4 documents, une partie du contenu **disparaît silencieusement** à la génération, sans erreur ni signalement.
+
+**La conclusion utile n'est donc pas « c'est rare, on ignore ».** Un défaut rare mais **silencieux** reste prioritaire au sens du principe 7 : il passe la relecture. La bonne réponse est **proportionnée** : préserver le XML des formes tel quel (aucune perte, aucun travail d'interprétation), plutôt que d'analyser leur contenu — la fréquence ne justifiant pas le second, la perte interdisant le statu quo.
+
+**Ce que cette mesure ne dit pas** : elle compte les formes, pas la **proportion de contenu perdue** par document (une zone de texte peut contenir un mot ou un paragraphe entier). Affiner exigerait de lire les `w:t` des `w:txbxContent` — un complément utile si la préservation est implémentée.
+
+**Priorité** : mesure d'abord (principe 4 — ne pas classer une dette sans chiffre).
 
 ---
 

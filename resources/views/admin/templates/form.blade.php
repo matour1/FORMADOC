@@ -117,6 +117,28 @@
                         @endforeach
                     </select>
                 </div>
+
+                <div class="form-group">
+                    <label for="alignement_corps">Alignement du corps</label>
+                    {{-- Le corps est JUSTIFIÉ par défaut : c'est la convention d'un
+                         rapport, et la règle du propriétaire pour tous les documents
+                         traités. Le champ n'existait pas, donc l'alignement du corps
+                         n'était NI réglable NI appliqué : les documents sortaient
+                         alignés à gauche quel que soit le gabarit. --}}
+                    <select id="alignement_corps" name="alignement_corps">
+                        @foreach (['both' => 'JustifiÃ© (recommandÃ©)', 'left' => 'Ã€ gauche', 'center' => 'CentrÃ©', 'right' => 'Ã€ droite'] as $valeur => $libelle)
+                            <option value="{{ $valeur }}"
+                                    @selected(old('alignement_corps', $params['alignement_corps'] ?? 'both') === $valeur)>
+                                {{ $libelle }}
+                            </option>
+                        @endforeach
+                    </select>
+                    <small>
+                        JustifiÃ© par dÃ©faut : les paragraphes de corps, les listes et les
+                        lÃ©gendes sont alignÃ©s des deux cÃ´tÃ©s. Les titres suivent leur propre
+                        rÃ©glage ci-dessus et ne sont jamais justifiÃ©s.
+                    </small>
+                </div>
             </div>
         </div>
 

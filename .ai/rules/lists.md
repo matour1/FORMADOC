@@ -36,3 +36,14 @@ Deux modes :
 Corollaire : ne jamais inventer un numéro de page. Une liste sans numéros est préférable à une liste avec des numéros faux.
 
 Coût : **zéro token** — tout se déduit du JSON structurel (titres, numéros de R4, pages de R5.2). Verrouillé par `ArchitectureConstraintsTest::test_le_module_des_listes_ne_contient_aucun_appel_ia`.
+
+## Sommaire 2 niveaux en tete, table des matieres tous niveaux en fin
+Regles de mise en forme d'un rapport (proprietaire) :
+- **Sommaire** : natif Word, niveaux 1-2 SEULEMENT, en PREMIERE page, doit tenir sur une page.
+- **Table des matieres** : natif Word, TOUS les niveaux, en FIN de document (apres conclusion et annexes).
+- **Chaque piece liminaire** sur sa propre page : dedicace, remerciements, avant-propos, listes (figures/tableaux/annexes), resume, abstract, introduction.
+- Les listes d'abreviations/sigles saisies dans un tableau restent telles quelles.
+
+`TableOfContentsGenerator::MAX_DEPTH` vaut 3 et sert la TABLE DES MATIERES. Le sommaire utilise `addTOC(null, null, 1, 2)` dans `DocumentReconstructor` — les deux ne doivent PAS partager la meme borne : un sommaire a 3 niveaux deborde sur plusieurs pages.
+
+Les sauts de page sont decides par `PageBreakRules` (classe testable) et transmis sur `element['page_break']` ; `DocumentReconstructor` applique `addPageBreak()`. Un saut MANUEL, pas `pageBreakBefore` : Word recalcule ce dernier a chaque ouverture.
