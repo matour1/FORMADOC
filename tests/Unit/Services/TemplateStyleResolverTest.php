@@ -100,6 +100,64 @@ class TemplateStyleResolverTest extends TestCase
         $this->assertSame(2.0, $style['lineHeight']);
     }
 
+    /**
+     * **Le corps est JUSTIFIÉ par défaut.**
+     *
+     * C'est la règle du propriétaire pour TOUS les documents traités, et elle
+     * n'était appliquée par personne : `bodyParagraphStyle()` ne retournait ni
+     * `alignment`, ni même que le gabarit porte la clé. PhpWord applique alors son
+     * défaut — aligné à gauche — quel que soit le contenu.
+     *
+     * Le défaut est testé SANS valeur dans le gabarit : c'est le cas des gabarits
+     * déjà enregistrés, qui ne portent pas la clé. Ils doivent eux aussi produire
+     * un corps justifié, sinon la correction ne bénéficierait qu'aux nouveaux
+     * gabarits et les documents existants resteraient faux.
+     */
+    public function test_le_corps_est_justifie_par_defaut(): void
+    {
+        $gabarit = TemplateStyleResolver::normalize(['police' => 'Times New Roman']);
+
+        $style = TemplateStyleResolver::bodyParagraphStyle($gabarit);
+
+        $this->assertSame('both', $style['alignment'],
+            'Le corps d\'un rapport doit être justifié par défaut. Sans `alignment` '
+            .'dans ce tableau, PhpWord aligne à gauche et le réglage du gabarit '
+            .'n\'a aucun effet.');
+    }
+
+    /**
+     * Le défaut s'applique aussi quand le gabarit porte une valeur VIDE.
+     *
+     * Un champ de formulaire laissé vide produit une chaîne vide, pas une absence.
+     * Utiliser `??` au lieu de tester la vacuité laisserait passer cette chaîne, et
+     * PhpWord retomberait sur l'alignement à gauche — le défaut silencieux que ce
+     * travail corrige.
+     */
+    public function test_une_valeur_vide_retombe_sur_le_defaut_justifie(): void
+    {
+        foreach (['', '   '] as $vide) {
+            $gabarit = TemplateStyleResolver::normalize(['alignement_corps' => $vide]);
+
+            $this->assertSame('both', TemplateStyleResolver::bodyParagraphStyle($gabarit)['alignment'],
+                'Une valeur vide ne doit pas écraser le défaut : elle produirait un '
+                .'corps aligné à gauche sans qu\'aucun réglage ne le demande.');
+        }
+    }
+
+    /**
+     * Un alignement explicitement différent est respecté.
+     *
+     * Contrôle négatif : la règle ne doit pas imposer la justification contre la
+     * volonté d'un gabarit. Un document professionnel peut légitimement être aligné
+     * à gauche — ce qui compte est que le réglage soit APPLIQUÉ.
+     */
+    public function test_un_alignement_explicite_est_respecte(): void
+    {
+        $gabarit = TemplateStyleResolver::normalize(['alignement_corps' => 'left']);
+
+        $this->assertSame('left', TemplateStyleResolver::bodyParagraphStyle($gabarit)['alignment']);
+    }
+
     public function test_section_style_retourne_les_marges_en_twips(): void
     {
         $gabarit = TemplateStyleResolver::normalize([

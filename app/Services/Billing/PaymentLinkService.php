@@ -28,6 +28,7 @@ class PaymentLinkService
 {
     public function __construct(
         private readonly CreditService $credits,
+        private readonly PaymentGatewayRegistry $passerelles,
     ) {}
 
     /**
@@ -50,7 +51,18 @@ class PaymentLinkService
             'token' => $this->genererJeton(),
             'label' => $donnees['label'] ?? null,
             'amount_fcfa' => $montant,
-            'currency' => (string) config('kpay.currency', 'XAF'),
+            // **La devise vient de la passerelle, pas de KPay.** Elle était lue
+            // sur `config('kpay.currency')` — une constante globale qui liait tout
+            // encaissement à la devise du compte KPay. Un lien réglé par Monetbil
+            // aurait donc porté la devise d'un fournisseur qui n'a jamais vu la
+            // transaction, et le rapprochement bancaire aurait été impossible.
+            //
+            // Au moment de la création, le client n'a PAS encore choisi son moyen :
+            // on retient la devise de la première passerelle réellement proposable,
+            // c'est-à-dire celle qui encaissera. `deviseParDefaut()` porte cette
+            // logique, et retombe sur la devise plateforme si aucune passerelle en
+            // ligne n'est disponible (règlement hors ligne seul).
+            'currency' => $this->passerelles->deviseParDefaut(),
             'mode' => $donnees['mode'],
             'status' => PaymentLink::STATUT_EN_ATTENTE,
 

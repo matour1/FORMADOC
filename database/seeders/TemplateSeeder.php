@@ -50,6 +50,7 @@ class TemplateSeeder extends Seeder
                         'apres_paragraphe' => 120,
                     ],
                     'alignement_titres' => 'left',
+                    'alignement_corps' => 'both',
                     'marges' => [
                         'top' => 1440,    // 2,54 cm (pouces = 1" = 1440 twips)
                         'right' => 1440,
@@ -91,6 +92,7 @@ class TemplateSeeder extends Seeder
                         'apres_paragraphe' => 0,
                     ],
                     'alignement_titres' => 'left',
+                    'alignement_corps' => 'both',
                     'marges' => [
                         'top' => 1800,
                         'right' => 1800,
@@ -132,6 +134,7 @@ class TemplateSeeder extends Seeder
                         'apres_paragraphe' => 80,
                     ],
                     'alignement_titres' => 'left',
+                    'alignement_corps' => 'both',
                     'marges' => [
                         'top' => 1080,
                         'right' => 1080,

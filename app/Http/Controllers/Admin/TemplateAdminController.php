@@ -271,9 +271,22 @@ class TemplateAdminController extends Controller
             'is_public' => ['boolean'],
 
             // Identité visuelle
+            //
+            // **`both` ET `justify` sont acceptés, et ce n'est pas un doublon.**
+            // `both` est la valeur que PhpWord écrit (`Jc::BOTH`) et celle que le
+            // formulaire émet ; `justify` est l'alias qu'il accepte aussi. Refuser
+            // `both` alors que le formulaire l'envoie faisait échouer la validation
+            // à chaque enregistrement — le gabarit n'était jamais créé, et le
+            // formulaire ré-affiché masquait la vraie cause derrière une erreur
+            // secondaire.
             'police' => ['required', 'string', 'max:100'],
             'interligne' => ['required', 'numeric', 'min:0.5', 'max:3'],
-            'alignement_titres' => ['required', 'in:left,center,right,justify'],
+            'alignement_titres' => ['required', 'in:left,center,right,justify,both'],
+            // Alignement du CORPS. `nullable` et non `required` : les formulaires
+            // antérieurs à ce champ ne l'envoient pas, et les rejeter ferait
+            // échouer l'enregistrement d'un gabarit déjà existant. Une valeur
+            // absente retombe sur le défaut « justifié » du resolver.
+            'alignement_corps' => ['nullable', 'in:left,center,right,justify,both'],
 
             // Tailles (points, transmis tels quels à PhpWord)
             'tailles' => ['required', 'array'],
@@ -339,6 +352,11 @@ class TemplateAdminController extends Controller
                 'apres_paragraphe' => (int) $donnees['espacements']['apres_paragraphe'],
             ],
             'alignement_titres' => $donnees['alignement_titres'],
+            // Repris tel quel, ou « both » si le champ n'était pas soumis : c'est
+            // la règle du propriétaire pour tous les documents traités, et un
+            // gabarit sans valeur explicite ne doit pas produire un corps ferré
+            // à gauche.
+            'alignement_corps' => $donnees['alignement_corps'] ?? 'both',
             'marges' => [
                 'top' => (int) $donnees['marges']['top'],
                 'right' => (int) $donnees['marges']['right'],

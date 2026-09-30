@@ -48,6 +48,18 @@ class PaymentLinkController extends Controller
 
     /**
      * Page de règlement d'un lien.
+     *
+     * **La page CONSTATE le règlement, elle n'attend pas qu'une tâche planifiée le
+     * fasse.** Le retour de la passerelle et la notification peuvent tous deux
+     * échouer ou arriver en retard. Sans constatation ici, l'utilisateur verrait
+     * « en attente » indéfiniment alors que son argent est parti, et sa seule
+     * issue serait d'attendre qu'un cron passe — or un cron peut ne pas tourner.
+     * Un paiement ne doit JAMAIS dépendre d'une tâche planifiée pour être constaté.
+     *
+     * On interroge donc la passerelle au chargement de la page, en direct. Le
+     * règlement reste idempotent (`regler()`), donc interroger plusieurs fois ne
+     * verse jamais deux fois. Le cron de synchronisation garde son rôle de filet
+     * pour les liens que PERSONNE ne rouvre — il n'est plus le chemin principal.
      */
     public function show(string $token): View
     {
@@ -56,6 +68,8 @@ class PaymentLinkController extends Controller
         // Jeton inconnu : 404. Répondre une page « ce lien n'existe pas » avec un
         // code 200 laisserait croire qu'il a existé, et permettrait d'énumérer.
         abort_if($lien === null, 404);
+
+        $lien = $this->constaterEnDirect($lien);
 
         return view('payments.link', [
             'lien' => $lien,
@@ -66,6 +80,80 @@ class PaymentLinkController extends Controller
             // vers une page d'erreur de la passerelle.
             'moyens' => $this->passerelles->proposables(),
         ]);
+    }
+
+    /**
+     * Interroge la passerelle pour constater un règlement, sans attendre le cron.
+     *
+     * **On ne tente la vérification que sur un lien en attente, et seulement s'il
+     * est rattaché à une passerelle.** Les autres cas sont des états définitifs :
+     * interroger l'API pour un lien déjà réglé gaspillerait un appel à chaque
+     * affichage de page.
+     *
+     * Un échec d'interrogation n'est PAS remonté à l'utilisateur : la page doit
+     * s'afficher normalement. Le cron, lui, retentera — c'est son rôle de filet.
+     */
+    private function constaterEnDirect(PaymentLink $lien): PaymentLink
+    {
+        if ($lien->status !== PaymentLink::STATUT_EN_ATTENTE || $lien->gateway === null) {
+            return $lien;
+        }
+
+        if (! $this->passerelles->estAutomatique($lien->gateway)) {
+            return $lien;
+        }
+
+        if ($lien->gateway === PaymentGatewayRegistry::KPAY) {
+            return $this->constaterKpay($lien);
+        }
+
+        // Monetbil : l'identifiant de transaction n'est connu qu'à l'arrivée de la
+        // notification, jamais du retour. Sans lui, il n'y a rien à interroger —
+        // c'est `notify()` qui constate, et il le fait immédiatement.
+        return $lien;
+    }
+
+    /**
+     * Constatation KPay : le `payment_id` est stocké localement à l'initiation.
+     */
+    private function constaterKpay(PaymentLink $lien): PaymentLink
+    {
+        $local = KpayPayment::query()
+            ->where('metadata->payment_link_id', $lien->id)
+            ->latest('id')
+            ->first();
+
+        if ($local === null || empty($local->payment_id)) {
+            return $lien;
+        }
+
+        $detail = $this->kpay->getPayment((string) $local->payment_id);
+
+        if (($detail['status'] ?? null) !== 'COMPLETED') {
+            return $lien;
+        }
+
+        $resultat = $this->liens->regler(
+            lien: $lien,
+            reference: (string) $local->payment_id,
+            kpayPaymentId: $local->id,
+        );
+
+        if (! ($resultat['ok'] ?? false)) {
+            Log::warning('Constatation en direct : règlement refusé', [
+                'lien_id' => $lien->id,
+                'motif' => $resultat['motif'] ?? null,
+            ]);
+
+            return $lien;
+        }
+
+        Log::info('Constatation en direct d\'un paiement KPay', [
+            'lien_id' => $lien->id,
+            'payment_id' => $local->payment_id,
+        ]);
+
+        return $lien->fresh() ?? $lien;
     }
 
     /**
@@ -134,7 +222,10 @@ class PaymentLinkController extends Controller
             externalId: $externalId,
             returnUrl: route('payment-link.retour', $token),
             cancelUrl: route('payment-link.show', $token),
-            currency: $lien->currency,
+            // La devise vient de la PASSERELLE, pas d'une constante globale : le
+            // lien porte la devise figée à sa création, et c'est elle qui fait foi
+            // (elle a été annoncée au client).
+            currency: (string) $lien->currency,
             metadata: [
                 'payment_link_id' => $lien->id,
                 'purpose' => 'payment_link',
@@ -210,7 +301,6 @@ class PaymentLinkController extends Controller
             itemRef: 'LINK'.$lien->id,
             customerEmail: $lien->customer_email,
         );
-
         if (! ($resultat['ok'] ?? false)) {
             Log::warning('Lien de paiement : initiation Monetbil échouée', [
                 'lien_id' => $lien->id,

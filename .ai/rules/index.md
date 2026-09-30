@@ -10,7 +10,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Services/Chat/** | .ai/rules/chat.md |
 | app/Document/Classification/** | .ai/rules/classification.md |
 | app/Console/Commands/** | .ai/rules/console.md |
-| app/Http/Controllers/ChatController.php | .ai/rules/controllers.md |
+| app/Http/Controllers/ChatController.php, app/Http/Controllers/PaymentLinkController.php | .ai/rules/controllers.md |
 | app/DocAnalyzer/** | .ai/rules/doc-analyzer.md |
 | app/Services/DocumentGeneration/** | .ai/rules/document-generation.md |
 | app/Document/**, app/Document/DocumentPipeline.php | .ai/rules/document.md |

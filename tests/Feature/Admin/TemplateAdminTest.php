@@ -61,6 +61,7 @@ class TemplateAdminTest extends TestCase
             'police' => 'Times New Roman',
             'interligne' => '1.5',
             'alignement_titres' => 'left',
+            'alignement_corps' => 'both',
             'tailles' => ['titre1' => 16, 'titre2' => 14, 'titre3' => 12, 'corps' => 12],
             'couleurs' => [
                 'titre1' => '1F3864', 'titre2' => '1F3864',
@@ -169,7 +170,7 @@ class TemplateAdminTest extends TestCase
 
         $params = Template::where('name', 'Gabarit de test')->firstOrFail()->params;
 
-        foreach (['police', 'tailles', 'couleurs', 'interligne', 'espacements', 'alignement_titres', 'marges', 'tableau'] as $cle) {
+        foreach (['police', 'tailles', 'couleurs', 'interligne', 'espacements', 'alignement_titres', 'alignement_corps', 'marges', 'tableau'] as $cle) {
             $this->assertArrayHasKey($cle, $params, "La clé « {$cle} » doit être présente.");
         }
 

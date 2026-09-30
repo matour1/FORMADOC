@@ -55,24 +55,26 @@ final class PaymentGatewayRegistry
     public const HORS_LIGNE = 'offline';
 
     /**
-     * Clés de configuration de chaque passerelle.
-     *
-     * @var array<string, string>
-     */
-    private const PREFIXE_CONFIG = [
-        self::KPAY => 'kpay',
-        self::MONETBIL => 'monetbil',
-    ];
-
-    /**
      * Description de chaque moyen, dans l'ordre d'affichage.
+     *
+     * **Chaque passerelle porte SES propres paramètres métier.** Un montant minimum
+     * et une devise appartiennent à un fournisseur, pas à la plateforme : les
+     * frais d'un opérateur mobile money diffèrent d'une passerelle à l'autre, et
+     * une devise est un contrat entre nous et CE fournisseur. Les mutualiser
+     * (`config('kpay.min_amount')` pour tout le monde) fait qu'un lien créé pour
+     * Monetbil porterait la devise de KPay — un encaissement libellé dans la
+     * mauvaise devise est un incident comptable, pas un détail d'affichage.
+     *
+     * Les clés sont donc déclarées PAR passerelle dans `parametres()`, et le
+     * formulaire d'achat comme la création de lien s'y réfèrent par la passerelle
+     * choisie, jamais par une constante globale.
      *
      * `configurable` indique si le moyen peut être proposé sans configuration
      * d'API. Le hors-ligne l'est toujours : il ne dépend d'aucun service externe,
      * ce qui en fait le recours quand tout le reste tombe — et c'est précisément
      * pourquoi il n'est jamais masqué par défaut.
      *
-     * @return array<string, array{libelle: string, description: string, configurable: bool, automatique: bool}>
+     * @return array<string, array{libelle: string, description: string, configurable: bool, automatique: bool, prefixe: null|string}>
      */
     public static function tous(): array
     {
@@ -82,20 +84,84 @@ final class PaymentGatewayRegistry
                 'description' => 'Orange Money, MTN, Moov et cartes bancaires, via la passerelle KPay.',
                 'configurable' => true,
                 'automatique' => true,
+                'prefixe' => 'kpay',
             ],
             self::MONETBIL => [
                 'libelle' => 'Mobile Money (Monetbil)',
                 'description' => 'Orange Money, MTN et Moov, via le widget Monetbil.',
                 'configurable' => true,
                 'automatique' => true,
+                'prefixe' => 'monetbil',
             ],
             self::HORS_LIGNE => [
                 'libelle' => 'Règlement hors ligne',
                 'description' => 'Espèces, virement ou mobile money direct, constaté par un administrateur.',
                 'configurable' => false,
                 'automatique' => false,
+                'prefixe' => null,
             ],
         ];
+    }
+
+    /**
+     * Montant minimum accepté par une passerelle, en FCFA.
+     *
+     * Lit le réglage PROPRE à la passerelle (`kpay.min_amount`,
+     * `monetbil.min_amount`). Le hors-ligne n'impose aucun plafond technique : il
+     * n'a pas de frais de transaction automatique — le minimum applicable est
+     * celui de la plateforme, `payments.min_amount`, s'il est défini.
+     */
+    public function montantMinimum(string $passerelle, int $defaut = 500): int
+    {
+        $prefixe = self::tous()[$passerelle]['prefixe'] ?? null;
+
+        if ($prefixe === null) {
+            // Hors-ligne : aucun frais d'opérateur, donc pas de minimum propre.
+            // On retombe sur le minimum plateforme s'il existe, sinon le défaut.
+            return (int) config('payments.min_amount', $defaut);
+        }
+
+        return (int) config($prefixe.'.min_amount', $defaut);
+    }
+
+    /**
+     * Devise d'encaissement d'une passerelle.
+     *
+     * **Pourquoi elle n'est pas globale.** La devise lie notre compte à CE
+     * fournisseur : un contrat Monetbil peut être libellé en XOF quand le compte
+     * KPay l'est en XAF. Utiliser la devise de KPay pour un lien Monetbil ferait
+     * apparaître un encaissement dans une devise que le fournisseur n'a jamais
+     * vue — et le rapprochement bancaire serait impossible.
+     */
+    public function devise(string $passerelle, string $defaut = 'XAF'): string
+    {
+        $prefixe = self::tous()[$passerelle]['prefixe'] ?? null;
+
+        if ($prefixe === null) {
+            return (string) config('payments.currency', $defaut);
+        }
+
+        return (string) config($prefixe.'.currency', $defaut);
+    }
+
+    /**
+     * Devise d'affichage par défaut, quand aucune passerelle n'est encore choisie.
+     *
+     * Sert à créer un lien AVANT que le client n'ait choisi son moyen : la devise
+     * doit alors être celle de l'entité qui encaissera — c'est-à-dire la première
+     * passerelle proposable — et non celle d'un fournisseur imposé. Si aucune
+     * passerelle en ligne n'est disponible (règlement hors ligne seul), on tombe
+     * sur la devise de la plateforme.
+     */
+    public function deviseParDefaut(string $defaut = 'XAF'): string
+    {
+        foreach (self::tous() as $cle => $definition) {
+            if ($definition['prefixe'] !== null && $this->estProposable($cle)) {
+                return $this->devise($cle, $defaut);
+            }
+        }
+
+        return (string) config('payments.currency', $defaut);
     }
 
     /**
@@ -159,8 +225,8 @@ final class PaymentGatewayRegistry
      * qu'un moyen absent de la liste.
      *
      * **Un moyen INCONNU est refusé, et ce n'était pas le cas au départ.** La
-     * fonction retournait `true` quand la passerelle n'apparaissait pas dans
-     * `PREFIXE_CONFIG` — au motif qu'elle n'a pas besoin de clés. Un moyen inconnu
+     * fonction retournait `true` quand la passerelle n'apparaissait pas dans la
+     * table des préfixes — au motif qu'elle n'a pas besoin de clés. Un moyen inconnu
      * était donc réputé configuré, déclaré proposable, et **routé vers KPay par
      * défaut** par le contrôleur : un client demandant « paypal » aurait été envoyé
      * chez le mauvais fournisseur, et le paiement n'aurait été rapproché avec rien.
@@ -177,7 +243,7 @@ final class PaymentGatewayRegistry
             return false;
         }
 
-        $prefixe = self::PREFIXE_CONFIG[$passerelle] ?? null;
+        $prefixe = self::tous()[$passerelle]['prefixe'] ?? null;
 
         if ($prefixe === null) {
             // Le hors-ligne est déclaré mais sans API : il ne dépend d'aucun

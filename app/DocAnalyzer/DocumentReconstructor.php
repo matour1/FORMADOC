@@ -71,9 +71,15 @@ class DocumentReconstructor
     /**
      * Formats de numérotation de page par section (index de section générée).
      *
+     * Trois entrées depuis l'ajout de la section de table des matières en fin de
+     * document : frontispice (romain), corps (arabe), table des matières (arabe).
+     * Le tableau était indexé sur DEUX sections ; la troisième retombait hors
+     * bornes et le post-traitement XML sautait la boucle — la section de fin
+     * aurait gardé la numérotation par défaut, sans erreur visible.
+     *
      * @var string[]
      */
-    private const PAGE_NUMBERING_FORMATS = ['lowerRoman', 'decimal'];
+    private const PAGE_NUMBERING_FORMATS = ['lowerRoman', 'decimal', 'decimal'];
 
     /**
      * Gabarit de mise en forme normalisé (TemplateStyleResolver::normalize).
@@ -137,6 +143,35 @@ class DocumentReconstructor
         $bodySection = $phpWord->addSection(array_merge(['pageNumberingStart' => 1], $sectionStyle));
         $this->applyHeaderFooter($bodySection, $analysis, 'Arabic');
         $this->writeBody($bodySection, $analysis);
+
+        // ── Section 3 : table des matières, en TOUTE FIN de document ──────────
+        //
+        // **Règle de mise en forme du propriétaire.** « La table des matières doit
+        // se trouver à la fin du document, générée par Word, et contenir les titres
+        // de TOUS les niveaux. » Elle n'existait pas : le seul sommaire produit était
+        // celui du frontispice, limité aux niveaux 1-2.
+        //
+        // **Pourquoi une section distincte.** La table des matières suit la
+        // conclusion et les annexes. La placer dans la section du corps la rendrait
+        // solidaire de sa numérotation — or un lecteur qui consulte la table en fin
+        // de document cherche les pages du corps, pas celles de la table elle-même.
+        //
+        // **`addTOC(1, 9)` : neuf niveaux, et non trois.** Le sommaire du
+        // frontispice s'arrête volontairement à 2 (il doit tenir sur une page) ;
+        // celui-ci doit tout couvrir, y compris les sous-sections « I., 1., A. ».
+        // La borne de 9 est celle que Word accepte nativement.
+        if ($this->contientDesTitres($analysis)) {
+            $finSection = $phpWord->addSection(array_merge(['pageNumberingStart' => 1], $sectionStyle));
+            $this->applyHeaderFooter($finSection, $analysis, 'Arabic');
+
+            $resolver = TemplateStyleResolver::class;
+            $finSection->addText(
+                'TABLE DES MATIERES',
+                $resolver::fontStyle($this->gabarit, 'titre1'),
+                $resolver::titleParagraphStyle($this->gabarit)
+            );
+            $finSection->addTOC(null, null, 1, 9);
+        }
 
         // ── Écriture du DOCX ───────────────────────────────────────────────────
         //
@@ -213,11 +248,34 @@ class DocumentReconstructor
      * champ PAGE au format demandé (roman pour le frontispice, arabe pour le
      * corps).
      *
+     * **La composition du pied de page est une règle de mise en forme.** Le
+     * propriétaire la formule ainsi : « un pied de page contenant le nom du
+     * rédacteur (rédigé par [nom]) puis les numéros de page ». L'implémentation
+     * empilait le texte source, un séparateur et le champ PAGE, dans cet ordre —
+     * mais SANS jamais produire la mention « rédigé par », qui n'existait dans le
+     * document que si l'auteur l'avait tapée. Un rapport sans cette mention sortait
+     * donc sans elle.
+     *
+     * **Pourquoi la mention est lue dans le gabarit, et non déduite du texte
+     * source.** Le nom du rédacteur ne se DEVINE pas : le chercher dans le
+     * document produirait des faux positifs (le premier nom de la page de garde
+     * n'est pas forcément l'auteur). Il vient donc du gabarit, où l'utilisateur le
+     * renseigne. Sans valeur, la mention n'est pas ajoutée — inventer un nom serait
+     * pire que de l'omettre.
+     *
      * @param  array<string, mixed>  $analysis
      */
     private function applyHeaderFooter(Section $section, array $analysis, string $pageFormat): void
     {
         $headerText = trim((string) ($analysis['en_tetes'][0]['texte'] ?? ''));
+
+        // À défaut d'en-tête détecté, on reprend le THÈME du rapport depuis le
+        // gabarit : la règle demande « l'en-tête doit contenir le thème ». Un
+        // document sans en-tête source sortait jusqu'ici sans en-tête du tout.
+        if ($headerText === '') {
+            $headerText = trim((string) ($this->gabarit['theme'] ?? ''));
+        }
+
         if ($headerText !== '') {
             $section->addHeader()->addText($headerText, ['size' => 9]);
         }
@@ -225,6 +283,18 @@ class DocumentReconstructor
         $footer = $section->addFooter();
 
         $footerText = $this->cleanFooterText((string) ($analysis['pieds_de_page'][0]['texte'] ?? ''));
+
+        // Mention du rédacteur : « rédigé par [nom] », puis le numéro de page.
+        //
+        // Elle est COMPOSÉE et non recopiée : le texte source d'un pied de page
+        // contient souvent le numéro (« Page 3 »), qui serait alors figé ou
+        // dupliqué avec le champ PAGE ajouté juste après.
+        $mention = $this->mentionRedacteur();
+
+        if ($mention !== null) {
+            $footer->addText($mention.'  |  ', ['size' => 9]);
+        }
+
         if ($footerText !== '') {
             $footer->addText($footerText, ['size' => 9]);
             $footer->addText('  |  ', ['size' => 9]);
@@ -232,6 +302,30 @@ class DocumentReconstructor
 
         // Champ PAGE : le format d'affichage suit la numérotation de section
         $footer->addField('PAGE', ['format' => $pageFormat]);
+    }
+
+    /**
+     * Mention du rédacteur, ou `null` si elle n'est pas renseignée.
+     *
+     * Deux clés acceptées : `redacteur` (le nom seul) et `mention_redacteur`
+     * (la mention complète, si l'utilisateur veut une formulation différente —
+     * « Réalisé par », « Présenté par »). La seconde prime : c'est un choix
+     * explicite, et le respecter vaut mieux que d'imposer notre libellé.
+     *
+     * Aucune valeur ne produit AUCUNE mention, jamais « rédigé par » suivi du
+     * vide : une mention sans nom serait visiblement incomplète sur chaque page.
+     */
+    private function mentionRedacteur(): ?string
+    {
+        $complete = trim((string) ($this->gabarit['mention_redacteur'] ?? ''));
+
+        if ($complete !== '') {
+            return $complete;
+        }
+
+        $nom = trim((string) ($this->gabarit['redacteur'] ?? ''));
+
+        return $nom === '' ? null : 'Rédigé par '.$nom;
     }
 
     /**
@@ -248,8 +342,49 @@ class DocumentReconstructor
     }
 
     /**
+     * La structure porte-t-elle des titres ?
+     *
+     * Sert à décider si la table des matières de fin a un contenu. Sans titres,
+     * un champ TOC produirait un titre suivi de rien — une page vide qui donne
+     * l'impression d'un document incomplet.
+     *
+     * Les deux collections sont consultées : `titres` (détectés en section 1) et
+     * `body_complet` (éléments de type `titre`). Un document reconstruit depuis
+     * `body_complet` peut n'avoir AUCUN élément dans `titres` — n'en consulter
+     * qu'une seule ferait disparaître la table des matières d'un document qui a
+     * des titres.
+     *
+     * @param  array<string, mixed>  $analysis
+     */
+    private function contientDesTitres(array $analysis): bool
+    {
+        if (! empty($analysis['titres']) || ! empty($analysis['sous_titres'])) {
+            return true;
+        }
+
+        foreach ((array) ($analysis['body_complet'] ?? []) as $element) {
+            if (($element['type'] ?? '') === 'titre') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Écrit la section frontispice : sommaire (TOC), liste des figures et
      * liste des tableaux (depuis les légendes). Rien si aucun titre.
+     *
+     * **Deux règles de mise en forme du propriétaire sont appliquées ici.**
+     *
+     *  1. **Le sommaire ne liste que les niveaux 1 et 2.** C'était 1-3 : le
+     *     sommaire incluait les sous-sections, ce qui le faisait déborder sur
+     *     plusieurs pages alors qu'il doit « tenir sur une page ». La distinction
+     *     avec la table des matières (tous niveaux, en fin de document) n'existait
+     *     nulle part.
+     *  2. **Chaque liste occupe une page dédiée.** Les intitulés se suivaient
+     *     jusqu'ici sans saut : « Liste des figures » collait au sommaire, puis
+     *     « Liste des tableaux » collait aux figures.
      *
      * @param  array<string, mixed>  $analysis
      */
@@ -267,17 +402,21 @@ class DocumentReconstructor
         // la collection globale — un "SOMMAIRE" en addTitle s'inclurait
         // lui-même dans la table des matières (défaut 4). On utilise donc
         // addText avec les styles de titre du gabarit, puis le champ TOC
-        // (niveaux 1-3, mis à jour à l'ouverture via updateFields).
+        // (niveaux 1-2, mis à jour à l'ouverture via updateFields).
+        //
+        // Le sommaire est sur la PREMIÈRE page du frontispice : aucun saut avant
+        // lui. Les listes qui suivent, elles, commencent chacune sur une page.
         $section->addText(
             'SOMMAIRE',
             $resolver::fontStyle($this->gabarit, 'titre1'),
             $resolver::titleParagraphStyle($this->gabarit)
         );
-        $section->addTOC(null, null, 1, 3);
+        $section->addTOC(null, null, 1, 2);
 
         // Liste des figures (légendes de type Figure)
         $figures = $this->legendsByType($analysis, ['figure', 'fig']);
         if ($figures !== []) {
+            $section->addPageBreak();
             $section->addText(
                 'Liste des figures',
                 $resolver::fontStyle($this->gabarit, 'titre1'),
@@ -299,6 +438,7 @@ class DocumentReconstructor
         // Liste des tableaux (légendes de type Tableau)
         $tableaux = $this->legendsByType($analysis, ['tableau', 'table']);
         if ($tableaux !== []) {
+            $section->addPageBreak();
             $section->addText(
                 'Liste des tableaux',
                 $resolver::fontStyle($this->gabarit, 'titre1'),
@@ -432,6 +572,20 @@ class DocumentReconstructor
     {
         $type = $element['type'] ?? 'autre';
         $texte = $texteResolu ?? trim((string) ($element['text'] ?? ''));
+
+        // **Saut de page décidé par `PageBreakRules`, transmis sur l'élément.**
+        //
+        // Le générateur applique un booléen, il ne connaît aucune règle métier :
+        // « quelle pièce liminaire occupe une page » est une décision de mise en
+        // forme, prise en amont et testable indépendamment de l'écriture DOCX.
+        //
+        // `addPageBreak()` insère un paragraphe contenant un saut explicite. C'est
+        // volontairement un saut MANUEL et non `pageBreakBefore` : Word recalcule
+        // `pageBreakBefore` à chaque réouverture, alors qu'un saut explicite reste
+        // là où il a été posé — un frontispice doit être stable.
+        if (($element['page_break'] ?? false) === true) {
+            $section->addPageBreak();
+        }
 
         switch ($type) {
             case 'titre':

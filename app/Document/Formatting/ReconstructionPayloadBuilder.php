@@ -42,6 +42,17 @@ use App\Document\Structure\TableData;
 final class ReconstructionPayloadBuilder
 {
     /**
+     * Règles de saut de page, injectables pour les tests.
+     *
+     * Un constructeur avec défaut : la classe reste utilisable sans argument
+     * (`new ReconstructionPayloadBuilder`), ce dont les tests existants
+     * dépendent, tout en permettant de substituer la règle.
+     */
+    public function __construct(
+        private readonly PageBreakRules $pageBreaks = new PageBreakRules,
+    ) {}
+
+    /**
      * Construit la charge utile complète pour `DocumentReconstructor::reconstruct()`.
      *
      * @param  RenderedDocument  $rendered  Description issue du moteur de gabarit
@@ -115,6 +126,18 @@ final class ReconstructionPayloadBuilder
         // détecté par ailleurs : on la reconstruit depuis l'ordre du document.
         $position = ['element_index' => $index];
 
+        // **Saut de page : une décision de MISE EN FORME, portée sur chaque élément.**
+        //
+        // Il est calculé ici et transmis au générateur, plutôt que déduit par lui.
+        // La règle vit dans `PageBreakRules` (testable sans produire de DOCX) et son
+        // résultat voyage avec l'élément : le générateur n'a donc aucune règle
+        // métier à connaître, il applique un booléen.
+        //
+        // Sans ce marqueur, `page_break_before` était LU du document source mais
+        // jamais ÉCRIT à la génération : un rapport sortait sans que les pièces
+        // liminaires occupent chacune une page, ni qu'un chapitre en commence une.
+        $nouvellePage = $this->pageBreaks->exigeNouvellePage($block);
+
         return match ($block->type) {
             BlockType::Heading => [
                 'type' => 'titre',
@@ -122,6 +145,7 @@ final class ReconstructionPayloadBuilder
                 'depth' => $this->headingDepth($block),
                 'position' => $position,
                 'block_id' => $block->blockId,
+                'page_break' => $nouvellePage,
             ],
 
             BlockType::Paragraph, BlockType::CrossRef => [
@@ -129,6 +153,7 @@ final class ReconstructionPayloadBuilder
                 'text' => $block->text,
                 'position' => $position,
                 'block_id' => $block->blockId,
+                'page_break' => $nouvellePage,
             ],
 
             BlockType::Table => [
@@ -139,6 +164,7 @@ final class ReconstructionPayloadBuilder
                 'rows' => $this->tableRows($block->tableData),
                 'position' => $position,
                 'block_id' => $block->blockId,
+                'page_break' => $nouvellePage,
             ],
 
             BlockType::Caption, BlockType::Annexe, BlockType::Planche => [
@@ -147,6 +173,7 @@ final class ReconstructionPayloadBuilder
                 'linked_block_id' => $block->linkedBlockId,
                 'position' => $position,
                 'block_id' => $block->blockId,
+                'page_break' => $nouvellePage,
             ],
 
             BlockType::Figure, BlockType::Image => $this->imageElement($block, $position, $images),
