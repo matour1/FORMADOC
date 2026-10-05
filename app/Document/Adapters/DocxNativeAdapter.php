@@ -605,7 +605,44 @@ final class DocxNativeAdapter implements InputAdapter
         $surroundingText = trim((string) preg_replace('/\[image:[^\]]*\]/u', '', $text));
         $caption = $this->captionPattern->detect($surroundingText);
 
-        // --- 1. Traitement des images (figure numérotée vs décorative) ---
+        // --- 1. Diagramme en FORMES vectorielles -------------------------------
+        //
+        // **AVANT le traitement des images, et l'ordre est indispensable.**
+        //
+        // `ParagraphReader::imageName()` retourne `'embedded-object'` en repli
+        // quand un `w:drawing` ne porte aucune relation d'image — c'est-à-dire
+        // exactement le cas d'une forme vectorielle. `has_image` vaut donc `true`
+        // pour un organigramme, et la règle d'image le capturait en premier : le
+        // bloc devenait un `Figure`, sans binaire à lire.
+        //
+        // Défaut constaté par le test de bout en bout de l'adaptateur (attendu
+        // `Shape`, obtenu `Figure`), puis expliqué par instrumentation des signaux
+        // réels. La règle de forme doit donc précéder la règle d'image.
+        //
+        // On ne teste QUE `wps:wsp` / `wpg:wgp` : `a:blip` reste du ressort du
+        // chemin d'image, pour ne pas créer deux détections du même contenu.
+        if (($analysis['has_shape'] ?? false) === true) {
+            return new Block(
+                blockId: (string) $analysis['block_id'],
+                type: BlockType::Shape,
+                // Le texte est VIDE : le contenu du diagramme vit dans le fichier
+                // source, pas ici. Le marqueur est posé par le constructeur de
+                // charge utile, qui est le seul à connaître le format attendu par
+                // le reconstructeur.
+                text: '',
+                fontSize: $analysis['font_size'],
+                indentLevel: $this->indentLevelFrom($analysis),
+                positionY: $analysis['position_y'],
+                fidelity: $this->fidelity(),
+                // Confiance maximale : la présence d'une forme est un fait lu dans
+                // le XML, pas une inférence. Déclencher une clarification sur un
+                // organigramme serait demander à l'utilisateur de trancher ce que
+                // le document dit explicitement.
+                confidence: 1.0,
+            );
+        }
+
+        // --- 2. Traitement des images (figure numérotée vs décorative) ---
         if ($hasImage) {
             if ($caption !== null) {
                 return $this->buildFigureBlock($analysis, $caption);

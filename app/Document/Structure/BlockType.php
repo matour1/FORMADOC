@@ -75,6 +75,26 @@ enum BlockType: string
     case TocEntry = 'toc_entry';
 
     /**
+     * Diagramme en FORMES vectorielles (`wps:wsp`, `wpg:wgp`).
+     *
+     * **Pourquoi un type à part, et non un `Figure`.** Un `Figure` porte une
+     * image liée par une relation (`r:embed`), dont le binaire est lu puis
+     * ré-embarqué. Une forme vectorielle n'a **aucune** relation d'image : elle
+     * est un arbre XML (rectangles, flèches, zones de texte) que PhpWord ne sait
+     * ni lire ni écrire. Les confondre ferait chercher un binaire inexistant.
+     *
+     * Mesure du 2026-09-30 sur 1 722 contenus distincts : 4 documents portent des
+     * formes, pour 285 formes et 250 zones de texte. Avant ce type, le paragraphe
+     * qui les portait n'ayant ni texte ni image, il était ignoré à la lecture et
+     * le diagramme **disparaissait entièrement**, sans erreur ni signalement.
+     *
+     * Le bloc ne porte pas le contenu de la forme (trop volumineux pour le schéma
+     * structurel) : il marque l'EMPLACEMENT. `ShapePreserver` réinjecte le XML
+     * d'origine depuis le fichier source à cet emplacement.
+     */
+    case Shape = 'shape';
+
+    /**
      * Le type est-il un titre (participe à la table des matières) ?
      */
     public function isHeading(): bool

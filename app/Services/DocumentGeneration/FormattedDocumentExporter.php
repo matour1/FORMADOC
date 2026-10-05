@@ -120,6 +120,15 @@ final class FormattedDocumentExporter
         // Le gabarit est le 3e paramètre : le passage de `null` en 3e position
         // (reliquat du retrait de `$cover`) le faisait ignorer silencieusement,
         // car PHP accepte un argument surnuméraire sans erreur.
+        //
+        // **`.avecSource()` : les diagrammes en FORMES sont relus dans la
+        // source.** `$this->reconstructor` est un singleton injecté, donc
+        // partagé entre les exports : sans cette déclaration, un export
+        // réutiliserait le chemin de l'export PRÉCÉDENT et réinjecterait les
+        // formes d'un autre document. Le chemin est donc posé à chaque appel,
+        // et non une fois pour toutes.
+        $this->reconstructor->avecSource($sourcePath);
+
         try {
             $chemin = $this->reconstructor->reconstruct(
                 $charge['analysis'],

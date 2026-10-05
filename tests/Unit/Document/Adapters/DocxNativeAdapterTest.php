@@ -607,6 +607,63 @@ class DocxNativeAdapterTest extends TestCase
     }
 
     /**
+     * **Un diagramme en FORMES produit un bloc `Shape` au lieu d'être ignoré.**
+     *
+     * Le défaut mesuré : `w:drawing` était traité comme une image, sans distinguer
+     * un bitmap (`a:blip r:embed`) d'une forme vectorielle (`wps:wsp`). Une forme
+     * n'ayant aucune relation d'image, le paragraphe se retrouvait avec un texte
+     * vide et `has_image = false` : `read()` retournait `null` et le diagramme
+     * **disparaissait entièrement**, sans erreur ni signalement.
+     *
+     * Mesure du 2026-09-30 : 4 contenus du corpus, 285 formes, 250 zones de texte.
+     *
+     * Le bloc `Shape` ne porte pas le contenu du diagramme (un arbre XML n'a pas
+     * sa place dans le schéma structurel) : il marque son EMPLACEMENT, que
+     * `ShapePreserver` remplit après l'écriture du DOCX.
+     */
+    public function test_un_diagramme_en_formes_produit_un_bloc_shape(): void
+    {
+        // Un `w:drawing` SANS relation d'image : c'est ce qui caractérise une forme.
+        // La zone de texte porte du contenu réel (« Organigramme »), qui était
+        // perdu — c'est précisément ce que la mesure a mis au jour.
+        $forme = '<w:p><w:r><w:drawing><wp:inline><a:graphic><a:graphicData>'
+            .'<wps:wsp><wps:txbx><w:txbxContent>'
+            .'<w:p><w:r><w:t>Organigramme de la societe</w:t></w:r></w:p>'
+            .'</w:txbxContent></wps:txbx></wps:wsp>'
+            .'</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>';
+
+        $document = $this->convert($this->fixture($forme));
+
+        $this->assertCount(1, $document->blocks,
+            'Le paragraphe portant un diagramme doit produire un bloc : avant, il '
+            .'était considéré comme vide et purement ignoré.');
+
+        $this->assertSame(BlockType::Shape, $document->blocks[0]->type,
+            'Un diagramme en formes doit être typé `Shape`, distinct d\'une image : '
+            .'il n\'a aucune relation d\'image à lire.');
+    }
+
+    /**
+     * Une IMAGE produit toujours un bloc `Image`, pas un `Shape`.
+     *
+     * Contrôle négatif indispensable : si toute `w:drawing` devenait un `Shape`,
+     * les images perdraient leur binaire et ne seraient plus ré-embarquées.
+     */
+    public function test_une_image_ne_produit_pas_un_bloc_shape(): void
+    {
+        $document = $this->convert($this->fixture(
+            DocxFixture::imageParagraph('rId5'),
+            extraParts: ['word/_rels/document.xml.rels' => $this->imageRels('rId5')]
+        ));
+
+        foreach ($document->blocks as $block) {
+            $this->assertNotSame(BlockType::Shape, $block->type,
+                'Une image liée par `r:embed` doit rester une image : la confondre '
+                .'avec une forme ferait perdre son binaire.');
+        }
+    }
+
+    /**
      * Fichier de relations contenant une image.
      */
     private function imageRels(string $relationId): string

@@ -178,6 +178,27 @@ final class ReconstructionPayloadBuilder
 
             BlockType::Figure, BlockType::Image => $this->imageElement($block, $position, $images),
 
+            // **Un diagramme en FORMES laisse un MARQUEUR dans le corps.**
+            //
+            // Une forme vectorielle (`wps:wsp`) n'a pas de relation d'image : elle
+            // ne peut pas être reconstruite par PhpWord, qui n'expose aucun moyen
+            // d'insérer un fragment OOXML. On écrit donc un texte marqueur à la
+            // place, et `ShapePreserver` le remplace APRÈS l'écriture du DOCX par
+            // le XML d'origine — le même motif que `w:pgNumType w:fmt` et
+            // `w:gridSpan` dans `DocumentReconstructor`.
+            //
+            // Sans ce marqueur, le bloc n'existerait pas : le paragraphe source
+            // n'ayant ni texte ni image, il était ignoré à la lecture et le
+            // diagramme disparaissait entièrement (mesure : 4 contenus, 285
+            // formes, 250 zones de texte sur le corpus).
+            BlockType::Shape => [
+                'type' => 'forme',
+                'text' => ShapePreserver::MARQUEUR,
+                'position' => $position,
+                'block_id' => $block->blockId,
+                'page_break' => $nouvellePage,
+            ],
+
             // En-têtes et pieds sont rendus par `applyHeaderFooter`, pas dans le corps.
             BlockType::Header, BlockType::Footer => null,
 
