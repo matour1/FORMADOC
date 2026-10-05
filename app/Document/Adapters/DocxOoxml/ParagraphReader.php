@@ -66,9 +66,22 @@ final class ParagraphReader
         // --- Analyse des runs ---
         $analysis = $this->analyzeRuns($paragraph, $styleId);
 
+        // Une FORME vectorielle n'est ni du texte, ni une image, ni un saut : sans
+        // ce signal, le paragraphe qui la porte est considere comme vide et
+        // retourne `null` juste en dessous. Le diagramme disparaissait alors
+        // ENTIEREMENT du document genere, sans erreur ni signalement.
+        //
+        // Mesure du 2026-09-30 : 4 contenus du corpus portent des formes, pour
+        // 285 formes et 250 zones de texte. Leur contenu n'etait lu par aucun
+        // chemin.
+        $analysis['has_shape'] = $this->contientUneForme($paragraph);
+
         // Un paragraphe vide (sans texte, sans image, sans saut) n'est pas un
-        // bloc : Word en insère beaucoup comme espacement.
-        if ($analysis['text'] === '' && ! $analysis['has_image'] && ! $analysis['has_break']) {
+        // bloc : Word en insere beaucoup comme espacement.
+        //
+        // `has_shape` s'ajoute aux exceptions : un paragraphe qui ne porte qu'un
+        // diagramme n'a ni texte ni image, et doit pourtant produire un bloc.
+        if ($analysis['text'] === '' && ! $analysis['has_image'] && ! $analysis['has_break'] && ! $analysis['has_shape']) {
             return null;
         }
 
@@ -102,6 +115,7 @@ final class ParagraphReader
             'keep_with_next' => $effectiveParagraph['keep_with_next'] ?? false,
             'position_y' => $positionY,
             'has_image' => $analysis['has_image'],
+            'has_shape' => $analysis['has_shape'],
             'has_break' => $analysis['has_break'],
             'images' => $analysis['images'],
             'hyperlinks' => $analysis['hyperlinks'],
@@ -271,6 +285,7 @@ final class ParagraphReader
             'is_italic' => $isItalic,
             'font_name' => $fontNames === [] ? null : $fontNames[0],
             'has_image' => $images !== [],
+            'has_shape' => false,
             'has_break' => $hasBreak,
             'images' => $images,
             'hyperlinks' => $hyperlinks,
@@ -374,11 +389,39 @@ final class ParagraphReader
     }
 
     /**
-     * Nom de fichier de l'image embarquée dans un dessin.
+     * Le paragraphe porte-t-il une FORME vectorielle (et non une image) ?
      *
-     * L'image elle-même est référencée par un `r:embed` qu'il appartient à
-     * l'adaptateur de résoudre via les relations ; on ne conserve donc ici que
-     * l'identifiant de relation, normalisé comme nom de marqueur.
+     * **Pourquoi la distinction est indispensable.** `w:drawing` porte deux
+     * contenus très différents :
+     *
+     *   - `<a:blip r:embed="rId5"/>` — une IMAGE liée par une relation. Elle est
+     *     lue, puis ré-embarquée à l'identique ;
+     *   - `<wps:wsp>`, `<wpg:wgp>` — des FORMES vectorielles (rectangles, flèches,
+     *     textes d'un organigramme). Sans relation d'image, elles n'étaient
+     *     détectées par **aucun** chemin.
+     *
+     * Conséquence mesurée le 2026-09-30 : un paragraphe ne portant qu'un
+     * organigramme avait un texte vide et `has_image = false`, donc `read()`
+     * retournait `null` et le diagramme **disparaissait entièrement** — sans
+     * erreur, sans signalement.
+     *
+     * On ne teste QUE les marqueurs de formes : `a:blip` est laissé au chemin
+     * d'image existant, pour ne pas créer deux détections concurrentes du même
+     * contenu.
+     */
+    private function contientUneForme(DOMElement $paragraph): bool
+    {
+        foreach (['wps:wsp', 'wpg:wgp', 'wps:wgp'] as $marqueur) {
+            if (XmlLoader::firstDescendant($paragraph, $marqueur) !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Nom de fichier de l'image embarquée dans un dessin.
      */
     private function imageName(DOMElement $container): ?string
     {

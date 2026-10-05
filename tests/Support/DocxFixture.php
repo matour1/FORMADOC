@@ -288,11 +288,17 @@ final class DocxFixture
 
     private static function document(string $bodyXml): string
     {
+        // Les espaces de noms `wps` et `wpg` (formes vectorielles) sont déclarés
+        // comme dans un vrai document Word. Sans eux, un `<wps:wsp>` serait un
+        // XML invalide — et un test de diagramme échouerait pour une raison sans
+        // rapport avec le comportement vérifié.
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             .'<w:document xmlns:w="'.self::W.'" '
             .'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
             .'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
-            .'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+            .'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+            .'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" '
+            .'xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup">'
             .'<w:body>'.$bodyXml.'<w:sectPr/></w:body></w:document>';
     }
 

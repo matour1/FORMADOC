@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\DocAnalyzer;
 
+use App\Document\Formatting\ShapePreserver;
 use App\Services\DocumentGeneration\TemplateStyleResolver;
 use DOMDocument;
 use DOMXPath;
+use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpWord\Element\Section;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
@@ -115,6 +117,38 @@ class DocumentReconstructor
     private array $seqCounters = [];
 
     /**
+     * Chemin du `.docx` d'ORIGINE, d'où les diagrammes en formes sont relus.
+     *
+     * **Pourquoi une propriété posée par `avecSource()` et non un paramètre de
+     * `reconstruct()`.** Le reconstructeur est injecté en singleton dans
+     * `FormattedDocumentExporter` : il est donc partagé entre les exports d'une
+     * même requête (et au-delà, dans un worker de queue). Passer la source en
+     * paramètre serait plus sûr, mais `reconstruct()` a déjà trois paramètres et
+     * une signature publique utilisée par plusieurs appelants (`DocAnalyzer`,
+     * `ChatToolsService`, contrôleurs) : l'ajouter imposerait de tous les
+     * modifier.
+     *
+     * **Le piège que `avecSource()` évite.** Sans remise à zéro entre deux
+     * exports, un export réutiliserait le chemin de l'export PRÉCÉDENT et
+     * réinjecterait les formes d'un autre document — un défaut silencieux, et
+     * difficile à attribuer puisqu'il ne se produit qu'au deuxième appel.
+     * L'exportateur appelle donc `avecSource()` à CHAQUE export.
+     */
+    private ?string $sourcePath = null;
+
+    /**
+     * Déclare le document d'origine, pour la relecture des diagrammes en formes.
+     *
+     * Retourne `$this` pour permettre l'enchaînement depuis l'appelant.
+     */
+    public function avecSource(?string $sourcePath): self
+    {
+        $this->sourcePath = $sourcePath;
+
+        return $this;
+    }
+
+    /**
      * Génère un DOCX complet à partir de la structure analysée.
      *
      * @param  array<string, mixed>  $analysis  Résultat du DocAnalyzer (+ legends)
@@ -216,6 +250,31 @@ class DocumentReconstructor
 
         // ── Post-traitement : w:gridSpan sur cellules fusionnées ─────────────
         $this->applyGridSpan($outputPath);
+
+        // ── Post-traitement : réinjection des diagrammes en FORMES ───────────
+        //
+        // **Pourquoi APRÈS `applyGridSpan`.** Les trois post-traitements
+        // réécrivent `word/document.xml` via ZipArchive. Les faire cohabiter
+        // impose un ordre : les deux premiers retirent puis réécrivent le XML,
+        // donc réinjecter les formes avant eux ferait relire un XML dont les
+        // marqueurs auraient déjà été traités. En dernier, les formes arrivent
+        // dans un document stabilisé.
+        //
+        // **Pourquoi seulement si une source est déclarée.** Sans elle, il n'y a
+        // rien à relire. On ne signale PAS l'absence : un appelant qui ne déclare
+        // pas de source (les documents générés de zéro, sans fichier d'origine)
+        // n'a pas de formes à préserver, et le marqueur sera simplement retiré
+        // par `reinjecter()` — sans laisser de texte technique dans le document.
+        if ($this->sourcePath !== null && is_file($this->sourcePath)) {
+            $formes = (new ShapePreserver)->reinjecter($outputPath, $this->sourcePath);
+
+            if ($formes > 0) {
+                Log::info('DocumentReconstructor : diagrammes en formes réinjectés', [
+                    'formes' => $formes,
+                    'output' => basename($outputPath),
+                ]);
+            }
+        }
 
         // ── Nettoyage des fichiers temp d'images ──────────────────────────────
         foreach ($this->tempImages as $tmpFile) {
@@ -610,6 +669,27 @@ class DocumentReconstructor
 
             case 'image':
                 $this->writeImage($section, $element);
+                break;
+
+                // **Diagramme en FORMES : on écrit le MARQUEUR, pas le diagramme.**
+                //
+                // PhpWord n'expose aucun moyen d'insérer un fragment OOXML arbitraire
+                // dans un paragraphe — une forme vectorielle (`wps:wsp`) n'a ni texte
+                // ni relation d'image, donc rien de ce que ses méthodes savent écrire.
+                //
+                // On écrit donc un texte marqueur à cet emplacement, et
+                // `ShapePreserver` le remplace APRÈS l'écriture du DOCX par le XML
+                // d'origine. C'est le même motif que `w:pgNumType w:fmt` et
+                // `w:gridSpan` : marqueur dans le corps, remplacement sur le XML.
+                //
+                // Sans ce cas, le paragraphe source n'ayant ni texte ni image, il était
+                // IGNORÉ et le diagramme disparaissait entièrement (mesure : 4 contenus
+                // du corpus, 285 formes, 250 zones de texte perdues silencieusement).
+            case 'forme':
+                $section->addText(
+                    ShapePreserver::MARQUEUR,
+                    $resolver::fontStyle($this->gabarit, 'corps')
+                );
                 break;
 
             case 'saut':
