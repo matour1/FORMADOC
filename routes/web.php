@@ -164,10 +164,23 @@ Route::middleware(['web', 'throttle:30,1'])->prefix('paiement')->name('payment-l
     // vers une page HTML) ferait considérer la notification comme non délivrée, et
     // Monetbil la réémettrait indéfiniment.
     //
+    // **POST ET GET, et ce n'est pas de la complaisance.** Monetbil laisse
+    // l'exploitant choisir la méthode HTTP de notification (« Méthode de
+    // notification de paiement », onglet Configuration du service), et son
+    // formulaire affiche **GET par défaut**. Ce choix appartient au fournisseur et
+    // à l'exploitant, pas à nous : ne router que POST ferait qu'une notification
+    // GET ne trouve aucune route — le client serait débité chez l'opérateur et
+    // jamais crédité, sans erreur visible d'aucun côté. Les deux verbes mènent au
+    // même traitement, qui lit ses paramètres indifféremment de la query ou du corps.
+    //
+    // Le contrôle de sécurité ne repose PAS sur le verbe : la signature est
+    // vérifiée, le statut est confirmé à l'API, et la corrélation (`item_ref`,
+    // `user`) est contrôlée. Un GET forgé est donc aussi inoffensif qu'un POST forgé.
+    //
     // Elle ne relève pas du `throttle:30,1` du groupe : une rafale de notifications
     // légitimes (plusieurs clients payant en même temps depuis le même opérateur)
     // serait rejetée en 429 et le paiement resterait non constaté.
-    Route::post('/{token}/notify', [PaymentLinkController::class, 'notify'])
+    Route::match(['get', 'post'], '/{token}/notify', [PaymentLinkController::class, 'notify'])
         ->name('notify')
         ->withoutMiddleware('throttle:30,1');
 });

@@ -300,6 +300,14 @@ class PaymentLinkController extends Controller
             notifyUrl: route('payment-link.notify', $token),
             itemRef: 'LINK'.$lien->id,
             customerEmail: $lien->customer_email,
+            // `user` : l'identifiant de corrélation rattaché au paiement, que la
+            // notification RETOURNE. C'est le seul moyen de rapprocher un paiement
+            // de son compte si l'URL de notification devient invalide — sans lui,
+            // un litige se règle sans pouvoir prouver à qui le paiement appartenait.
+            userId: $lien->user_id,
+            // Nom du client, réparti en prénom/nom par le service : le widget
+            // l'affiche, ce qui rassure le payeur et réduit les abandons.
+            nomComplet: $lien->customer_label,
         );
         if (! ($resultat['ok'] ?? false)) {
             Log::warning('Lien de paiement : initiation Monetbil échouée', [
@@ -461,22 +469,159 @@ class PaymentLinkController extends Controller
             'testmode' => $verification['testmode'],
         ]);
 
-        if ($verification['ok'] && $verification['succes']) {
-            $resultat = $this->liens->regler(
-                lien: $lien,
-                reference: $transactionId !== '' ? $transactionId : 'monetbil:'.$lien->id,
-            );
+        if (! ($verification['ok'] && $verification['succes'])) {
+            return response('received');
+        }
 
-            if (! ($resultat['ok'] ?? false)) {
-                // Un refus (lien expiré, annulé, destinataire introuvable) est
-                // journalisé par le service. On répond tout de même `received` :
-                // faire réessayer ne changerait rien, et un litige se règle à la
-                // main à partir de cette trace.
-                Log::warning('Monetbil : règlement refusé', [
-                    'lien_id' => $lien->id,
-                    'motif' => $resultat['motif'] ?? null,
-                ]);
-            }
+        // --- Corrélation avec LE LIEN, avant tout versement --------------------
+        //
+        // **La faille que ce contrôle ferme, et pourquoi la signature ne suffit
+        // pas.** Le secret Monetbil est GLOBAL : la signature est la même pour
+        // TOUS nos liens. Un client peut donc payer 500 FCFA sur un lien bon
+        // marché, capturer la notification — signée, authentique — et la rejouer
+        // sur l'URL de notification d'un lien coûteux. Signature valide, statut
+        // « réussi » confirmé à l'API : rien n'aurait signalé la fraude, et le
+        // lien cher aurait été crédité avec le paiement d'un autre.
+        //
+        // Ce n'est pas une hypothèse : Monetbil RETOURNE précisément `item_ref` et
+        // `user` dans la notification (`Monetbil::getPost('item_ref')`), et le SDK
+        // officiel invite à s'en servir. Ce sont les identifiants de corrélation.
+        //
+        // **`item_ref` d'abord, `user` ensuite.** On a envoyé `item_ref` =
+        // « LINK{id} », qui désigne LE lien précis — la corrélation la plus forte.
+        // `user` ne désigne qu'un compte, donc plusieurs liens y répondent : il
+        // sert de repli quand `item_ref` est absent (notification ancienne, ou
+        // champ non transmis par le fournisseur).
+        $itemRefAttendu = 'LINK'.$lien->id;
+        $itemRefRecu = (string) ($parametres['item_ref'] ?? '');
+
+        if ($itemRefRecu !== '' && $itemRefRecu !== $itemRefAttendu) {
+            Log::warning('Monetbil : notification pour un AUTRE lien, versement refusé', [
+                'lien_id' => $lien->id,
+                'item_ref_recu' => $itemRefRecu,
+                'item_ref_attendu' => $itemRefAttendu,
+                'transaction_id' => $transactionId,
+            ]);
+
+            return response('received');
+        }
+
+        $userRecu = isset($parametres['user']) ? (int) $parametres['user'] : null;
+
+        if ($itemRefRecu === '' && $userRecu !== null && (int) $lien->user_id !== $userRecu) {
+            Log::warning('Monetbil : notification pour un AUTRE compte, versement refusé', [
+                'lien_id' => $lien->id,
+                'user_recu' => $userRecu,
+                'user_attendu' => $lien->user_id,
+                'transaction_id' => $transactionId,
+            ]);
+
+            return response('received');
+        }
+
+        // **Aucune corrélation du tout : on refuse, et c'est un arbitrage assumé.**
+        //
+        // Le dilemme est réel. Créditer par défaut maximise la disponibilité — le
+        // client a payé, il doit recevoir ses crédits — mais laisse passer un rejeu
+        // vers un lien non corrélé, c'est-à-dire précisément la fraude qu'on ferme.
+        // Refuser protège l'argent, au prix d'un paiement légitime à créditer à la
+        // main si le fournisseur omettait un jour ces champs.
+        //
+        // On refuse, parce que l'asymétrie des coûts est nette : un crédit accordé
+        // à tort est une perte SÈCHE et INVISIBLE, tandis qu'un crédit bloqué à
+        // tort laisse une trace (`Log::warning`) et un règlement constatable depuis
+        // l'administration. Le premier ne se répare pas, le second si.
+        //
+        // La situation est par ailleurs anormale : nous ENVOYONS `item_ref` et
+        // `user` à chaque initiation, et Monetbil documente leur retour dans la
+        // notification. Leur absence signale soit une notification forgée, soit un
+        // changement de protocole — les deux méritent d'être vus, aucun ne mérite
+        // un crédit automatique.
+        if ($itemRefRecu === '' && $userRecu === null) {
+            Log::warning('Monetbil : aucune corrélation (ni item_ref ni user), versement refusé', [
+                'lien_id' => $lien->id,
+                'transaction_id' => $transactionId,
+                'montant_attendu' => (int) $lien->amount_fcfa,
+            ]);
+
+            return response('received');
+        }
+
+        // --- Contrôle du MONTANT, avant tout versement ------------------------
+        //
+        // **Le défaut que ce contrôle ferme, et il coûtait de l'argent.** Le
+        // montant confirmé n'était comparé à RIEN : un client qui réglait
+        // 500 FCFA sur un lien de 2 500 crédits recevait les 2 500 crédits. Le
+        // paiement était authentique, le statut « réussi », donc rien ne
+        // signalait l'anomalie — et la perte était structurelle, pas ponctuelle.
+        //
+        // **Deux sources, et la seconde n'est pas un pis-aller.** Le montant est
+        // lu de l'API quand elle le renvoie. À défaut, il est lu de la
+        // NOTIFICATION — et c'est fiable, car `signatureValide()` l'a couvert :
+        // la signature Monetbil porte sur l'ensemble des paramètres reçus, donc
+        // un `amount` accompagné d'une signature valide vient bien du fournisseur.
+        //
+        // **Montant inconnu : on ne verse PAS.** Choisir l'inverse — créditer par
+        // défaut — rouvrirait exactement la fuite qu'on ferme. Le règlement reste
+        // constatable à la main depuis l'administration, à partir de la trace
+        // laissée ci-dessous.
+        $montantConfirme = $verification['montant']
+            ?? (isset($parametres['amount']) ? (int) $parametres['amount'] : null);
+
+        $montantAttendu = (int) $lien->amount_fcfa;
+
+        if ($montantConfirme === null) {
+            Log::warning('Monetbil : montant introuvable, versement refusé', [
+                'lien_id' => $lien->id,
+                'transaction_id' => $transactionId,
+                'montant_attendu' => $montantAttendu,
+            ]);
+
+            return response('received');
+        }
+
+        if ($montantConfirme < $montantAttendu) {
+            // Insuffisant : on refuse de créditer. Le paiement partiel est un
+            // scénario réel (l'utilisateur modifie le montant sur le widget), et
+            // le créditer en totalité reviendrait à offrir la différence.
+            Log::warning('Monetbil : montant payé INFÉRIEUR au montant du lien, versement refusé', [
+                'lien_id' => $lien->id,
+                'transaction_id' => $transactionId,
+                'montant_paye' => $montantConfirme,
+                'montant_attendu' => $montantAttendu,
+                'ecart' => $montantAttendu - $montantConfirme,
+            ]);
+
+            return response('received');
+        }
+
+        if ($montantConfirme > $montantAttendu) {
+            // Supérieur : on crédite ce qui est dû, pas ce qui a été payé. Le
+            // surplus est un trop-perçu à rembourser par l'administration, et le
+            // journaliser rend l'écart visible.
+            Log::info('Monetbil : montant payé SUPÉRIEUR au montant du lien', [
+                'lien_id' => $lien->id,
+                'transaction_id' => $transactionId,
+                'montant_paye' => $montantConfirme,
+                'montant_attendu' => $montantAttendu,
+                'trop_percu' => $montantConfirme - $montantAttendu,
+            ]);
+        }
+
+        $resultat = $this->liens->regler(
+            lien: $lien,
+            reference: $transactionId !== '' ? $transactionId : 'monetbil:'.$lien->id,
+        );
+
+        if (! ($resultat['ok'] ?? false)) {
+            // Un refus (lien expiré, annulé, destinataire introuvable) est
+            // journalisé par le service. On répond tout de même `received` :
+            // faire réessayer ne changerait rien, et un litige se règle à la
+            // main à partir de cette trace.
+            Log::warning('Monetbil : règlement refusé', [
+                'lien_id' => $lien->id,
+                'motif' => $resultat['motif'] ?? null,
+            ]);
         }
 
         return response('received');
