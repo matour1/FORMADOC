@@ -1,0 +1,60 @@
+# FORMADOC — worker de queue (service systemd)
+#
+# ---------------------------------------------------------------------------
+# POURQUOI CE FICHIER
+#
+# Avec QUEUE_CONNECTION=database, les documents et les e-mails sont traités par
+# un processus `queue:work` SÉPARÉ du serveur web. Sans lui, les jobs s'accumulent
+# dans la table `jobs` et l'utilisateur ne reçoit jamais son document : il reste
+# bloqué en `processing`, alors que ses crédits ont déjà été débités — sans
+# aucune erreur visible pour lui.
+#
+# Ce n'est PAS une tâche planifiée (voir `deploy/crontab`) : c'est un processus
+# PERMANENT, qui doit tourner en continu et redémarrer en cas de crash.
+#
+# ---------------------------------------------------------------------------
+# INSTALLATION
+#
+#   sudo cp deploy/formadoc-queue.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now formadoc-queue
+#
+# Adapter `User`, `WorkingDirectory` et le chemin de `php` à l'installation.
+#
+# ---------------------------------------------------------------------------
+# VÉRIFICATION
+#
+#   systemctl status formadoc-queue      # doit être « active (running) »
+#   php artisan queue:monitor default    # profondeur de la file
+#
+# Après un déploiement, recharger le code du worker :
+#
+#   php artisan queue:restart
+#
+# (sans quoi les workers continuent d'exécuter l'ANCIEN code en mémoire).
+# ---------------------------------------------------------------------------
+
+[Unit]
+Description=FORMADOC queue worker
+Documentation=file:///var/www/formadoc/DEPLOIEMENT.md
+After=network.target mysql.service
+
+[Service]
+User=formadoc
+WorkingDirectory=/var/www/formadoc
+
+# `always` : une nuit d'indisponibilité suffit à accumuler des documents bloqués.
+Restart=always
+RestartSec=5
+
+# `--max-time=3600` recycle le worker chaque heure. C'est un garde-fou mémoire :
+# les bibliothèques PDF/DOCX fuient légèrement, et un processus de longue durée
+# finirait par épuiser la RAM allouée (le projet est sensible au plafond PHP).
+ExecStart=/usr/bin/php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+
+# Arrêt propre : propager le signal au groupe, laisser le job en cours finir.
+StopAsGroup=true
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
