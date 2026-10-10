@@ -93,13 +93,14 @@ table `payment_services` :**
 
 ## 3. Plan d'exécution
 
-### P0 — Fiabiliser le protocole (avant recette)
-- [ ] Appel réel `POST /widget/v2.1/{serviceKey}` sur un service de test →
-      confirmer la présence de `payment_url`.
-- [ ] Si échec : tester `/pay/v2.1/{serviceKey}` ou l'appel signé. Documenter
-      la forme retenue dans `MonetbilService::url()`.
-- [ ] Envoyer `notification_method` (GET par défaut côté Monetbil) : déjà accepté
-      en GET et POST par `credits/notify` — rien à changer, à vérifier en recette.
+### P0 — Fiabiliser le protocole (avant recette) 🔨 **outillé**
+- [x] Commande `monetbil:check` livrée (initie un paiement de TEST et rapporte
+      `payment_url` ou l'échec ; `--transaction=<id>` interroge `checkPayment`).
+- [ ] **À faire en recette**, avec les identifiants réels : lancer
+      `php artisan monetbil:check --service=pack_1000` et confirmer le
+      `payment_url`. Si échec : tester `/pay/v2.1/{serviceKey}` ou l'appel signé,
+      puis documenter la forme retenue dans `MonetbilService::url()`.
+- [x] `credits/notify` accepte GET et POST (choix côté Monetbil) — vérifié par test.
 
 ### P1 — Trancher et corriger le lien base ↔ signature *(§2.2)* ✅ **fait**
 - [x] Retirer `PaymentService` de `PaymentGatewayRegistry`
@@ -123,10 +124,14 @@ table `payment_services` :**
 
 ---
 
-## 4. Règle durable à enregistrer
+## 4. Règle durable
 
 > **Un identifiant de paiement ne se stocke pas dans deux sources.** La source
 > qui SIGNE est la source de vérité. Une valeur affichée dans un écran
 > d'administration mais lue par aucun code au moment de signer est un mensonge
 > d'interface (règle « une clé affichée, modifiable, et sans effet »,
 > `billing.md`).
+>
+> **Enregistrée** dans `.ai/rules/billing.md` (« Un identifiant de paiement n'a
+> qu'une source : celle qui SIGNE »), et verrouillée par
+> `PaymentServiceRemovalInvariantTest`.
