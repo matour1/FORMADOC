@@ -30,6 +30,13 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::get('/credits/return', [KPayController::class, 'return'])->name('kpay.return');
     Route::get('/credits/cancel', [KPayController::class, 'cancel'])->name('kpay.cancel');
 
+    // Retour Monetbil d'un achat de crédits. Route SÉPARÉE de `kpay.return` :
+    // Monetbil ne signe PAS son retour, donc ses paramètres d'arrivée n'ont aucune
+    // valeur probante. Le handler KPay, lui, attend un `status=COMPLETED` signé —
+    // y router le retour Monetbil afficherait « paiement échoué » sur un paiement
+    // en réalité réussi, et le client chercherait un problème qui n'existe pas.
+    Route::get('/credits/return/monetbil', [KPayController::class, 'returnMonetbil'])->name('credits.return.monetbil');
+
     // Abonnements récurrents (Phase 9)
     Route::get('/checkout/{plan:slug}', [SubscriptionController::class, 'checkout'])->name('subscriptions.checkout');
     Route::post('/subscriptions/subscribe', [SubscriptionController::class, 'subscribe'])->name('subscriptions.subscribe');
@@ -54,5 +61,16 @@ Route::middleware(['web', 'auth'])->group(function () {
 // Webhook KPay — PAS de middleware CSRF (requête externe signée HMAC)
 Route::post('/kpay/webhook', [KPayController::class, 'webhook'])
     ->name('kpay.webhook')
+    ->middleware('web')
+    ->withoutMiddleware(VerifyCsrfToken::class);
+
+// Notification Monetbil d'un achat de crédits — PAS de middleware CSRF.
+// Une notification vient d'un serveur à serveur : pas de session, pas de cookie,
+// donc aucun jeton possible. Sans exemption, Laravel répond 419 et le paiement
+// n'est JAMAIS constaté — le client serait débité chez l'opérateur et jamais
+// crédité. La sécurité repose sur la corrélation, la signature et l'interrogation
+// de l'API, pas sur le CSRF.
+Route::match(['get', 'post'], '/credits/notify', [KPayController::class, 'notifyMonetbil'])
+    ->name('credits.notify')
     ->middleware('web')
     ->withoutMiddleware(VerifyCsrfToken::class);

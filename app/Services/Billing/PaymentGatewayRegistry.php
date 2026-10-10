@@ -31,6 +31,15 @@ namespace App\Services\Billing;
  * et ne devine pas l'état du fournisseur : il expose ce qui a été décidé. La
  * détection automatique de panne serait un autre sujet, et une fausse détection
  * désactiverait un moyen qui fonctionne.
+ *
+ * **Deux sources uniques, et non une table par-dessus.** L'état opérationnel
+ * (`actif` / `visible`) vient des réglages `payments.gateways.*`, éditables dans
+ * `/admin/settings` sans redéploiement. Les identifiants d'API viennent de la
+ * configuration, lue par le code qui SIGNE. Une première version lisait une table
+ * `payment_services` pour ces trois informations : elle dupliquait les réglages et
+ * portait des clés que la signature n'utilisait pas — un écran qui affichait,
+ * laissait modifier, et restait sans effet. La table a été retirée, et un test
+ * d'architecture interdit son retour.
  */
 final class PaymentGatewayRegistry
 {
@@ -254,7 +263,42 @@ final class PaymentGatewayRegistry
         $cle = (string) config($prefixe.'.api_key', config($prefixe.'.service_key', ''));
         $secret = (string) config($prefixe.'.secret_key', config($prefixe.'.service_secret', ''));
 
+        // **Monetbil peut aussi être configuré par service, sans clé globale.**
+        // Chaque palier de recharge a SES propres identifiants : un déploiement qui
+        // ne renseigne que les services par pack (le cas recommandé) n'a AUCUNE clé
+        // globale. Exiger la clé globale ici déclarerait Monetbil « non configuré »
+        // et le retirerait de l'interface — le moyen prioritaire deviendrait
+        // invisible alors qu'il fonctionne.
+        if ($prefixe === 'monetbil' && $this->unServiceMonetbilEstExploitable()) {
+            return true;
+        }
+
         return $cle !== '' && $secret !== '';
+    }
+
+    /**
+     * Au moins un service Monetbil déclaré par palier est-il exploitable ?
+     *
+     * On lit la configuration des services et non le catalogue : la question posée
+     * est « le moyen est-il configuré ? », pas « ce palier précis est-il proposable ? ».
+     * Un service exploitable suffit à rendre Monetbil utilisable.
+     */
+    private function unServiceMonetbilEstExploitable(): bool
+    {
+        foreach ((array) config('monetbil.services', []) as $service) {
+            if (! is_array($service)) {
+                continue;
+            }
+
+            $cle = trim((string) ($service['key'] ?? ''));
+            $secret = trim((string) ($service['secret'] ?? ''));
+
+            if ($cle !== '' && $secret !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

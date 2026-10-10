@@ -267,29 +267,109 @@
         </div>
     </div>
 
-    {{-- Modale : acheter des crédits (conforme formadoc-template.html) --}}
+    {{-- Modale : acheter des crédits — Paliers à MONTANTS FIXES.
+         Un montant libre était proposé ; il est remplacé par des boutons, et
+         ce n'est pas un choix esthétique. Une passerelle mobile money exige un
+         SERVICE déclaré par offre (nom, article, pays, clés propres) : un montant
+         arbitraire ne pourrait être rattaché à aucun service, donc aucun
+         encaissement. En fixant les paliers, chaque montant correspond à un
+         service existant. --}}
+    @php
+        $packs = app(\App\Services\Billing\CreditPackCatalog::class)->proposables();
+        // Les moyens PROPOSABLES (configuré + actif + visible), lus sur le même
+        // registre que celui utilisé par le serveur pour VALIDER. Une liste écrite
+        // ici à la main divergerait : un moyen affiché pourrait être refusé au
+        // paiement, ou l'inverse.
+        $moyens = app(\App\Services\Billing\PaymentGatewayRegistry::class)->proposables();
+    @endphp
+
     <div class="modal-overlay" id="purchaseModal" role="dialog" aria-modal="true" aria-labelledby="purchaseModalTitle">
         <div class="modal">
             <div class="modal-header"><h3 id="purchaseModalTitle">Acheter des crédits</h3><button class="modal-close" id="closePurchaseModal" aria-label="Fermer">×</button></div>
-            <form action="{{ route('credits.purchase') }}" method="POST">
-                @csrf
-                <div class="form-group">
-                    <label for="creditAmount">Montant (FCFA) — minimum {{ number_format(config('kpay.min_amount', 500), 0, ',', ' ') }}</label>
-                    <input class="form-control" type="number" name="amount" id="creditAmount" value="1000"
-                           min="{{ config('kpay.min_amount', 500) }}" step="100" max="500000" required />
+
+            @if ($packs === [] || $moyens === [])
+                {{-- Aucun palier rattaché à un service, ou aucun moyen de paiement
+                     proposable : le dire, plutôt que d'afficher des boutons qui
+                     mèneraient à un encaissement impossible. C'est le cas tant que
+                     les services Monetbil ne sont pas configurés. --}}
+                <div class="banner banner-info" style="margin:0 0 1rem">
+                    <i data-lucide="info"></i>
+                    <div>
+                        <strong>Achat en ligne momentanément indisponible</strong>
+                        <div style="font-size:.85rem;margin-top:.25rem">
+                            Les moyens de paiement sont en cours de configuration. Contactez-nous
+                            pour recharger vos crédits.
+                        </div>
+                    </div>
+                </div>
+            @else
+                <form action="{{ route('credits.purchase') }}" method="POST">
+                    @csrf
+
+                    <p style="font-size:.85rem;color:var(--color-text-secondary);margin:0 0 .85rem">
+                        Choisissez le montant à recharger. <strong>1 crédit = 1 FCFA.</strong>
+                    </p>
+
+                    <div class="mode-grid" role="radiogroup" aria-label="Montant à recharger">
+                        @foreach ($packs as $pack)
+                            <label class="mode-option" for="pack-{{ $pack['montant'] }}">
+                                <input type="radio" name="amount" id="pack-{{ $pack['montant'] }}"
+                                    value="{{ $pack['montant'] }}" @checked($pack['populaire'])
+                                    required>
+
+                                <span>
+                                    <span class="mode-titre">
+                                        {{ $pack['libelle'] }}
+                                        @if ($pack['populaire'])
+                                            <span class="badge badge-success" style="margin-left:.35rem">Populaire</span>
+                                        @endif
+                                    </span>
+                                    <span class="mode-detail">
+                                        <strong>{{ number_format($pack['credits'], 0, ',', ' ') }} crédits</strong>
+                                        @if ($pack['description'] !== '')
+                                            — {{ $pack['description'] }}
+                                        @endif
+                                    </span>
+                                </span>
+                            </label>
+                        @endforeach
+                    </div>
+
                     @error('amount')<p class="field-error">{{ $message }}</p>@enderror
-                </div>
-                <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.4rem;">
-                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="500">500</button>
-                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="1000">1 000</button>
-                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="2000">2 000</button>
-                    <button type="button" class="btn btn-secondary btn-sm quick-amount" data-amount="5000">5 000</button>
-                </div>
-                <div style="display:flex;gap:.6rem;margin-bottom:1.4rem;justify-content:center;font-size:.85rem;color:var(--color-text-secondary);flex-wrap:wrap;">
-                    <span>Carte bancaire</span><span>·</span><span>KPay</span><span>·</span><span>Orange Money</span><span>·</span><span>MTN MoMo</span>
-                </div>
-                <button type="submit" class="btn btn-primary btn-block" id="confirmPurchase">Payer maintenant</button>
-            </form>
+
+                    {{-- Choix du moyen de paiement. Affiché seulement s'il y a un
+                         vrai choix : avec un seul moyen disponible, un sélecteur
+                         n'apporte rien et ajoute une étape. Le champ est alors
+                         transmis en caché. --}}
+                    @if (count($moyens) > 1)
+                        <p style="font-size:.85rem;color:var(--color-text-secondary);margin:.9rem 0 .5rem">
+                            Moyen de paiement
+                        </p>
+                        <div class="mode-grid" role="radiogroup" aria-label="Moyen de paiement">
+                            @foreach ($moyens as $cle => $moyen)
+                                <label class="mode-option" for="gw-{{ $cle }}">
+                                    <input type="radio" name="gateway" id="gw-{{ $cle }}"
+                                        value="{{ $cle }}" @checked($loop->first) required>
+                                    <span>
+                                        <span class="mode-titre">{{ $moyen['libelle'] }}</span>
+                                        <span class="mode-detail">{{ $moyen['description'] }}</span>
+                                    </span>
+                                </label>
+                            @endforeach
+                        </div>
+
+                        @error('gateway')<p class="field-error">{{ $message }}</p>@enderror
+                    @else
+                        <input type="hidden" name="gateway" value="{{ array_key_first($moyens) }}">
+                    @endif
+
+                    <div style="display:flex;gap:.6rem;margin:1.1rem 0;justify-content:center;font-size:.85rem;color:var(--color-text-secondary);flex-wrap:wrap;">
+                        <span>Mobile Money</span><span>·</span><span>Orange Money</span><span>·</span><span>MTN MoMo</span>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block" id="confirmPurchase">Payer maintenant</button>
+                </form>
+            @endif
         </div>
     </div>
 
@@ -324,9 +404,9 @@
         showPurchaseBtn.addEventListener('click', () => openModal(purchaseModal));
         document.getElementById('closePurchaseModal').addEventListener('click', () => closeModal(purchaseModal));
         purchaseModal.addEventListener('click', e => { if (e.target === purchaseModal) closeModal(purchaseModal); });
-        document.querySelectorAll('.quick-amount').forEach(btn => btn.addEventListener('click', function () {
-            document.getElementById('creditAmount').value = this.dataset.amount;
-        }));
+        // Les boutons « montant rapide » ont disparu avec le champ libre : les
+        // paliers sont désormais des boutons radio, et le montant est porté par
+        // la valeur du radio sélectionné — aucun JavaScript n'est nécessaire.
     }
 
     // Modale annulation d'abonnement

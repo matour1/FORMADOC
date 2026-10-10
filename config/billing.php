@@ -33,6 +33,63 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Paliers de recharge de crédits — MONTANTS FIXES
+    |--------------------------------------------------------------------------
+    |
+    | **Pourquoi des montants fixés et non une saisie libre.** Une passerelle
+    | mobile money comme Monetbil exige un SERVICE déclaré par offre : chaque
+    | article a son propre nom, ses pays d'activation et ses propres clés. Un
+    | formulaire acceptant n'importe quel montant serait donc IMPOSSIBLE à
+    | rattacher à un service — il faudrait un service par montant possible, soit
+    | une infinité. En fixant la liste, chaque palier correspond à UN service, et
+    | l'encaissement reste possible.
+    |
+    | C'est aussi une simplification pour l'utilisateur : trois choix lisibles
+    | plutôt qu'un champ numérique où il doit deviner un montant accepté.
+    |
+    | **1 crédit = 1 FCFA.** Le montant du palier EST le nombre de crédits, ce qui
+    | rend la grille immédiatement compréhensible.
+    |
+    | **Chaque palier porte une CLÉ de configuration** (`service`), et non un
+    | libellé : c'est elle qui désigne le service Monetbil à utiliser pour ce
+    | montant. `null` signifie « pas encore rattaché à un service » — l'interface
+    | ne doit alors PAS proposer ce palier, sous peine de mener le client vers un
+    | encaissement impossible.
+    |
+    | `populaire` met un palier en avant : c'est le montant le plus choisi, et le
+    | signaler oriente le choix sans le contraindre.
+    |
+    */
+
+    'credit_packs' => [
+        [
+            'montant' => 1000,
+            'credits' => 1000,
+            'libelle' => 'Découverte',
+            'description' => 'Pour un document court ou quelques corrections.',
+            'populaire' => false,
+            'service' => env('MONETBIL_SERVICE_PACK_1000'),
+        ],
+        [
+            'montant' => 3000,
+            'credits' => 3000,
+            'libelle' => 'Mémoire',
+            'description' => 'De quoi traiter un rapport de stage complet.',
+            'populaire' => true,
+            'service' => env('MONETBIL_SERVICE_PACK_3000'),
+        ],
+        [
+            'montant' => 5000,
+            'credits' => 5000,
+            'libelle' => 'Projet',
+            'description' => 'Plusieurs documents, ou un mémoire volumineux.',
+            'populaire' => false,
+            'service' => env('MONETBIL_SERVICE_PACK_5000'),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Renouvellement automatique (Q1a)
     |--------------------------------------------------------------------------
     | SUBSCRIPTION_RENEW_DAYS_BEFORE : nombre de jours avant expiration où le

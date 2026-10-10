@@ -55,6 +55,9 @@ class MonetbilService
      *
      * @param  array<string, mixed>  $contexte  métadonnées métier (rattachées par nos soins,
      *                                          Monetbil ne les exploite pas)
+     * @param  null|array{id: string, key: string, secret: string}  $service  identifiants du SERVICE
+     *                                                                        Monetbil à utiliser ; à défaut,
+     *                                                                        on retombe sur la configuration globale
      * @return array{ok: bool, paymentUrl?: string, message?: string}
      */
     public function url(
@@ -65,11 +68,20 @@ class MonetbilService
         string $itemRef = '',
         ?string $customerEmail = null,
         ?string $phone = null,
+        ?int $userId = null,
+        ?string $nomComplet = null,
+        ?string $country = null,
         array $contexte = [],
+        ?array $service = null,
     ): array {
-        $serviceKey = (string) config('monetbil.service_key', '');
+        // **Un service porte SES PROPRES identifiants.** Deux paiements sur deux
+        // paliers différents doivent signer avec deux clés distinctes : utiliser
+        // un couple global rendrait le second service inencaissable, et la
+        // notification du premier serait vérifiée avec le mauvais secret.
+        $serviceKey = $service['key'] ?? (string) config('monetbil.service_key', '');
+        $serviceSecret = $service['secret'] ?? (string) config('monetbil.service_secret', '');
 
-        if ($serviceKey === '') {
+        if ($serviceKey === '' || $serviceSecret === '') {
             return ['ok' => false, 'message' => 'Monetbil n\'est pas configuré (clé de service absente).'];
         }
 
@@ -86,9 +98,26 @@ class MonetbilService
             'notify_url' => $notifyUrl,
         ];
 
-        // `phone` et `email` sont facultatifs : préremplir le widget évite au
-        // client de ressaisir ce qu'on connaît déjà, mais un champ vide est
-        // accepté par Monetbil et n'empêche pas le paiement.
+        // --- Paramètres FACULTATIFS, et pourquoi ils sont envoyés --------------
+        //
+        // **`user` est le plus important, et son absence était une lacune.** Le
+        // SDK officiel l'envoie systématiquement et la notification le RETOURNE
+        // (`Monetbil::getPost('user')`). C'est l'identifiant de corrélation côté
+        // fournisseur : sans lui, une notification arrivée sur une URL devenue
+        // invalide ne peut plus être rattachée à un compte, et un litige se règle
+        // sans pouvoir prouver à qui le paiement appartenait.
+        //
+        // **`first_name` / `last_name`** : le SDK les expose séparément. On les
+        // remplit depuis le nom complet quand l'appelant le fournit — le widget
+        // affiche alors le nom du payeur, ce qui rassure et réduit les abandons.
+        //
+        // **`country`** : code ISO à deux lettres. Le widget s'en sert pour
+        // pré-filtrer les opérateurs mobile money disponibles plutôt que de les
+        // proposer tous. Facultatif, mais améliore la première étape du paiement.
+        //
+        // **`logo`** : non envoyé. Il désigne une URL d'image AFFICHÉE dans le
+        // widget, et nos liens de paiement peuvent concerner n'importe quel client :
+        // y mettre notre logo serait trompeur pour son payeur.
         if ($phone !== null && $phone !== '') {
             $parametres['phone'] = $phone;
         }
@@ -97,10 +126,30 @@ class MonetbilService
             $parametres['email'] = $customerEmail;
         }
 
+        if ($userId !== null && $userId > 0) {
+            $parametres['user'] = $userId;
+        }
+
+        if ($nomComplet !== null && trim($nomComplet) !== '') {
+            [$prenom, $nom] = $this->decouperNom($nomComplet);
+
+            if ($prenom !== '') {
+                $parametres['first_name'] = $prenom;
+            }
+
+            if ($nom !== '') {
+                $parametres['last_name'] = $nom;
+            }
+        }
+
+        if ($country !== null && $country !== '') {
+            $parametres['country'] = strtoupper($country);
+        }
+
         $reponse = $this->envoyer(
             'post',
-            $this->widgetUrl(),
-            [...$parametres, 'sign' => $this->signature($parametres)],
+            $this->widgetUrl($serviceKey),
+            [...$parametres, 'sign' => $this->signature($parametres, $serviceSecret)],
         );
 
         if ($reponse === null) {
@@ -132,6 +181,47 @@ class MonetbilService
         }
 
         return ['ok' => true, 'paymentUrl' => $url];
+    }
+
+    /**
+     * Découpe un nom complet en `[prénom, nom]` pour le widget Monetbil.
+     *
+     * **Pourquoi un découpage plutôt qu'un seul champ.** Le SDK officiel expose
+     * `first_name` et `last_name` séparément — c'est ce que le widget affiche. Un
+     * nom saisi d'un bloc (« KAMDEM Jean ») doit donc être réparti.
+     *
+     * **Le premier mot est le PRÉNOM dans la convention française**, et non
+     * l'inverse : « Jean Kamdem » se lit prénom puis nom. Le SDK officiel illustre
+     * d'ailleurs `setFirst_name('KAMDEM')` avec `setLast_name('Jean')` — soit
+     * l'ordre inverse — parce que son auteur a pris la convention administrative
+     * camerounaise (NOM puis prénoms). Les deux existent : on retient la plus
+     * courante à la saisie, celle du langage parlé, car une interversion n'a
+     * AUCUNE conséquence fonctionnelle — le widget n'affiche qu'un libellé.
+     *
+     * **Un seul mot : il devient le prénom, et le nom reste vide.** Le mettre dans
+     * `last_name` serait un choix défendable, mais laisser `last_name` vide est
+     * préférable à un doublon (`first_name` ET `last_name` identiques), que le
+     * widget afficherait deux fois.
+     *
+     * @return array{0: string, 1: string} [prénom, nom]
+     */
+    private function decouperNom(string $nomComplet): array
+    {
+        // Espaces multiples et insécables réduits, pour que « Jean   Kamdem » et
+        // « Jean Kamdem » donnent le même résultat.
+        $parties = preg_split('/\s+/u', trim($nomComplet)) ?: [];
+
+        if ($parties === []) {
+            return ['', ''];
+        }
+
+        if (count($parties) === 1) {
+            return [$parties[0], ''];
+        }
+
+        $prenom = array_shift($parties);
+
+        return [$prenom, implode(' ', $parties)];
     }
 
     /**
@@ -232,10 +322,11 @@ class MonetbilService
      * suffit à se prémunir d'un rejeu.
      *
      * @param  array<string, mixed>  $parametres  paramètres reçus (la clé `sign` est retirée pour le calcul)
+     * @param  null|string  $secret  secret du SERVICE concerné ; à défaut, la configuration globale
      */
-    public function signatureValide(array $parametres): bool
+    public function signatureValide(array $parametres, ?string $secret = null): bool
     {
-        $secret = (string) config('monetbil.service_secret', '');
+        $secret ??= (string) config('monetbil.service_secret', '');
         $recue = (string) ($parametres['sign'] ?? '');
 
         if ($secret === '' || $recue === '') {
@@ -247,7 +338,7 @@ class MonetbilService
         // `hash_equals` et non `===` : une comparaison de chaînes ordinaire
         // s'arrête au premier caractère différent, ce qui laisse mesurer le temps
         // de réponse pour deviner la signature caractère par caractère.
-        return hash_equals($this->signature($parametres), $recue);
+        return hash_equals($this->signature($parametres, $secret), $recue);
     }
 
     /**
@@ -262,9 +353,11 @@ class MonetbilService
      * tableau imbriqué de façon qui ne correspond pas à ce que Monetbil signe.
      *
      * @param  array<string, mixed>  $parametres
+     * @param  null|string  $secret  secret du SERVICE concerné ; à défaut, la configuration globale
      */
-    public function signature(array $parametres): string
+    public function signature(array $parametres, ?string $secret = null): string
     {
+        $secret ??= (string) config('monetbil.service_secret', '');
         $plats = [];
 
         foreach ($parametres as $cle => $valeur) {
@@ -275,18 +368,21 @@ class MonetbilService
 
         ksort($plats);
 
-        return md5((string) config('monetbil.service_secret', '').implode('', $plats));
+        return md5($secret.implode('', $plats));
     }
 
     /**
      * URL du widget, version et clé de service incluses.
+     *
+     * @param  null|string  $serviceKey  clé du SERVICE concerné ; à défaut, la configuration globale
      */
-    public function widgetUrl(): string
+    public function widgetUrl(?string $serviceKey = null): string
     {
         $base = rtrim((string) config('monetbil.widget_url', 'https://www.monetbil.com/widget/'), '/');
         $version = (string) config('monetbil.widget_version', 'v2.1');
+        $serviceKey ??= (string) config('monetbil.service_key', '');
 
-        return $base.'/'.$version.'/'.(string) config('monetbil.service_key', '');
+        return $base.'/'.$version.'/'.$serviceKey;
     }
 
     /**

@@ -291,10 +291,13 @@ class PaymentGatewayChoiceTest extends TestCase
 
         $service = app(MonetbilService::class);
 
+        // `item_ref` est REQUIS : c'est l'identifiant de corrélation, vérifié par
+        // le contrôleur. Une notification qui n'en porte pas est refusée.
         $parametres = [
             'transaction_id' => 'tx_ok',
             'status' => 1,
             'amount' => 2500,
+            'item_ref' => 'LINK'.$lien->id,
         ];
 
         $parametres['sign'] = $service->signature($parametres);
@@ -335,7 +338,12 @@ class PaymentGatewayChoiceTest extends TestCase
 
         $service = app(MonetbilService::class);
 
-        $parametres = ['transaction_id' => 'tx_double', 'status' => 1, 'amount' => 2500];
+        $parametres = [
+            'transaction_id' => 'tx_double',
+            'status' => 1,
+            'amount' => 2500,
+            'item_ref' => 'LINK'.$lien->id,
+        ];
         $parametres['sign'] = $service->signature($parametres);
 
         // Deux envois IDENTIQUES : c'est le rejeu de la même notification.
