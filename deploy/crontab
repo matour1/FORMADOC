@@ -1,0 +1,64 @@
+# FORMADOC — tâches planifiées (crontab du serveur de production)
+#
+# ---------------------------------------------------------------------------
+# POURQUOI CE FICHIER
+#
+# Sans cron, `subscriptions:renew`, `kpay:sync` et `files:purge-temp` ne
+# tournent JAMAIS. Le cas le plus grave est `kpay:sync` (toutes les 5 minutes) :
+# c'est le filet prévu pour les webhooks perdus. Sans lui, un paiement dont la
+# notification n'arrive pas n'est jamais crédité — sans aucune erreur visible.
+#
+# ---------------------------------------------------------------------------
+# INSTALLATION (serveur Linux, une seule ligne suffit)
+#
+#   crontab -u formadoc deploy/crontab
+#
+#   ou, en root, en copiant le fichier dans /etc/cron.d/ :
+#
+#   sudo cp deploy/crontab /etc/cron.d/formadoc
+#   sudo chown root:root /etc/cron.d/formadoc
+#
+# Adapter le chemin `/var/www/formadoc` à celui du déploiement, et l'utilisateur
+# `formadoc` à celui qui exécute l'application (il doit pouvoir lire `.env` et
+# écrire dans `storage/`).
+#
+# ---------------------------------------------------------------------------
+# VÉRIFICATION
+#
+#   cd /var/www/formadoc && php artisan schedule:list
+#
+# doit lister les 4 tâches ci-dessous. Puis, après quelques minutes :
+#
+#   php artisan kpay:sync   # exécution manuelle, pour confirmer l'accès réseau
+#
+# ---------------------------------------------------------------------------
+
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# PAR UNE SEULE ENTRÉE, et non une ligne par tâche.
+#
+# Laravel répartit lui-même les tâches déclarées dans `routes/console.php`, et
+# `schedule:run` ne déclenche que celles qui sont dues à cette minute. Une ligne
+# par commande obligerait à maintenir l'expression cron en double avec le code :
+# la déplacer dans `routes/console.php` ne suffirait plus, et les deux pourraient
+# diverger silencieusement.
+#
+# Tâches couvertes (déclarées dans routes/console.php) :
+#   subscriptions:renew          quotidien 06:00  — renouvellement des abonnements
+#   subscriptions:remind-renewal quotidien 07:00  — rappel J-3
+#   kpay:sync                    /5 min          — filet anti-webhook perdu
+#   files:purge-temp             quotidien 02:30  — purge RGPD des fichiers temp
+#
+# `withoutOverlapping()` est posé sur chaque tâche : une exécution qui dépasse
+# son intervalle n'en lance pas une seconde.
+* * * * * cd /var/www/formadoc && php artisan schedule:run >> /dev/null 2>&1
+
+# ---------------------------------------------------------------------------
+# CE QUI N'EST PAS ICI
+#
+# Le worker de queue (`queue:work`). Ce n'est PAS une tâche planifiée : c'est un
+# processus permanent, qui doit tourner en continu et redémarrer en cas de crash.
+# Il se configure avec systemd ou Supervisor — voir DEPLOIEMENT.md §4.1. Sans lui,
+# les documents restent bloqués en `processing`, crédits déjà débités.
+# ---------------------------------------------------------------------------
