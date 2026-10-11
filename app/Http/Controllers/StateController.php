@@ -6,15 +6,15 @@ use Illuminate\View\View;
 
 /**
  * Pages de démonstration / états (fidélité template) :
- * onboarding, chargement, état vide, aperçu indisponible, maintenance.
+ * chargement, état vide, aperçu indisponible, maintenance.
+ *
+ * **L'onboarding n'est plus ici.** Il a été extrait vers `OnboardingController`,
+ * qui persiste la progression sur le compte : la page `states/onboarding` était
+ * une maquette (aucune écriture, étape perdue à chaque visite). Les états
+ * restants ci-dessous sont, eux, de pures démonstrations d'interface.
  */
 class StateController extends Controller
 {
-    public function onboarding(): View
-    {
-        return view('states.onboarding');
-    }
-
     public function loading(): View
     {
         return view('states.loading');

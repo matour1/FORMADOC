@@ -30,6 +30,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'onboarding_completed_at' => 'datetime',
             'is_admin' => 'boolean',
             'is_suspended' => 'boolean',
             'password' => 'hashed',
@@ -110,6 +111,39 @@ class User extends Authenticatable
     public function canSignIn(): bool
     {
         return ! $this->is_suspended;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Parcours d'accueil (onboarding)
+    |--------------------------------------------------------------------------
+    | L'étape vit sur le COMPTE, pas en session : un parcours interrompu se
+    | reprend exactement où il s'était arrêté, même après expiration de session
+    | ou changement d'appareil. Voir OnboardingController pour le parcours.
+    */
+
+    /**
+     * Étape courante du parcours, bornée à [1, 4].
+     *
+     * La borne est appliquée à la LECTURE en plus de l'écriture : une valeur
+     * aberrante en base (import, édition manuelle) doit produire une étape valide,
+     * jamais un écran vide ni une exception.
+     */
+    public function onboardingStep(): int
+    {
+        return max(1, min(4, (int) ($this->onboarding_step ?? 1)));
+    }
+
+    /**
+     * Le parcours est-il terminé ?
+     *
+     * La date d'achèvement est le seul signal : `onboarding_step` peut rester à
+     * une valeur intermédiaire sans que le parcours soit fini (l'utilisateur a
+     * avancé puis fermé l'onglet).
+     */
+    public function hasCompletedOnboarding(): bool
+    {
+        return $this->onboarding_completed_at !== null;
     }
 
     public function creditTransactions(): HasMany

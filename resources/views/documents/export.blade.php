@@ -6,15 +6,56 @@
     @include('partials.flow-sidebar', ['activeStep' => 4, 'document' => $document])
 
     @php
+        // Deux formats coexistent (stratégie du strangler) :
+        //  - `structural_json` : pipeline natif, la source de vérité dès qu'il existe ;
+        //  - `structure` : format historique, pour les documents traités avant.
+        //
+        // **Pourquoi cette page devait lire AUSSI le pipeline natif.** Elle ne lisait
+        // que `structure`, et le DOCX reconstruit est produit par le pipeline natif
+        // (`DocumentController::writeDocument`). L'écran annonçait donc des chiffres
+        // SANS RAPPORT avec le fichier téléchargé : mesuré sur un document réel,
+        // « 8 titres, 0 légende » à l'export contre « 14 titres, 4 légendes » à la
+        // validation — le même document, deux comptages. L'utilisateur qui vérifie
+        // ce qu'il a obtenu lisait un résumé faux.
         $data = $structure->structure ?? [];
-        $titres = $data['titres'] ?? [];
-        $sousTitres = $data['sous_titres'] ?? [];
-        $enTetes = $data['en_tetes'] ?? [];
-        $piedsDePage = $data['pieds_de_page'] ?? [];
-        $tableaux = $data['tableaux'] ?? [];
-        $images = $data['images'] ?? [];
-        $legends = $data['legends'] ?? [];
-        $titreCount = count($titres) + count($sousTitres);
+        $structurel = $structure?->structuralDocument();
+
+        if ($structurel !== null) {
+            $titres = array_map(
+                static fn ($bloc): array => ['texte' => $bloc->text],
+                $structurel->headings(),
+            );
+            $sousTitres = [];
+            $titreCount = count($titres);
+            $tableaux = $structurel->blocksOfType(\App\Document\Structure\BlockType::Table);
+            $images = $structurel->blocksOfType(\App\Document\Structure\BlockType::Image);
+            $legends = $structurel->blocksOfType(\App\Document\Structure\BlockType::Caption);
+
+            // **En-têtes et pieds de page : un ÉTAT, pas un comptage.**
+            // Le pipeline natif ne crée pas de bloc `header` : il signale leur
+            // présence dans `meta.has_headers` (un en-tête est INJECTÉ depuis le
+            // gabarit, il n'est pas recopié du document source). Compter
+            // `blocksOfType(Header)` affichait « 0 » sur un document qui en a un —
+            // en branchant cette page sur le natif, ce compteur est passé de 1 à 0,
+            // d'un chiffre faux à un autre. On expose donc le FAIT (« présent » ou
+            // non), jamais un nombre que le pipeline ne mesure pas.
+            $aEnTete = $structurel->meta['has_headers'] ?? null;
+            $aPied = $structurel->meta['has_footers'] ?? null;
+        } else {
+            $titres = $data['titres'] ?? [];
+            $sousTitres = $data['sous_titres'] ?? [];
+            $enTetes = $data['en_tetes'] ?? [];
+            $piedsDePage = $data['pieds_de_page'] ?? [];
+            $tableaux = $data['tableaux'] ?? [];
+            $images = $data['images'] ?? [];
+            $legends = $data['legends'] ?? [];
+            $titreCount = count($titres) + count($sousTitres);
+            // Format historique : les en-têtes/pieds sont de vrais textes, l'état
+            // se déduit donc simplement de leur nombre.
+            $aEnTete = count($enTetes) > 0;
+            $aPied = count($piedsDePage) > 0;
+        }
+
         $selectedTemplateId = $document->metadata['preview_template_id'] ?? null;
         $pdfAvailable = is_string($document->metadata['pdf_preview_path'] ?? null)
             && trim($document->metadata['pdf_preview_path'] ?? '') !== '';
@@ -210,8 +251,8 @@
                                 ['table', 'Tableaux', count($tableaux)],
                                 ['image', 'Images', count($images)],
                                 ['tag', 'Légendes', count($legends)],
-                                ['panel-top', 'En-têtes', count($enTetes)],
-                                ['panel-bottom', 'Pieds de page', count($piedsDePage)],
+                                ['panel-top', 'En-tête', $aEnTete === null ? '—' : ($aEnTete ? 'Oui' : 'Non')],
+                                ['panel-bottom', 'Pied de page', $aPied === null ? '—' : ($aPied ? 'Oui' : 'Non')],
                             ];
                         @endphp
                         @foreach ($stats as $stat)

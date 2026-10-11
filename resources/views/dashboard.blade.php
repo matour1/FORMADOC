@@ -14,6 +14,25 @@
         </a>
     </div>
 
+    {{--
+        Reprise du parcours d'accueil.
+
+        Pourquoi ce bandeau et pas une redirection forcée : un utilisateur qui a
+        créé son compte puis est allé directement sur le tableau de bord ne doit
+        pas être RAMENÉ à l'onboarding à chaque visite. Le bandeau propose, il
+        n'impose pas — et il disparaît dès que le parcours est terminé.
+    --}}
+    @unless ($onboardingCompleted)
+        <div class="banner banner-info" style="margin-bottom:1.5rem">
+            <i data-lucide="sparkles"></i>
+            <div style="flex:1">
+                <strong>Terminez votre configuration</strong>
+                <div>Quelques étapes pour tirer le meilleur de FORMADOC.</div>
+            </div>
+            <a href="{{ route('onboarding') }}" class="btn btn-primary btn-sm">Reprendre</a>
+        </div>
+    @endunless
+
     {{-- Statistiques --}}
     {{--
         Les classes `stat-icon` / `value` / `label` employées ici auparavant
