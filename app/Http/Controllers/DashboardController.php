@@ -40,6 +40,11 @@ class DashboardController extends Controller
             'chatCount' => $chatCount,
             'quotaStatus' => $quotaStatus,
             'planSlug' => $user->currentPlanSlug(),
+            // Parcours d'accueil non terminé : le tableau de bord propose de le
+            // reprendre. Le drapeau est calculé ici (et non dans la vue) pour que
+            // l'oublier soit visible — une vue qui appelle le modèle directement
+            // finit par lire une donnée non chargée.
+            'onboardingCompleted' => $user->hasCompletedOnboarding(),
         ]);
     }
 

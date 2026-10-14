@@ -13,3 +13,10 @@ Le contrôleur `DocumentController::show()` passe `undoHistory` (via `DocumentEd
 La route `documents.undo-edit` reste **dans le groupe `middleware(['auth'])`**. Ne jamais la déplacer : elle agit sur le contenu d'autrui sinon.
 
 Sémantique affichée à l'utilisateur : restaurer un état **remplace** le contenu actuel, et l'annulation n'est pas elle-même annulable. C'est indiqué dans la vue, car un utilisateur qui restaure un état ancien sans le savoir perdrait son travail récent.
+
+## Toute vue qui résume un document doit lire structural_json en premier
+Deux formats de structure coexistent : `document_structures.structure` (ancien : titres/legends/tableaux) et `structural_json` (pipeline natif, blocs typés). Le DOCX livré est produit par le NATIF (`DocumentController::writeDocument`).
+
+Une vue qui ne lit que `structure` affiche des chiffres SANS RAPPORT avec le fichier téléchargé. Défaut réel (2026-10-11) : l'export annonçait « 8 titres, 0 légende » quand la validation disait « 14 titres, 4 légendes » pour le même document.
+
+Le natif ne crée PAS de bloc `header`/`footer` : la présence est dans `meta.has_headers` (booléen) -> afficher un ÉTAT (Oui/—), jamais un comptage de blocs. Verrouillé par `ParcoursCompletFlowTest::test_export_et_validation_comptent_la_meme_structure`.

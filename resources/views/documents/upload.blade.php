@@ -220,11 +220,17 @@
                 logEl.scrollTop = logEl.scrollHeight;
             }
 
-            // Étapes affichées pendant la requête (adaptées à la méthode + IA)
-            function startAnimation(method, useAi) {
+            // Étapes affichées pendant la requête, selon le MODE choisi (`regex`,
+            // `assiste`, `precision`). Le nom du champ a changé avec l'introduction
+            // du sélecteur unique : l'ancienne version lisait `title_method` et une
+            // case `use_ai`, qui n'existent plus — le `querySelector(...):checked`
+            // renvoyait alors `null`, et `.value` levait une exception APRÈS
+            // `preventDefault()` : le formulaire n'était JAMAIS envoyé et la page
+            // restait bloquée sur « Analyse en cours… ».
+            function startAnimation(mode) {
                 const steps = [];
 
-                if (method === 'ia') {
+                if (mode === 'precision') {
                     steps.push(
                         ['Analyse des styles et du texte du document…', 'description'],
                         ['Envoi du contenu à l\'IA (DeepSeek)…', 'smart_toy'],
@@ -233,7 +239,7 @@
                         ['Détection des légendes (figures, tableaux)…', 'image'],
                         ['Fusion des résultats et normalisation de la structure…', 'merge']
                     );
-                } else if (useAi) {
+                } else if (mode === 'assiste') {
                     steps.push(
                         ['Analyse des styles Word (Heading, tailles, gras)…', 'format_bold'],
                         ['Détection des titres par motifs regex…', 'rule'],
@@ -293,9 +299,12 @@
                 titleEl.textContent = 'Analyse en cours…';
                 subtitleEl.textContent = 'Veuillez patienter pendant que FORMADOC examine votre rapport.';
 
-                const method = document.querySelector('input[name="title_method"]:checked').value;
-                const useAi = document.getElementById('use_ai')?.checked || false;
-                const anim = startAnimation(method, useAi);
+                // Mode choisi : `regex` (gratuit), `assiste` ou `precision`.
+                // La garde `?.value` évite le blocage total si aucun bouton n'est
+                // coché (formulaire forgé, état inattendu) : on retombe sur le mode
+                // gratuit, jamais sur une exception qui empêcherait l'envoi.
+                const mode = document.querySelector('input[name="mode"]:checked')?.value || 'regex';
+                const anim = startAnimation(mode);
 
                 const fd = new FormData(form);
 

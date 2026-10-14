@@ -139,4 +139,40 @@ class ParcoursCompletFlowTest extends TestCase
         $this->assertSame(5, $feedback->note);
         $this->assertTrue($feedback->recommander);
     }
+
+    /**
+     * **La page d'export doit compter la MÊME structure que la validation.**
+     *
+     * Défaut réel mesuré le 2026-10-11 : la validation lit `structural_json`
+     * (pipeline natif) alors que l'export ne lisait que l'ancien `structure`. Sur
+     * un document de test, la validation affichait « 14 titres · 4 légendes » et
+     * l'export « 8 titres · 0 légende » — pour le MÊME document. Or le DOCX
+     * téléchargé est produit par le pipeline natif : c'est donc l'export qui
+     * mentait sur ce que l'utilisateur allait obtenir.
+     *
+     * Le test compare les DEUX écrans : si une page repasse à une autre source,
+     * les chiffres divergent et l'assertion casse. Contrôler une seule page ne
+     * l'aurait pas vu — le défaut était justement leur désaccord.
+     */
+    public function test_export_et_validation_comptent_la_meme_structure(): void
+    {
+        $document = $this->uploadReport();
+
+        $validation = $this->get("/documents/{$document->hash_id}");
+        $validation->assertOk();
+
+        $this->post("/documents/{$document->hash_id}/validate", [])->assertRedirect();
+
+        $export = $this->get(route('documents.export', $document));
+        $export->assertOk();
+
+        // 3 titres (« Introduction », « Institution », « Contexte ») et 2 légendes
+        // (« Figure 1 », « Tableau 1 »). Le comptage des LÉGENDES n'apparaît en
+        // clair que sur la validation ; l'export l'affiche dans une cellule à part
+        // (chiffre et libellé séparés), donc c'est le comptage des TITRES — continu
+        // sur les deux écrans — qui sert de point de comparaison.
+        $validation->assertSee('3 titres détectés');
+        $validation->assertSee('2 légendes détectées');
+        $export->assertSee('3 titres mis en forme');
+    }
 }

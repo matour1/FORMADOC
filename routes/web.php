@@ -12,6 +12,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\LandingController;
+use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\PaymentLinkController;
 use App\Http\Controllers\SampleDocumentController;
 use App\Http\Controllers\StateController;
@@ -39,8 +40,12 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/templates', [TemplateController::class, 'index'])->name('templates.index');
     Route::get('/templates/compare', [TemplateController::class, 'compare'])->name('templates.compare');
 
-    // Onboarding (parcours premiers pas)
-    Route::get('/onboarding', [StateController::class, 'onboarding'])->name('onboarding');
+    // Onboarding (parcours d'accueil persistant, 4 étapes)
+    Route::get('/onboarding', [OnboardingController::class, 'show'])->name('onboarding');
+    Route::post('/onboarding/preferences', [OnboardingController::class, 'storePreferences'])->name('onboarding.preferences');
+    Route::post('/onboarding/advance', [OnboardingController::class, 'advance'])->name('onboarding.advance');
+    Route::post('/onboarding/plan', [OnboardingController::class, 'choosePlan'])->name('onboarding.plan');
+    Route::post('/onboarding/complete', [OnboardingController::class, 'complete'])->name('onboarding.complete');
 
     // Démonstrations d'états (fidélité template)
     Route::get('/demo/loading', [StateController::class, 'loading'])->name('demo.loading');
