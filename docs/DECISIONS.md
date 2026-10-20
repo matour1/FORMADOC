@@ -201,6 +201,44 @@ de précision sur ce même corpus avant activation.
 
 ---
 
+## D-009 — `mc:Fallback` ne produit aucun doublon : aucune correction nécessaire
+
+**Date** : 2026-10-20
+**Contexte** : les instructions (§3) avertissent que `mc:AlternateContent`
+contient `mc:Choice` (moderne) **et** `mc:Fallback` (copie VML). Une lecture qui
+ne filtre pas le fallback verrait chaque élément **deux fois**. Ce risque était
+identifié comme dette à traiter.
+
+**Décision** : **ne rien corriger**. Le risque n'existe pas dans ce pipeline.
+
+### La mesure, sur trois documents
+
+| Document | `mc:Fallback` | Paragraphes dans un fallback | Doublons consécutifs produits |
+| --- | --- | --- | --- |
+| `RAPPORT DE STAGE DQP.docx` | 37 | 27 | **1** |
+| `RAPPORT DE STAGE DQP 1 .docx` | 37 | 27 | **1** |
+| `0yST9jio…docx` | — | — | **0** |
+
+Les 37 fallbacks contiennent bien 26 `w:txbxContent`, 27 `w:p` et 35 `w:t` — le
+contenu dupliqué **existe** dans le XML. Mais le pipeline ne le lit pas : il
+parcourt les enfants **directs** de `w:body` (`w:p`, `w:tbl`), et un fallback est
+imbriqué dans un `w:drawing` d'un de ces paragraphes. Le contenu n'est donc
+jamais atteint.
+
+### Le seul doublon observé ne vient PAS du fallback
+
+« Le fonctionnement de l'entreprise » apparaît deux fois. Vérification dans le
+XML : les deux paragraphes sont en **corps direct** (positions 320 et 321), avec
+des `positionY` distinctes (323 et 324). C'est le **document source** qui
+contient deux fois ce texte — un défaut de rédaction, pas de lecture.
+
+**Révision** : si un futur lecteur parcourt récursivement l'arbre (par exemple
+pour extraire les titres de tous les `w:p` sans distinguer les niveaux), il
+faudra alors filtrer `mc:Fallback`. La présente décision porte sur le lecteur
+actuel, pas sur tous les lecteurs possibles.
+
+---
+
 ## Décisions validées par le responsable — 2026-10-18
 
 > Chaque ligne est un **arbitrage rendu**, plus une proposition.
