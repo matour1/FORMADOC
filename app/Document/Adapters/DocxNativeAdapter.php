@@ -71,6 +71,24 @@ final class DocxNativeAdapter implements InputAdapter
      */
     private const DENSITE_MINIMALE = 4;
 
+    /**
+     * Intitulés écrits par le GÉNÉRATEUR lui-même (« DocumentReconstructor »).
+     *
+     * Ces titres ne doivent jamais être promus depuis le document source : ils
+     * seraient alors en double, et « SOMMAIRE » figurerait comme entrée de son
+     * propre sommaire. Comparaison en majuscules, sans accents.
+     *
+     * @var array<int, string>
+     */
+    private const INTITULES_GENERES = [
+        'SOMMAIRE',
+        'TABLE DES MATIERES',
+        'LISTE DES FIGURES',
+        'LISTE DES TABLEAUX',
+        'LISTE DES ANNEXES',
+        'LISTE DES PLANCHES',
+    ];
+
     private readonly HeadingNumberingPattern $numberingPattern;
 
     private readonly CaptionPattern $captionPattern;
@@ -874,8 +892,6 @@ final class DocxNativeAdapter implements InputAdapter
      */
     private function promouvoirTitresEnZonesDeTexte(\DOMDocument $document, array $blocks): array
     {
-        $this->stylesEnCours ??= null;
-
         $fallbacks = XmlLoader::query($document, '//mc:Fallback');
         $zones = XmlLoader::query($document, '//w:txbxContent');
 
@@ -893,34 +909,33 @@ final class DocxNativeAdapter implements InputAdapter
             }
         }
 
-        $ajoutes = [];
-        $position = count($blocks);
+        // --- Ancre de chaque zone, exprimée en INDICE DE PARAGRAPHE DU CORPS ---
+        //
+        // **C'est le point qui a fait échouer la première version.** Les blocs
+        // promus étaient ajoutés À LA FIN du tableau : le document se retrouvait
+        // avec « DEDICACE » et « CHAPITRE I » après le corps rédigé, donc dans un
+        // ordre faux. Sur le document de référence, cela plaçait 11 titres après
+        // 320 blocs de contenu — un document visiblement désordonné, et un
+        // sommaire généré dans le mauvais ordre.
+        //
+        // Une zone de texte est ANCRÉE dans un paragraphe du corps ; c'est donc
+        // cet indice qui détermine sa place. On le relève en parcourant les
+        // paragraphes directs de `w:body`, exactement comme `readBody`.
+        $ancre = $this->indexerZonesParParagraphe($document, $dansFallback);
+
+        $ajouts = [];
 
         foreach ($zones as $zone) {
             if (in_array($zone, $dansFallback, true)) {
                 continue;
             }
 
-            // Garde-fou 1 : un schéma ou une image dans la zone la rend
-            // intouchable. C'est le cas des organigrammes, où chaque forme porte
-            // un mot et où le premier paragraphe n'est pas un titre.
-            //
-            // **Le test doit regarder AUSSI LES ANCÊTRES, pas seulement les
-            // descendants.** Dans un schéma, la zone de texte est le CONTENU de
-            // la forme : `wps:wsp > wps:txbx > w:txbxContent`. Chercher `wps:wsp`
-            // à l'intérieur de la zone ne trouve donc rien — le test passait à
-            // côté du cas qu'il devait couvrir, et promouvait un fragment de
-            // diagramme en titre. Constaté par le test unitaire, pas en relisant
-            // le code.
-            if ($this->zoneAppartientAUnSchema($zone)
-                || XmlLoader::query($document, './/wps:wsp', $zone) !== []) {
+            if ($this->zoneAppartientAUnSchema($zone)) {
                 continue;
             }
 
             $paragraphes = XmlLoader::query($document, './/w:p', $zone);
 
-            // Une zone de plus de deux paragraphes n'est pas un titre : c'est un
-            // encadré de contenu. La promotion produirait un bloc artificiel.
             if ($paragraphes === [] || count($paragraphes) > 2) {
                 continue;
             }
@@ -931,33 +946,169 @@ final class DocxNativeAdapter implements InputAdapter
                 continue;
             }
 
-            // Garde-fou 2 : le contenu doit répondre aux règles de titre. On
-            // réutilise `HeadingNumberingPattern`, éprouvé sur le corpus, plutôt
-            // que d'inventer un critère propre à ce chemin.
+            // Un intitulé de frontispice que le générateur produit lui-même
+            // (« SOMMAIRE », « TABLE DES MATIERES », listes) ne doit PAS devenir
+            // un titre : il créerait une entrée dans le sommaire qu'on génère,
+            // et un doublon avec celui du générateur.
+            if ($this->estIntituleDeFrontispice($texte)) {
+                continue;
+            }
+
             $motif = $this->numberingPattern->detect($texte);
 
             if ($motif === null) {
                 continue;
             }
 
-            $position++;
-            $ajoutes[] = new Block(
-                blockId: $this->blockId($position),
-                type: BlockType::Heading,
-                text: $texte,
-                headingLevel: $motif['level'],
-                // Confiance légèrement inférieure à un titre du corps : le texte
-                // est lu, mais son style Word n'est pas celui du corps (il vit
-                // dans un cadre). Un titre sans style reste un signal de
-                // numérotation, pas une certitude de mise en forme.
-                confidence: 0.8,
-                fontSize: null,
-                positionY: (float) $position,
-                fidelity: $this->fidelity(),
-            );
+            $position = $ancre[spl_object_id($zone)] ?? null;
+
+            $ajouts[] = [
+                'ancre' => $position,
+                'block' => new Block(
+                    // Identifiant provisoire : `Block` refuse une chaîne vide, et
+                    // l'identifiant définitif ne peut être connu qu'APRÈS
+                    // l'insertion (il dépend de la position finale). Il est
+                    // réattribué dans la boucle de renumérotation ci-dessous.
+                    blockId: 'tmp_'.count($ajouts),
+                    type: BlockType::Heading,
+                    text: $texte,
+                    headingLevel: $motif['level'],
+                    confidence: 0.8,
+                    fontSize: null,
+                    positionY: (float) ($position ?? 0),
+                    fidelity: $this->fidelity(),
+                ),
+            ];
         }
 
-        return [...$blocks, ...$ajoutes];
+        if ($ajouts === []) {
+            return $blocks;
+        }
+
+        // --- Insertion à la position réelle, puis renumérotation des identifiants
+        //
+        // **`Block::$blockId` est `readonly`.** On ne peut donc PAS insérer des
+        // blocs puis corriger leur identifiant : il faut construire la liste
+        // finale dans le bon ordre, et n'attribuer les identifiants qu'à ce
+        // moment-là. Une première version réattribuait après coup et levait
+        // « Cannot modify readonly property » — l'erreur survient AVANT toute
+        // sortie, donc le défaut est bruyant, ce qui est préférable.
+        $parAncre = [];
+
+        foreach ($ajouts as $ajout) {
+            $parAncre[$ajout['ancre'] ?? PHP_INT_MAX][] = $ajout['block'];
+        }
+
+        ksort($parAncre);
+
+        $resultat = [];
+        $index = 0;
+
+        foreach ($blocks as $position => $bloc) {
+            // Les titres promus dont l'ancre DÉSIGNE ce paragraphe passent avant
+            // lui : la zone de texte est le plus souvent le titre de la page, et
+            // le paragraphe qui l'ancre est un conteneur vide.
+            foreach ($parAncre[$position] ?? [] as $promu) {
+                $resultat[] = $this->reidentifier($promu, $index++);
+            }
+
+            unset($parAncre[$position]);
+            $resultat[] = $bloc;
+            $index++;
+        }
+
+        // Ceux dont l'ancre dépasse la fin (cas limite) vont en fin de document.
+        foreach ($parAncre as $restants) {
+            foreach ($restants as $promu) {
+                $resultat[] = $this->reidentifier($promu, $index++);
+            }
+        }
+
+        return $resultat;
+    }
+
+    /**
+     * Reconstruit un bloc avec un identifiant définitif.
+     *
+     * `Block::$blockId` étant `readonly`, la seule façon de le fixer est de
+     * construire un nouveau bloc. On recopie TOUTES les propriétés : oublier un
+     * champ ici perdrait silencieusement une donnée (numéro, catégorie, réf.
+     * d'image) à la reconstruction.
+     */
+    private function reidentifier(Block $bloc, int $index): Block
+    {
+        return new Block(
+            blockId: $this->blockId($index),
+            type: $bloc->type,
+            text: $bloc->text,
+            headingLevel: $bloc->headingLevel,
+            confidence: $bloc->confidence,
+            fontSize: $bloc->fontSize,
+            isBold: $bloc->isBold,
+            indentLevel: $bloc->indentLevel,
+            positionY: $bloc->positionY,
+            fidelity: $bloc->fidelity,
+            category: $bloc->category,
+            originalNumber: $bloc->originalNumber,
+            finalNumber: $bloc->finalNumber,
+            imageRef: $bloc->imageRef,
+            tableData: $bloc->tableData,
+            linkedBlockId: $bloc->linkedBlockId,
+        );
+    }
+
+    /**
+     * Associe chaque zone de texte à l'indice du paragraphe du corps qui l'ancre.
+     *
+     * L'indice suit le même comptage que `readBody` : un paragraphe vide reste
+     * compté, car il occupe une position dans le document. Sans cette
+     * correspondance, une zone promue ne peut pas être insérée au bon endroit.
+     *
+     * @param  array<int, DOMElement>  $exclues  copies de `mc:Fallback`
+     * @return array<int, int> identifiant d'objet de la zone → indice du paragraphe
+     */
+    private function indexerZonesParParagraphe(\DOMDocument $document, array $exclues): array
+    {
+        $index = [];
+        $paragraphes = XmlLoader::query($document, '/w:document/w:body/w:p');
+
+        foreach ($paragraphes as $position => $paragraphe) {
+            foreach (XmlLoader::query($document, './/w:txbxContent', $paragraphe) as $zone) {
+                if (in_array($zone, $exclues, true)) {
+                    continue;
+                }
+
+                $index[spl_object_id($zone)] = $position;
+            }
+        }
+
+        return $index;
+    }
+
+    /**
+     * L'intitulé est-il produit par le générateur lui-même ?
+     *
+     * Ces titres sont écrits par `DocumentReconstructor` dans la section du
+     * frontispice : « SOMMAIRE », « TABLE DES MATIERES », listes de figures et de
+     * tableaux. Les promouvoir depuis le document source créerait un doublon, et
+     * ferait figurer « SOMMAIRE » comme entrée de son propre sommaire.
+     */
+    private function estIntituleDeFrontispice(string $texte): bool
+    {
+        $normalise = mb_strtoupper(trim($texte));
+
+        // Sans accents, pour comparer « DÉDICACE » et « DEDICACE ».
+        $normalise = strtr($normalise, [
+            'É' => 'E', 'È' => 'E', 'Ê' => 'E', 'À' => 'A', 'Ç' => 'C', 'Ô' => 'O', 'Î' => 'I', 'Ù' => 'U',
+        ]);
+
+        foreach (self::INTITULES_GENERES as $intitule) {
+            if ($normalise === $intitule || str_starts_with($normalise, $intitule.' ')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
