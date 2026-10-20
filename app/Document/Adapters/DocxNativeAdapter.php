@@ -11,6 +11,7 @@ use App\Document\Adapters\DocxOoxml\StyleReader;
 use App\Document\Adapters\DocxOoxml\TableReader;
 use App\Document\Adapters\DocxOoxml\XmlLoader;
 use App\Document\Classification\CaptionPattern;
+use App\Document\Classification\CoverPageDetector;
 use App\Document\Classification\HeadingNumberingPattern;
 use App\Document\Structure\Block;
 use App\Document\Structure\BlockCategory;
@@ -19,6 +20,7 @@ use App\Document\Structure\Fidelity;
 use App\Document\Structure\StructuralDocument;
 use App\Document\Structure\TableData;
 use DOMElement;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Adaptateur d'entrée pour les documents Word natifs (`.docx`).
@@ -116,8 +118,9 @@ final class DocxNativeAdapter implements InputAdapter
      */
     private ?StyleReader $stylesEnCours = null;
 
-    public function __construct()
-    {
+    public function __construct(
+        private readonly CoverPageDetector $detecteurDeGarde = new CoverPageDetector,
+    ) {
         $this->numberingPattern = new HeadingNumberingPattern;
         $this->captionPattern = new CaptionPattern;
     }
@@ -181,10 +184,37 @@ final class DocxNativeAdapter implements InputAdapter
 
             $body = $this->readBody($package, $paragraphs, $tables);
 
+            // --- Suppression de la page de garde -------------------------------
+            //
+            // **Pourquoi ici, et pas plus tôt.** La détection a besoin des blocs
+            // déjà classifiés (un titre liminaire « SOMMAIRE » doit être reconnu
+            // comme tel), donc après `readBody`. Elle intervient avant la
+            // construction du document structurel, de sorte que tout l'aval
+            // (renumérotation, listes, export) travaille sur un document déjà
+            // nettoyé.
+            //
+            // **Décision du responsable (2026-10-19)** : l'outil ne génère pas de
+            // page de garde, donc il ne la prend pas en charge ; si elle existe,
+            // elle est supprimée. C'est l'une des deux seules exceptions au
+            // principe « ne jamais perdre de contenu » — l'autre étant les
+            // sommaires régénérés.
+            $garde = $this->detecteurDeGarde->detecter($body['blocks']);
+            $blocs = $body['blocks'];
+
+            if ($garde['supprimer'] > 0) {
+                $blocs = array_slice($blocs, $garde['supprimer']);
+
+                Log::info('Page de garde supprimée', [
+                    'document_id' => $documentId,
+                    'blocs_supprimes' => $garde['supprimer'],
+                    'raison' => $garde['raison'],
+                ]);
+            }
+
             return new StructuralDocument(
                 documentId: $documentId,
                 sourceType: $this->sourceType(),
-                blocks: $body['blocks'],
+                blocks: $blocs,
                 meta: [
                     'fidelity' => $this->fidelity()->value,
                     'style_count' => $styles->count(),
@@ -194,6 +224,11 @@ final class DocxNativeAdapter implements InputAdapter
                     'tables_with_merges' => $body['tables_with_merges'],
                     'has_headers' => $this->hasHeadersOrFooters($package),
                     'image_count' => count($this->imageRelations($package)),
+                    // Trace de la suppression : le rapport utilisateur doit
+                    // pouvoir dire ce qui a été retiré, et pourquoi.
+                    'cover_page' => $garde['supprimer'] > 0
+                        ? ['supprime' => $garde['supprimer'], 'raison' => $garde['raison']]
+                        : null,
                 ],
             );
         } finally {
