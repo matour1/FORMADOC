@@ -93,7 +93,7 @@ class TextBoxHeadingPromotionTest extends TestCase
             .' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
             .' xmlns:v="urn:schemas-microsoft-com:vml">'
             .'<w:body>'
-            .'<w:p><w:r><w:t>CORPS DU RAPPORT</w:t></w:r></w:p>'
+            .'<w:p><w:r><w:t>Corps du rapport, en casse normale.</w:t></w:r></w:p>'
             .$alternate
             .'<w:sectPr/></w:body></w:document>';
 
@@ -211,7 +211,7 @@ class TextBoxHeadingPromotionTest extends TestCase
         );
 
         $positionTitre = array_search('CHAPITRE I : PRESENTATION', $textes, true);
-        $positionCorps = array_search('CORPS DU RAPPORT', $textes, true);
+        $positionCorps = array_search('Corps du rapport, en casse normale.', $textes, true);
 
         $this->assertNotFalse($positionTitre, 'Le titre promu doit exister.');
         $this->assertNotFalse($positionCorps);
