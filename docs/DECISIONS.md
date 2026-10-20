@@ -151,6 +151,56 @@ restaurer sans demande écraserait son choix. Ils restent disponibles via Git
 
 ---
 
+## D-008 — Les titres sans signal typographique ne sont PAS détectés
+
+**Date** : 2026-10-20
+**Contexte** : après la promotion des zones de texte et la règle des majuscules,
+le rappel atteint 75,0 % sur la paire de référence. **21 titres** du document
+final restent non détectés.
+**Décision** : **ne pas** les détecter par heuristique dans cette version.
+
+### Ce que la mesure a établi
+
+Les 21 titres restants ont été caractérisés un par un :
+
+| Caractéristique | Constat |
+| --- | --- |
+| Gras | **aucun** |
+| Taille de police | **12 pt** — identique au corps |
+| Alignement | **identique** au corps |
+| Casse | 0 % à 67 % de mots capitalisés (majorité en casse normale) |
+
+**Aucun signal typographique ne les distingue du texte courant.** Ce ne sont pas
+des titres « mal détectés » : ce sont des paragraphes qui, dans le XML du
+document source, sont **rigoureusement identiques** à du corps de texte. Le
+document final les stylise, mais cette information n'existe pas en entrée.
+
+### Deux heuristiques testées, et rejetées sur mesure
+
+| Signal candidat | Précision mesurée | Verdict |
+| --- | --- | --- |
+| Préfixe répété (≥ 2 paragraphes commençant pareil) | **50,0 %** | Rejeté |
+| Court, suivi d'un paragraphe 3× plus long | **61,3 %** | Rejeté |
+| Combinaison des deux | **61,3 %** | Rejeté |
+
+À 50 % de précision, **un titre sur deux serait faux** — sur du contenu
+d'utilisateur, c'est inacceptable. À 61,3 %, près de deux sur cinq.
+
+### Ce que cela implique
+
+Les 21 titres restants (`Scénario 1 : …`, `Les fournisseurs`, `Séquence
+Connexion`, `Bilan des charges`…) n'apparaîtront **pas** dans le sommaire généré.
+Ils restent dans le **corps du document** — aucune perte de contenu.
+
+**C'est un plafond de la détection déterministe, pas un défaut à corriger par
+une règle supplémentaire.** Les dépasser exige un classifieur entraîné ou une
+IA — le point d'entrée prévu par l'interface `HeadingClassifier`.
+
+**Révision** : quand un classifieur (IA ou modèle) sera branché, avec une mesure
+de précision sur ce même corpus avant activation.
+
+---
+
 ## Décisions validées par le responsable — 2026-10-18
 
 > Chaque ligne est un **arbitrage rendu**, plus une proposition.
