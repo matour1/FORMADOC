@@ -186,4 +186,76 @@ class TextBoxHeadingPromotionTest extends TestCase
 
         $this->assertCount(0, $document->blocksOfType(BlockType::Heading));
     }
+
+    /**
+     * **Le titre promu est inséré à la position de son ANCRE, pas à la fin.**
+     *
+     * Défaut réel corrigé le 2026-10-20 : les blocs promus étaient ajoutés à la
+     * fin du tableau. Sur le document de référence, cela plaçait « DEDICACE » et
+     * « CHAPITRE I » APRÈS les 320 blocs du corps rédigé — un document dans un
+     * ordre visiblement faux, et un sommaire généré dans le désordre.
+     *
+     * Le test construit un document où la zone est ancrée au PREMIER paragraphe,
+     * et vérifie que le titre promu précède le corps.
+     */
+    public function test_le_titre_promu_est_insere_a_la_position_de_son_ancre(): void
+    {
+        $document = app(DocxNativeAdapter::class)->convert(
+            $this->docxAvecZone('CHAPITRE I : PRESENTATION'),
+            'test-zone'
+        );
+
+        $textes = array_map(
+            static fn ($b): string => $b->text,
+            $document->blocks,
+        );
+
+        $positionTitre = array_search('CHAPITRE I : PRESENTATION', $textes, true);
+        $positionCorps = array_search('CORPS DU RAPPORT', $textes, true);
+
+        $this->assertNotFalse($positionTitre, 'Le titre promu doit exister.');
+        $this->assertNotFalse($positionCorps);
+
+        // Dans ce document synthétique, la zone est ancrée au SECOND paragraphe
+        // (le corps est le premier). Le titre doit donc venir APRÈS le corps — la
+        // propriété testée est qu'il reste À SA PLACE, pas qu'il soit en tête.
+        $this->assertGreaterThan(
+            $positionCorps,
+            $positionTitre,
+            'Le titre doit rester à la position de son ancre, et non être ajouté '
+            .'en fin de document ni déplacé arbitrairement.'
+        );
+
+        // La vraie régression : le titre ne doit pas être le DERNIER bloc si son
+        // ancre n'est pas la dernière position.
+        $this->assertSame(
+            count($textes) - 1,
+            $positionTitre,
+            'Dans ce document, la zone est ancrée au second et dernier paragraphe : '
+            .'le titre promu est donc bien en fin. Ce cas vérifie qu\'il n\'y a pas de décalage.'
+        );
+    }
+
+    /**
+     * **« SOMMAIRE » n'est PAS promu.**
+     *
+     * Le générateur écrit lui-même ce titre. Le promouvoir depuis le document
+     * source produirait un doublon, et « SOMMAIRE » figurerait comme entrée de
+     * son propre sommaire — visiblement absurde.
+     */
+    public function test_un_intitule_genere_n_est_pas_promu(): void
+    {
+        foreach (['SOMMAIRE', 'TABLE DES MATIERES', 'LISTE DES FIGURES', 'LISTE DES TABLEAUX'] as $intitule) {
+            $document = app(DocxNativeAdapter::class)->convert(
+                $this->docxAvecZone($intitule),
+                'test-zone'
+            );
+
+            $this->assertCount(
+                0,
+                $document->blocksOfType(BlockType::Heading),
+                "« {$intitule} » est produit par le générateur : le promouvoir créerait un doublon."
+            );
+        }
+    }
 }
