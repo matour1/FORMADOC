@@ -101,4 +101,25 @@ return [
         'ocr' => false,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Garde-fous d'ouverture d'un paquet .docx
+    |--------------------------------------------------------------------------
+    | **La limite de 50 Mo ne protège pas contre une bombe de décompression.**
+    | Elle porte sur le fichier COMPRESSÉ. Une archive de quelques mégaoctets
+    | peut déclarer des entrées dont la taille décompressée atteint plusieurs
+    | gigaoctets, et épuiser la mémoire du serveur.
+    |
+    | Ces seuils sont volontairement généreux : une mémoire illustrée légitime
+    | reste très en dessous. Ils visent l'anomalie manifeste, pas la marge.
+    |
+    | `max_uncompressed_bytes` : 500 Mo (524 288 000 octets).
+    | `max_entries` : 5 000 parties. Un `.docx` normal en compte quelques
+    | dizaines ; 5 000 est déjà le signe d'une archive construite ou corrompue.
+    */
+    'security' => [
+        'max_uncompressed_bytes' => (int) env('DOCUMENT_MAX_UNCOMPRESSED_BYTES', 524_288_000),
+        'max_entries' => (int) env('DOCUMENT_MAX_ENTRIES', 5_000),
+    ],
+
 ];

@@ -62,4 +62,24 @@ final class DocxReadException extends RuntimeException
             "Élément racine inattendu dans {$partName} : attendu « {$expected} », trouvé « {$found} »."
         );
     }
+
+    /**
+     * Le paquet dépasse un garde-fou de taille (bombe de décompression).
+     *
+     * **Pourquoi ce cas existe.** La limite de 50 Mo porte sur le fichier
+     * COMPRESSÉ. Une archive ZIP peut contenir des entrées dont le rapport de
+     * compression est extrême : quelques mégaoctets deviennent des gigaoctets
+     * une fois décompressés. Sans ce refus, un seul fichier peut épuiser la
+     * mémoire du serveur — ce n'est pas un document invalide, c'est un déni de
+     * service.
+     *
+     * @param  string  $raison  Ce qui a dépassé (taille totale ou nombre d'entrées)
+     */
+    public static function bombesDeDecompression(string $raison): self
+    {
+        return new self(
+            "Archive refusée : {$raison}. Le fichier est peut-être corrompu ou "
+            .'construit pour épuiser les ressources du serveur.'
+        );
+    }
 }

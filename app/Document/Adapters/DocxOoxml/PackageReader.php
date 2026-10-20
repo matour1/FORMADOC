@@ -81,7 +81,69 @@ final class PackageReader
             throw DocxReadException::missingMainDocument($this->filePath);
         }
 
+        // --- Garde-fou : bombe de décompression -----------------------------
+        //
+        // **Pourquoi la limite de 50 Mo ne suffit pas.** Elle porte sur le
+        // fichier COMPRESSÉ. Une archive peut déclarer des entrées dont le
+        // rapport de compression est extrême : quelques mégaoctets deviennent
+        // des gigaoctets une fois décompressés. Le contrôle est donc fait sur ce
+        // que l'archive DÉCLARE, avant toute lecture de contenu.
+        //
+        // Les seuils sont configurables : une archive légitime de mémoire
+        // illustrée peut approcher la limite basse, et le refus doit pouvoir être
+        // ajusté sans redéploiement.
+        $this->verifierTailleDecompressee($zip);
+
         $this->zip = $zip;
+    }
+
+    /**
+     * Refuse une archive dont le contenu déclaré est anormalement volumineux.
+     *
+     * **Ce que le contrôle mesure réellement.** `statIndex()` renvoie la taille
+     * DÉCLARÉE dans l'en-tête de chaque entrée — donc une valeur fournie par
+     * l'archive elle-même. Un attaquant peut la sous-déclarer ; ce garde-fou
+     * arrête les bombes ordinaires (zip bomb classique, archive récursive), pas
+     * une falsification délibérée de l'en-tête. Il est donc une protection
+     * contre l'accident et l'abus simple, pas une frontière de sécurité absolue —
+     * c'est pourquoi la lecture se fait ensuite entrée par entrée, jamais par
+     * extraction en bloc.
+     *
+     * @throws DocxReadException
+     */
+    private function verifierTailleDecompressee(ZipArchive $zip): void
+    {
+        $maxOctets = (int) config('document.security.max_uncompressed_bytes', 524_288_000);
+        $maxEntrees = (int) config('document.security.max_entries', 5_000);
+
+        if ($zip->numFiles > $maxEntrees) {
+            throw DocxReadException::bombesDeDecompression(sprintf(
+                '%d entrées alors que le maximum est de %d',
+                $zip->numFiles,
+                $maxEntrees
+            ));
+        }
+
+        $total = 0;
+
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $stat = $zip->statIndex($i);
+
+            if ($stat === false) {
+                continue;
+            }
+
+            $total += (int) ($stat['size'] ?? 0);
+
+            // On sort dès le dépassement : additionner les 5 000 entrées d'une
+            // bombe pour connaître son total exact n'apporte rien.
+            if ($total > $maxOctets) {
+                throw DocxReadException::bombesDeDecompression(sprintf(
+                    'taille décompressée supérieure à %s Mo',
+                    number_format($maxOctets / 1_048_576, 0, ',', ' ')
+                ));
+            }
+        }
     }
 
     /**
