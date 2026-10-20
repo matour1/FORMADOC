@@ -47,6 +47,28 @@ final class XmlLoader
     public const W14_NS = 'http://schemas.microsoft.com/office/word/2010/wordml';
 
     /**
+     * Espace de noms du balisage de compatibilité (`mc:AlternateContent`).
+     *
+     * **Pourquoi il compte.** Word enveloppe les éléments récents dans
+     * `mc:AlternateContent`, qui porte DEUX copies du même contenu :
+     *  - `mc:Choice`   — la version moderne (formes DrawingML, `wps:wsp`) ;
+     *  - `mc:Fallback` — une copie VML pour les anciens lecteurs.
+     *
+     * Une lecture qui ne filtre pas le fallback voit donc chaque zone de texte
+     * et chaque forme **deux fois**. C'est mesuré sur un document réel : 52
+     * occurrences de `w:txbxContent` pour **26** zones distinctes.
+     */
+    public const MC_NS = 'http://schemas.openxmlformats.org/markup-compatibility/2006';
+
+    /**
+     * Espace de noms des formes DrawingML de Word (`wps:wsp`).
+     *
+     * Une forme n'est ni du texte ni une image : sans cet espace de noms, une
+     * requête sur les organigrammes renvoie zéro résultat **sans erreur**.
+     */
+    public const WPS_NS = 'http://schemas.microsoft.com/office/word/2010/wordprocessingShape';
+
+    /**
      * Charge un XML en désactivant toute résolution d'entité externe.
      *
      * @throws DocxReadException Si le XML est illisible
@@ -90,6 +112,8 @@ final class XmlLoader
         $xpath->registerNamespace('wp', self::WORDPROCESSING_DRAWING_NS);
         $xpath->registerNamespace('v', self::VML_NS);
         $xpath->registerNamespace('w14', self::W14_NS);
+        $xpath->registerNamespace('mc', self::MC_NS);
+        $xpath->registerNamespace('wps', self::WPS_NS);
 
         return $xpath;
     }
