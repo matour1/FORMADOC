@@ -97,6 +97,14 @@ return [
             'actif' => (bool) env('PAYMENTS_MONETBIL_ACTIF', true),
             'visible' => (bool) env('PAYMENTS_MONETBIL_VISIBLE', true),
         ],
+        'geniuspay' => [
+            // Actif et visible par défaut, comme les autres : c'est
+            // `estConfigure()` qui écarte le moyen tant que les clés d'API
+            // manquent. Le couper ici par défaut ferait paraître l'intégration
+            // en panne au premier déploiement.
+            'actif' => (bool) env('PAYMENTS_GENIUSPAY_ACTIF', true),
+            'visible' => (bool) env('PAYMENTS_GENIUSPAY_VISIBLE', true),
+        ],
         'offline' => [
             // Jamais coupé par défaut : c'est le moyen de secours.
             'actif' => (bool) env('PAYMENTS_OFFLINE_ACTIF', true),

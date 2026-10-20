@@ -37,6 +37,11 @@ Route::middleware(['web', 'auth'])->group(function () {
     // en réalité réussi, et le client chercherait un problème qui n'existe pas.
     Route::get('/credits/return/monetbil', [KPayController::class, 'returnMonetbil'])->name('credits.return.monetbil');
 
+    // Retour et annulation GeniusPay. Ce sont de SIMPLES redirections : le retour
+    // n'est pas signé, donc il ne crédite rien (voir KPayController::returnGeniusPay).
+    Route::get('/credits/return/geniuspay', [KPayController::class, 'returnGeniusPay'])->name('credits.return.geniuspay');
+    Route::get('/credits/cancel/geniuspay', [KPayController::class, 'cancelGeniusPay'])->name('credits.cancel.geniuspay');
+
     // Abonnements récurrents (Phase 9)
     Route::get('/checkout/{plan:slug}', [SubscriptionController::class, 'checkout'])->name('subscriptions.checkout');
     Route::post('/subscriptions/subscribe', [SubscriptionController::class, 'subscribe'])->name('subscriptions.subscribe');
@@ -72,5 +77,20 @@ Route::post('/kpay/webhook', [KPayController::class, 'webhook'])
 // de l'API, pas sur le CSRF.
 Route::match(['get', 'post'], '/credits/notify', [KPayController::class, 'notifyMonetbil'])
     ->name('credits.notify')
+    ->middleware('web')
+    ->withoutMiddleware(VerifyCsrfToken::class);
+
+/*
+| Webhook GeniusPay — PAS de middleware CSRF, pour la même raison.
+|
+| Une notification vient d'un serveur à serveur : pas de session, pas de cookie,
+| donc aucun jeton CSRF possible. Sans exemption, Laravel répond 419 et le
+| paiement n'est JAMAIS constaté.
+|
+| L'authenticité repose sur `X-Webhook-Signature` : HMAC-SHA256 de
+| `timestamp.payload` calculé sur le CORPS BRUT (voir GeniusPayService).
+*/
+Route::post('/credits/notify/geniuspay', [KPayController::class, 'notifyGeniusPay'])
+    ->name('credits.notify.geniuspay')
     ->middleware('web')
     ->withoutMiddleware(VerifyCsrfToken::class);
