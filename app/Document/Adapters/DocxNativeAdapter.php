@@ -270,6 +270,18 @@ final class DocxNativeAdapter implements InputAdapter
         // ne verrait que les titres déjà rencontrés, donc une partie seulement.
         $blocks = $this->reclasserEntreesSommaire($blocks);
 
+        // --- Passe 3 : titres placés dans des ZONES DE TEXTE -------------------
+        //
+        // **Le défaut mesuré, sur le document de référence.** Le corps du DQP
+        // contient 26 zones de texte distinctes ; 19 d'entre elles portent un
+        // TITRE DE NIVEAU 1 (« SOMMAIRE », « DEDICACE », « REMERCIEMENTS »,
+        // « CHAPITRE I : … »). `ParagraphReader` ne voit que les `w:p` du corps :
+        // le texte d'une zone (`w:txbxContent`) n'est lu par aucun chemin. Ces
+        // 19 titres étaient donc perdus AVANT toute détection — la mesure du
+        // rappel plafonne à 33 titres sur les 76 attendus, et cet écart n'est pas
+        // un défaut de règle, c'est un défaut de LECTURE.
+        $blocks = $this->promouvoirTitresEnZonesDeTexte($document, $blocks);
+
         return [
             'blocks' => $blocks,
             'paragraphs_read' => $read,
@@ -784,8 +796,172 @@ final class DocxNativeAdapter implements InputAdapter
     }
 
     /**
-     * Confiance d'un titre détecté par la SEULE numérotation (sans style Word).
+     * La zone de texte appartient-elle à un SCHÉMA (organigramme) ?
      *
+     * **Ce que « schéma » veut dire, et ce que la mesure a révélé.** Les
+     * instructions (§5.4) demandent de laisser intactes les zones qui contiennent
+     * « des schémas (plusieurs petites formes, organigrammes) ». Le critère n'est
+     * donc pas la PRÉSENCE d'une forme, mais leur NOMBRE.
+     *
+     * C'est décisif, et une première version s'y est trompée : sur le document
+     * de référence, les 26 zones sont TOUTES dans un `wps:wsp` — y compris
+     * « SOMMAIRE » et « CHAPITRE I : … ». Exclure toute forme annulait donc la
+     * promotion pour l'intégralité des titres, et le gain mesuré retombait à 22.
+     * Une forme unique est un CADRE DE TEXTE ; un groupe de formes est un
+     * diagramme.
+     */
+    private function zoneAppartientAUnSchema(DOMElement $zone): bool
+    {
+        // Remonter jusqu'au groupe ou au dessin qui porte la zone.
+        $conteneur = $zone->parentNode;
+
+        while ($conteneur instanceof DOMElement
+            && ! in_array($conteneur->localName, ['wgp', 'drawing', 'pict'], true)) {
+            $conteneur = $conteneur->parentNode;
+        }
+
+        if (! $conteneur instanceof DOMElement) {
+            return false;
+        }
+
+        // `wpg:wgp` est un GROUPE de formes : par définition, un diagramme.
+        if ($conteneur->localName === 'wgp') {
+            return true;
+        }
+
+        // Plusieurs formes dans le même dessin : organigramme. Une seule forme
+        // est un cadre de texte.
+        $formes = XmlLoader::query($conteneur->ownerDocument, './/wps:wsp', $conteneur);
+
+        return count($formes) > 1;
+    }
+
+    /**
+     * Promeut en blocs les TITRES placés dans des zones de texte.
+     *
+     * **Pourquoi les zones de texte ne sont pas un détail.** Un auteur qui centre
+     * un titre dans un cadre obtient un `w:txbxContent` à l'intérieur d'un
+     * `w:drawing`. Ce contenu n'est PAS un paragraphe du corps : aucun `w:p` de
+     * `w:body` ne le porte, et `ParagraphReader` ne le lit donc jamais. Sur le
+     * document de référence, **19 des 76 titres attendus** vivent là — soit un
+     * quart du document, silencieusement absent du résultat.
+     *
+     * **Les deux garde-fous des instructions (§5.4), et pourquoi ils sont
+     * indispensables.**
+     *
+     *  1. **Une zone qui contient un schéma ou une image n'est PAS promue.**
+     *     Un organigramme est fait de formes portant du texte ; promouvoir le
+     *     premier paragraphe croisé dans un groupe de flèches produirait un titre
+     *     à partir d'un fragment de diagramme. Le test décisif est donc la
+     *     PRÉSENCE d'un `wps:wsp` ou d'un `w:drawing` DANS la zone — pas la forme
+     *     du texte.
+     *
+     *  2. **La promotion n'a lieu que si le contenu RESSEMBLE à un titre.**
+     *     Une zone de texte sert aussi à placer une légende, une note, une
+     *     adresse. On réutilise donc les règles déjà éprouvées (style de titre,
+     *     numérotation, mot-clé liminaire), et on ne promeut pas ce qui n'y
+     *     répond pas. Une zone non promue reste dans le document : l'original
+     *     n'est jamais amputé, et `ShapePreserver` la réinjecte à l'identique.
+     *
+     * **Ce que la promotion ne fait pas.** Elle ne SUPPRIME pas la zone : elle
+     * ajoute un bloc qui porte son texte, pour que la détection le voie. Le
+     * retrait effectif du cadre appartient au nettoyage (phase 2), pas à la
+     * lecture — un lecteur qui supprime violerait la règle « ne modifier aucun
+     * nœud ».
+     *
+     * @param  array<int, Block>  $blocks
+     * @return array<int, Block>
+     */
+    private function promouvoirTitresEnZonesDeTexte(\DOMDocument $document, array $blocks): array
+    {
+        $this->stylesEnCours ??= null;
+
+        $fallbacks = XmlLoader::query($document, '//mc:Fallback');
+        $zones = XmlLoader::query($document, '//w:txbxContent');
+
+        if ($zones === []) {
+            return $blocks;
+        }
+
+        // Les copies `mc:Fallback` doublent chaque zone (Word y duplique le VML).
+        // Les ignorer est la règle déjà appliquée ailleurs : sans cela, chaque
+        // titre de zone produirait DEUX blocs — un doublon exact.
+        $dansFallback = [];
+        foreach ($fallbacks as $fallback) {
+            foreach (XmlLoader::query($document, './/w:txbxContent', $fallback) as $zone) {
+                $dansFallback[] = $zone;
+            }
+        }
+
+        $ajoutes = [];
+        $position = count($blocks);
+
+        foreach ($zones as $zone) {
+            if (in_array($zone, $dansFallback, true)) {
+                continue;
+            }
+
+            // Garde-fou 1 : un schéma ou une image dans la zone la rend
+            // intouchable. C'est le cas des organigrammes, où chaque forme porte
+            // un mot et où le premier paragraphe n'est pas un titre.
+            //
+            // **Le test doit regarder AUSSI LES ANCÊTRES, pas seulement les
+            // descendants.** Dans un schéma, la zone de texte est le CONTENU de
+            // la forme : `wps:wsp > wps:txbx > w:txbxContent`. Chercher `wps:wsp`
+            // à l'intérieur de la zone ne trouve donc rien — le test passait à
+            // côté du cas qu'il devait couvrir, et promouvait un fragment de
+            // diagramme en titre. Constaté par le test unitaire, pas en relisant
+            // le code.
+            if ($this->zoneAppartientAUnSchema($zone)
+                || XmlLoader::query($document, './/wps:wsp', $zone) !== []) {
+                continue;
+            }
+
+            $paragraphes = XmlLoader::query($document, './/w:p', $zone);
+
+            // Une zone de plus de deux paragraphes n'est pas un titre : c'est un
+            // encadré de contenu. La promotion produirait un bloc artificiel.
+            if ($paragraphes === [] || count($paragraphes) > 2) {
+                continue;
+            }
+
+            $texte = trim((string) preg_replace('/\s+/u', ' ', $zone->textContent));
+
+            if ($texte === '') {
+                continue;
+            }
+
+            // Garde-fou 2 : le contenu doit répondre aux règles de titre. On
+            // réutilise `HeadingNumberingPattern`, éprouvé sur le corpus, plutôt
+            // que d'inventer un critère propre à ce chemin.
+            $motif = $this->numberingPattern->detect($texte);
+
+            if ($motif === null) {
+                continue;
+            }
+
+            $position++;
+            $ajoutes[] = new Block(
+                blockId: $this->blockId($position),
+                type: BlockType::Heading,
+                text: $texte,
+                headingLevel: $motif['level'],
+                // Confiance légèrement inférieure à un titre du corps : le texte
+                // est lu, mais son style Word n'est pas celui du corps (il vit
+                // dans un cadre). Un titre sans style reste un signal de
+                // numérotation, pas une certitude de mise en forme.
+                confidence: 0.8,
+                fontSize: null,
+                positionY: (float) $position,
+                fidelity: $this->fidelity(),
+            );
+        }
+
+        return [...$blocks, ...$ajoutes];
+    }
+
+    /**
+     * Confiance d'un titre détecté par la SEULE numérotation (sans style Word).
      * Le degré de fiabilité dépend de la forme de numérotation :
      *  - mot-clé (`CHAPITRE 1`) ou numérotation pointée (`1.1`) : convention de
      *    section sans ambiguïté → confiance haute ;
