@@ -55,22 +55,29 @@ class GeniusPayWebhookTest extends TestCase
      * **Le corps est une chaîne, pas un tableau.** C'est le point du test : on
      * signe EXACTEMENT ce qui sera envoyé.
      *
+     * La structure suit la documentation officielle du SDK : `event`,
+     * `timestamp`, `environment` à la racine, puis `data` qui porte DIRECTEMENT
+     * les champs de la transaction (`reference`, `amount`, `status`,
+     * `metadata`). Il n'y a PAS de niveau `data.transaction` — la première
+     * version du contrôleur l'inventait, et tous les webhooks auraient été
+     * rejetés.
+     *
      * @return array{0: string, 1: array<string, string>}
      */
     private function payloadSigne(int $userId, int $montant, string $reference, string $statut = 'completed', ?int $timestamp = null): array
     {
         $corps = json_encode([
+            'id' => 'evt_01HXY2K3M4N5P6Q7R8S',
             'event' => $statut === 'completed' ? 'payment.success' : 'payment.failed',
-            'timestamp' => '2026-10-19T10:00:00.000000Z',
+            'timestamp' => 1715000000,
+            'environment' => 'sandbox',
             'data' => [
-                'transaction' => [
-                    'id' => 456,
-                    'reference' => $reference,
-                    'amount' => $montant,
-                    'status' => $statut,
-                    'metadata' => ['user_id' => $userId],
-                ],
-                'environment' => 'sandbox',
+                'reference' => $reference,
+                'amount' => $montant,
+                'currency' => 'XOF',
+                'status' => $statut,
+                'payment_method' => 'wave',
+                'metadata' => ['user_id' => $userId],
             ],
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
@@ -140,9 +147,9 @@ class GeniusPayWebhookTest extends TestCase
 
         // Ordre volontairement inversé (status avant reference) pour qu'une
         // re-sérialisation produise une chaîne différente.
-        $corps = '{"event":"payment.success","data":{"transaction":{"status":"completed",'
-            .'"reference":"MTX-BRUT-1","amount":1000,"metadata":{"user_id":'.$utilisateur->id.'}},'
-            .'"environment":"sandbox"}}';
+        $corps = '{"event":"payment.success","environment":"sandbox","data":{'
+            .'"status":"completed","reference":"MTX-BRUT-1","amount":1000,'
+            .'"metadata":{"user_id":'.$utilisateur->id.'}}}';
 
         $ts = (string) time();
         $signature = hash_hmac('sha256', $ts.'.'.$corps, self::SECRET);
@@ -240,8 +247,8 @@ class GeniusPayWebhookTest extends TestCase
     {
         $this->utilisateur();
 
-        $corps = '{"event":"payment.success","data":{"transaction":{'
-            .'"reference":"MTX-NOUSER","amount":1000,"status":"completed","metadata":{}},"environment":"sandbox"}}';
+        $corps = '{"event":"payment.success","environment":"sandbox","data":{'
+            .'"reference":"MTX-NOUSER","amount":1000,"status":"completed","metadata":{}}}';
 
         $ts = (string) time();
         $signature = hash_hmac('sha256', $ts.'.'.$corps, self::SECRET);

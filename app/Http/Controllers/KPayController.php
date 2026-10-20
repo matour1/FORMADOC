@@ -322,10 +322,21 @@ class KPayController extends Controller
         $signature = (string) $request->header('X-Webhook-Signature', '');
 
         $evenement = json_decode($brut, true);
-        $transaction = is_array($evenement) ? ($evenement['data']['transaction'] ?? null) : null;
+
+        // **La transaction est directement sous `data`, sans niveau
+        // intermédiaire.** La documentation officielle du SDK donne :
+        //   { "event": "payment.success", "data": { "reference": …, "amount": …,
+        //     "status": "completed", "metadata": {…} } }
+        //
+        // La première version cherchait `data.transaction`, une forme qui
+        // n'existe pas dans cette documentation : TOUS les webhooks auraient été
+        // rejetés comme « sans transaction », donc aucun paiement n'aurait jamais
+        // été crédité — sans erreur visible, et sans qu'aucun test ne le voie
+        // (les tests étaient écrits contre la même hypothèse fausse).
+        $transaction = is_array($evenement) ? ($evenement['data'] ?? null) : null;
 
         if (! is_array($transaction)) {
-            Log::warning('GeniusPay webhook : corps illisible ou sans transaction', [
+            Log::warning('GeniusPay webhook : corps illisible ou sans données de transaction', [
                 'ip' => $request->ip(),
             ]);
 
@@ -374,7 +385,7 @@ class KPayController extends Controller
             'reference' => $reference,
             'evenement' => $evenement['event'] ?? null,
             'statut' => $statut,
-            'environnement' => $evenement['data']['environment'] ?? null,
+            'environnement' => $evenement['environment'] ?? null,
         ]);
 
         if (! $this->geniuspay->estUnSucces($statut)) {
@@ -405,7 +416,7 @@ class KPayController extends Controller
                 'gateway' => PaymentGatewayRegistry::GENIUSPAY,
                 'transaction_reference' => $reference,
                 'montant_fcfa' => $montant,
-                'environnement' => $evenement['data']['environment'] ?? null,
+                'environnement' => $evenement['environment'] ?? null,
             ],
         );
 

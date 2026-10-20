@@ -29,21 +29,43 @@ return [
     |   pk_sandbox_… / sk_sandbox_…  → sandbox (transactions simulées)
     |   pk_live_…    / sk_live_…     → production
     |
-    | Aucune URL distincte : la même base sert les deux modes.
+    | **Les noms de variables suivent la documentation OFFICIELLE du SDK**
+    | (`geniuspay.ci/docs/sdk`) : `GENIUSPAY_API_KEY`, `GENIUSPAY_API_SECRET`,
+    | `GENIUSPAY_SANDBOX`. La première version utilisait `…_SECRET_KEY`, qui
+    | n'existe pas dans la doc — un déploiement qui suivait la doc aurait laissé
+    | le secret vide, et la passerelle aurait été déclarée « non configurée ».
     |
-    | **Pourquoi `secret_key` et non `api_secret`.** `PaymentGatewayRegistry`
-    | résout les identifiants génériquement : `{prefixe}.api_key` et
-    | `{prefixe}.secret_key`. Nommer ce champ autrement le rendrait invisible à
-    | `estConfigure()` — la passerelle serait déclarée « non configurée » alors
-    | que les clés existent, et disparaîtrait de l'interface. Le nom est donc
-    | aligné sur KPay, quel que soit le nom utilisé par la documentation du
-    | fournisseur.
+    | **Pourquoi la clé de configuration s'appelle `secret_key` en interne.**
+    | `PaymentGatewayRegistry` résout les identifiants génériquement :
+    | `{prefixe}.api_key` et `{prefixe}.secret_key`. Le NOM DE LA VARIABLE
+    | d'environnement suit la doc du fournisseur ; le nom de la CLÉ DE CONFIG
+    | suit la convention interne. Les deux sont distincts, et c'est voulu.
     */
     'api_key' => env('GENIUSPAY_API_KEY', ''),
-    'secret_key' => env('GENIUSPAY_SECRET_KEY', ''),
+    'secret_key' => env('GENIUSPAY_API_SECRET', ''),
 
-    // URL de base de l'API marchand.
-    'base_url' => env('GENIUSPAY_BASE_URL', 'https://geniuspay.ci/api/v1/merchant'),
+    /*
+    | Mode sandbox.
+    |
+    | Le SDK officiel expose `GENIUSPAY_SANDBOX`, mais nos appels REST directs
+    | n'en ont pas besoin : c'est le PRÉFIXE des clés qui détermine le mode côté
+    | serveur GeniusPay. Ce drapeau sert à l'affichage et à la journalisation —
+    | savoir qu'on est en sandbox évite de chercher pourquoi aucun argent
+    | n'arrive. Il n'est jamais utilisé pour choisir une URL.
+    */
+    'sandbox' => (bool) env('GENIUSPAY_SANDBOX', false),
+
+    /*
+    | URL de base de l'API marchand.
+    |
+    | **`pay.genius.ci`, et non `geniuspay.ci`.** La documentation du SDK
+    | officiel donne très explicitement `https://pay.genius.ci/api/v1/merchant`.
+    | Les deux hôtes répondent aujourd'hui (vérifié : 401 MISSING_API_KEY), donc
+    | une erreur ici ne provoquerait aucun échec visible — elle pointerait vers
+    | l'hôte de secours, ou vers rien du tout le jour où celui-ci change. On
+    | suit donc la doc du fournisseur.
+    */
+    'base_url' => env('GENIUSPAY_BASE_URL', 'https://pay.genius.ci/api/v1/merchant'),
 
     /*
     | Secret de signature du webhook (`whsec_…`).

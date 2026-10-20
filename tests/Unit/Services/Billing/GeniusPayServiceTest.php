@@ -303,4 +303,83 @@ class GeniusPayServiceTest extends TestCase
             app(PaymentGatewayRegistry::class)->estProposable(PaymentGatewayRegistry::GENIUSPAY)
         );
     }
+
+    // -------------------------------------------------------------------------
+    // URL et structure de la charge utile
+    // -------------------------------------------------------------------------
+
+    /**
+     * **L'URL de base par défaut est celle de la documentation officielle.**
+     *
+     * La documentation du SDK donne `pay.genius.ci`. La première version du code
+     * utilisait `geniuspay.ci` — un hôte qui répond AUSSI (401 MISSING_API_KEY),
+     * donc l'erreur ne produisait aucun échec visible : elle pointait vers
+     * l'hôte de secours, ou vers rien le jour où celui-ci change. Un test sur la
+     * valeur par défaut est la seule façon de voir cette dérive.
+     *
+     * Ce test lit la configuration RÉELLE du dépôt (pas une surcharge de test) :
+     * c'est le défaut livré qui est vérifié.
+     */
+    public function test_l_url_par_defaut_suit_la_documentation_officielle(): void
+    {
+        // On retire la surcharge du setUp pour lire la valeur du fichier.
+        $defaut = require config_path('geniuspay.php');
+
+        $this->assertSame(
+            'https://pay.genius.ci/api/v1/merchant',
+            $defaut['base_url'],
+            'La documentation du SDK donne pay.genius.ci. Les deux hôtes répondent, '
+            .'donc une erreur ici ne provoquerait aucun échec visible.'
+        );
+    }
+
+    /**
+     * **Le seul nom de variable documenté est `GENIUSPAY_API_SECRET`.**
+     *
+     * La doc officielle du SDK liste `GENIUSPAY_API_KEY`, `GENIUSPAY_API_SECRET`
+     * et `GENIUSPAY_SANDBOX`. Un déploiement qui suit la doc laisserait sinon le
+     * secret vide, et la passerelle serait déclarée « non configurée ».
+     */
+    public function test_les_variables_d_environnement_suivent_la_documentation(): void
+    {
+        $exemple = (string) file_get_contents(base_path('.env.example'));
+
+        $this->assertStringContainsString('GENIUSPAY_API_SECRET=', $exemple);
+        $this->assertStringContainsString('GENIUSPAY_SANDBOX=', $exemple);
+        $this->assertStringContainsString('GENIUSPAY_BASE_URL=', $exemple);
+
+        $this->assertStringNotContainsString(
+            'GENIUSPAY_SECRET_KEY=',
+            $exemple,
+            'GENIUSPAY_SECRET_KEY n\'existe pas dans la documentation du SDK.'
+        );
+    }
+
+    /**
+     * **La transaction est directement sous `data`.**
+     *
+     * Le contrôleur lit ce document via `Http` ; ce test vérifie la forme de la
+     * réponse ATTENDUE, telle que la documente GeniusPay. Il ne teste pas le
+     * contrôleur (fait par le test de webhook), mais fige le contrat.
+     */
+    public function test_la_forme_de_reponse_attendue_est_celle_de_la_documentation(): void
+    {
+        Http::fake([
+            '*/payments/MTX-ABC123' => Http::response([
+                'success' => true,
+                'data' => [
+                    'reference' => 'MTX-ABC123',
+                    'amount' => 5000,
+                    'status' => 'completed',
+                    'environment' => 'sandbox',
+                ],
+            ]),
+        ]);
+
+        $resultat = $this->service()->verifierPaiement('MTX-ABC123');
+
+        $this->assertTrue($resultat['ok']);
+        $this->assertSame('completed', $resultat['statut']);
+        $this->assertSame(5000, $resultat['montant']);
+    }
 }
