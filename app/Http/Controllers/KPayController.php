@@ -10,6 +10,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Billing\CreditPackCatalog;
 use App\Services\Billing\CreditService;
+use App\Services\Billing\GeniusPayService;
 use App\Services\Billing\InvoiceService;
 use App\Services\Billing\KPayService;
 use App\Services\Billing\MonetbilService;
@@ -47,6 +48,7 @@ class KPayController extends Controller
         private readonly CreditService $credits,
         private readonly MonetbilService $monetbil,
         private readonly MonetbilServiceRegistry $servicesMonetbil,
+        private readonly GeniusPayService $geniuspay,
         private readonly PaymentGatewayRegistry $passerelles,
         private readonly CreditPackCatalog $catalogue,
     ) {}
@@ -74,7 +76,7 @@ class KPayController extends Controller
             // qui ne le transmet pas encore. Quand il est fourni, il est revalidé
             // côté serveur — un formulaire trafiqué pourrait sinon demander une
             // passerelle désactivée ou non configurée.
-            'gateway' => ['nullable', 'string', 'in:kpay,monetbil'],
+            'gateway' => ['nullable', 'string', 'in:kpay,monetbil,geniuspay'],
         ], [
             'amount.in' => 'Ce montant n\'est pas disponible. Choisissez l\'un des paliers proposés.',
             'gateway.in' => 'Ce moyen de paiement n\'est pas reconnu.',
@@ -103,6 +105,10 @@ class KPayController extends Controller
 
         if ($gateway === PaymentGatewayRegistry::MONETBIL) {
             return $this->initierAchatMonetbil($user, $amountFcfa);
+        }
+
+        if ($gateway === PaymentGatewayRegistry::GENIUSPAY) {
+            return $this->initierAchatGeniusPay($user, $amountFcfa);
         }
 
         // Identifiant unique pour l'idempotence KPay (409 si déjà actif)
@@ -232,8 +238,225 @@ class KPayController extends Controller
     }
 
     /**
-     * Notification Monetbil d'un ACHAT DE CRÉDITS (équivalent du webhook KPay).
+     * Initie un achat de crédits via GeniusPay (checkout hébergé).
      *
+     * **Pourquoi l'URL de retour ne crédite rien.** GeniusPay redirige le client
+     * vers `success_url` après paiement, mais ce retour n'est pas signé : il
+     * peut être forgé en visitant l'URL directement. Le crédit est donc appliqué
+     * uniquement par le webhook, après vérification de signature et
+     * d'idempotence. C'est la même règle que pour KPay.
+     */
+    private function initierAchatGeniusPay(User $user, int $amountFcfa): RedirectResponse
+    {
+        // Référence unique : elle identifie CETTE tentative côté GeniusPay et sert
+        // de clé d'idempotence (un retry ne crée pas un second paiement).
+        $reference = 'CREDIT-'.$user->id.'-'.Str::uuid();
+
+        $resultat = $this->geniuspay->initierPaiement(
+            montantFcfa: $amountFcfa,
+            referenceExterne: $reference,
+            successUrl: route('credits.return.geniuspay'),
+            errorUrl: route('credits.cancel.geniuspay'),
+            email: $user->email,
+            nom: $user->name,
+            metadata: [
+                'user_id' => $user->id,
+                'purpose' => 'credit_purchase',
+                'amount_fcfa' => $amountFcfa,
+            ],
+        );
+
+        if (! ($resultat['ok'] ?? false)) {
+            Log::warning('Achat de crédits : initiation GeniusPay échouée', [
+                'user_id' => $user->id,
+                'montant' => $amountFcfa,
+                'message' => $resultat['message'] ?? null,
+            ]);
+
+            return back()->with('error', $resultat['message'] ?? 'La passerelle de paiement est indisponible.');
+        }
+
+        Log::info('Achat crédits initié via GeniusPay', [
+            'user_id' => $user->id,
+            'amount_fcfa' => $amountFcfa,
+            'reference' => $reference,
+            'transaction' => $resultat['reference'] ?? null,
+        ]);
+
+        return redirect()->away($resultat['checkoutUrl']);
+    }
+
+    /**
+     * Webhook GeniusPay — notification de paiement.
+     *
+     * **L'ordre des contrôles est le cœur de la sécurité**, et il diffère de
+     * celui de Monetbil sur un point : GeniusPay n'expose pas de compte dans la
+     * signature, donc on identifie d'abord le compte par `metadata.user_id`,
+     * puis on vérifie la signature du corps brut.
+     *
+     *  1. **Corps brut lu AVANT toute désérialisation.** La signature porte sur
+     *     `timestamp.payload`. Un `json_decode`/`json_encode` peut changer
+     *     l'ordre des clés et les espaces, et la signature ne correspondrait
+     *     plus. C'est l'erreur classique de cette intégration.
+     *  2. **Corrélation** par `metadata.user_id` : sans compte identifié, aucun
+     *     versement. L'API retourne les métadonnées envoyées à l'initiation.
+     *  3. **Signature** vérifiée (`hash_equals`, fenêtre de tolérance).
+     *  4. **Statut** : seul `completed` engage un versement. `processing` et
+     *     `pending` sont transitoires — créditer dessus paierait un paiement qui
+     *     peut encore échouer.
+     *  5. **Montant** comparé à celui de la notification : un règlement de 500
+     *     ne doit pas débloquer les crédits d'un palier de 5000.
+     *  6. **Crédit idempotent** par `geniuspay:{reference}` : un rejeu de la même
+     *     notification ne verse jamais deux fois.
+     *
+     * **Pourquoi répondre 200 même en cas d'échec métier.** Faire réessayer
+     * GeniusPay indéfiniment sur une erreur interne ne la résoudra pas, et
+     * multiplierait ses tentatives (1 min → 24 h). La trace permet le traitement
+     * manuel.
+     */
+    public function notifyGeniusPay(Request $request): JsonResponse
+    {
+        // 1. Corps BRUT : indispensable à la signature.
+        $brut = (string) $request->getContent();
+        $timestamp = (string) $request->header('X-Webhook-Timestamp', '');
+        $signature = (string) $request->header('X-Webhook-Signature', '');
+
+        $evenement = json_decode($brut, true);
+        $transaction = is_array($evenement) ? ($evenement['data']['transaction'] ?? null) : null;
+
+        if (! is_array($transaction)) {
+            Log::warning('GeniusPay webhook : corps illisible ou sans transaction', [
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json(['status' => 'ignored']);
+        }
+
+        $reference = (string) ($transaction['reference'] ?? '');
+        $metadonnees = $transaction['metadata'] ?? [];
+        $userId = is_array($metadonnees) ? (int) ($metadonnees['user_id'] ?? 0) : 0;
+
+        // 2. Corrélation : sans compte identifié, on refuse plutôt que de créditer
+        //    au hasard. Un crédit à tort est une perte sèche et invisible.
+        if ($userId <= 0) {
+            Log::warning('GeniusPay webhook : aucune corrélation, versement refusé', [
+                'reference' => $reference,
+                'evenement' => $evenement['event'] ?? null,
+            ]);
+
+            return response()->json(['status' => 'ignored']);
+        }
+
+        $utilisateur = User::find($userId);
+
+        if ($utilisateur === null) {
+            Log::warning('GeniusPay webhook : compte introuvable', ['user_id' => $userId, 'reference' => $reference]);
+
+            return response()->json(['status' => 'ignored']);
+        }
+
+        // 3. Signature — sur le corps BRUT, jamais sur une re-sérialisation.
+        if (! $this->geniuspay->signatureValide($brut, $timestamp, $signature)) {
+            Log::warning('GeniusPay webhook : signature invalide', [
+                'user_id' => $userId,
+                'reference' => $reference,
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json(['status' => 'ignored']);
+        }
+
+        // 4. Statut : seul `completed` engage un versement.
+        $statut = (string) ($transaction['status'] ?? '');
+
+        Log::info('GeniusPay webhook reçu', [
+            'user_id' => $userId,
+            'reference' => $reference,
+            'evenement' => $evenement['event'] ?? null,
+            'statut' => $statut,
+            'environnement' => $evenement['data']['environment'] ?? null,
+        ]);
+
+        if (! $this->geniuspay->estUnSucces($statut)) {
+            return response()->json(['status' => 'received']);
+        }
+
+        // 5. Montant : comparé à celui de la transaction. La notification le
+        //    contient déjà ; on refuse un montant absent ou nul, qui ne permettrait
+        //    pas de déterminer le palier.
+        $montant = isset($transaction['amount']) ? (int) $transaction['amount'] : 0;
+
+        if ($montant <= 0) {
+            Log::warning('GeniusPay webhook : montant absent', ['reference' => $reference]);
+
+            return response()->json(['status' => 'ignored']);
+        }
+
+        $credits = $this->catalogue->creditsPour($montant) ?? $montant;
+
+        // 6. Crédit idempotent : la référence GeniusPay est la clé.
+        $resultat = $this->credits->creditIfNotProcessed(
+            user: $utilisateur,
+            amount: $credits,
+            reference: 'geniuspay:'.$reference,
+            description: 'Achat de '.$credits.' crédits via GeniusPay',
+            metadata: [
+                'purpose' => 'credit_purchase',
+                'gateway' => PaymentGatewayRegistry::GENIUSPAY,
+                'transaction_reference' => $reference,
+                'montant_fcfa' => $montant,
+                'environnement' => $evenement['data']['environment'] ?? null,
+            ],
+        );
+
+        if (! ($resultat['ok'] ?? false)) {
+            Log::error('GeniusPay webhook : versement impossible', [
+                'user_id' => $userId,
+                'reference' => $reference,
+            ]);
+
+            return response()->json(['status' => 'received']);
+        }
+
+        Log::info('GeniusPay webhook : crédits versés', [
+            'user_id' => $userId,
+            'credits' => $credits,
+            'reference' => $reference,
+            'deja_traite' => $resultat['already_processed'] ?? false,
+        ]);
+
+        return response()->json(['status' => 'received']);
+    }
+
+    /**
+     * Retour GeniusPay : simple redirection vers le compte, AUCUN crédit.
+     *
+     * Le retour n'est pas signé et peut être visité directement dans un
+     * navigateur. L'afficher comme une confirmation serait trompeur, et y
+     * créditer serait une faille. Le crédit vient du webhook.
+     */
+    public function returnGeniusPay(Request $request): RedirectResponse
+    {
+        Log::info('Retour GeniusPay', [
+            'user_id' => $request->user()?->id,
+            'reference' => $request->query('reference'),
+        ]);
+
+        return redirect()->route('account.index')
+            ->with('info', 'Paiement reçu. Votre solde sera mis à jour dès confirmation par la passerelle.');
+    }
+
+    /**
+     * Annulation GeniusPay.
+     */
+    public function cancelGeniusPay(): RedirectResponse
+    {
+        return redirect()->route('account.index')
+            ->with('error', 'Paiement annulé. Aucun montant n\'a été débité.');
+    }
+
+    /**
+     * Notification Monetbil d'un ACHAT DE CRÉDITS (équivalent du webhook KPay).
      * **Pourquoi une route distincte de celle des liens de paiement.** Les deux
      * flux sont séparés à l'initiation (comptes vs destinataires externes) et le
      * restent à la notification : les mélanger exigerait de deviner le flux depuis

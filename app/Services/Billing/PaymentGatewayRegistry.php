@@ -54,6 +54,17 @@ final class PaymentGatewayRegistry
     public const MONETBIL = 'monetbil';
 
     /**
+     * Passerelle GeniusPay : mobile money international (Wave, Orange, MTN,
+     * M-Pesa) et cartes, via page de checkout hébergée.
+     *
+     * **Pourquoi une troisième passerelle.** KPay et Monetbil couvrent la zone
+     * CEMOA ; GeniusPay ajoute Wave (SN, CI, ML, BF), M-Pesa (KE) et les cartes
+     * internationales via Stripe. Chacune reste indépendante : en désactiver une
+     * n'affecte pas les autres.
+     */
+    public const GENIUSPAY = 'geniuspay';
+
+    /**
      * Règlement hors ligne constaté par un administrateur.
      *
      * Ce n'est pas une passerelle — aucun appel réseau n'est effectué — mais il
@@ -101,6 +112,13 @@ final class PaymentGatewayRegistry
                 'configurable' => true,
                 'automatique' => true,
                 'prefixe' => 'monetbil',
+            ],
+            self::GENIUSPAY => [
+                'libelle' => 'Mobile Money et carte (GeniusPay)',
+                'description' => 'Wave, Orange Money, MTN, M-Pesa et cartes bancaires, via GeniusPay.',
+                'configurable' => true,
+                'automatique' => true,
+                'prefixe' => 'geniuspay',
             ],
             self::HORS_LIGNE => [
                 'libelle' => 'Règlement hors ligne',

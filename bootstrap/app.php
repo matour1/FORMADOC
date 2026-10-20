@@ -43,6 +43,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'kpay/webhook',
             'paiement/*/notify',
             'credits/notify',
+            'credits/notify/geniuspay',
         ]);
 
         // Alias de l'accès administrateur (étape 8). Le nom court `admin` est
