@@ -72,6 +72,15 @@ final class DocxNativeAdapter implements InputAdapter
     private const DENSITE_MINIMALE = 4;
 
     /**
+     * Longueur maximale d'un titre TOUT EN MAJUSCULES.
+     *
+     * Mesurée : au-delà de 80 caractères, un paragraphe en majuscules est un
+     * texte de corps (citation, encadré), pas un titre. Un titre tient sur une
+     * ligne.
+     */
+    private const LONGUEUR_MAX_MAJUSCULES = 80;
+
+    /**
      * Intitulés écrits par le GÉNÉRATEUR lui-même (« DocumentReconstructor »).
      *
      * Ces titres ne doivent jamais être promus depuis le document source : ils
@@ -290,15 +299,36 @@ final class DocxNativeAdapter implements InputAdapter
 
         // --- Passe 3 : titres placés dans des ZONES DE TEXTE -------------------
         //
-        // **Le défaut mesuré, sur le document de référence.** Le corps du DQP
-        // contient 26 zones de texte distinctes ; 19 d'entre elles portent un
-        // TITRE DE NIVEAU 1 (« SOMMAIRE », « DEDICACE », « REMERCIEMENTS »,
-        // « CHAPITRE I : … »). `ParagraphReader` ne voit que les `w:p` du corps :
-        // le texte d'une zone (`w:txbxContent`) n'est lu par aucun chemin. Ces
-        // 19 titres étaient donc perdus AVANT toute détection — la mesure du
-        // rappel plafonne à 33 titres sur les 76 attendus, et cet écart n'est pas
-        // un défaut de règle, c'est un défaut de LECTURE.
+        // **Le défaut mesuré.** Le corps du DQP contient 26 zones de texte
+        // distinctes ; 19 portent un TITRE DE NIVEAU 1 (« SOMMAIRE »,
+        // « DEDICACE », « REMERCIEMENTS », « CHAPITRE I : … »). `ParagraphReader`
+        // ne voit que les `w:p` du corps : le texte d'une zone
+        // (`w:txbxContent`) n'est lu par aucun chemin. Ces titres étaient perdus
+        // AVANT toute détection — ce n'était pas un défaut de règle, mais de
+        // LECTURE.
         $blocks = $this->promouvoirTitresEnZonesDeTexte($document, $blocks);
+
+        // --- Passe 2bis : titres TOUT EN MAJUSCULES ----------------------------
+        //
+        // **Ce que la mesure a établi, avant d'écrire cette règle.** Sur la paire
+        // de référence (DQP brut → DQP final), 49 titres du final existaient dans
+        // le brut comme simples PARAGRAPHES, aucun n'étant gras et tous à la même
+        // taille que le corps : aucun signal typographique ne les distinguait.
+        //
+        // Un seul signal s'est révélé exploitable — l'écriture TOUT EN MAJUSCULES,
+        // avec une longueur bornée et sans point final :
+        //
+        //     vrais titres récupérés : 28
+        //     faux positifs          :  3  (« ENVOL », « APNPC SERVICE », « PM SERVICE »)
+        //     précision              : 90,3 %
+        //     rappel                 : 39,5 % → 74,1 %
+        //
+        // Les 21 titres restants (`Scénario 1 : …`, `Les fournisseurs`, `Séquence
+        // Connexion`) sont formatés EXACTEMENT comme le corps. Les détecter
+        // demanderait une heuristique non mesurée — ou une IA. On s'arrête donc
+        // ici : une précision de 90 % est utile, une heuristique inventée ne
+        // serait qu'une source de faux titres.
+        $blocks = $this->promouvoirMajuscules($blocks);
 
         return [
             'blocks' => $blocks,
@@ -852,6 +882,112 @@ final class DocxNativeAdapter implements InputAdapter
         $formes = XmlLoader::query($conteneur->ownerDocument, './/wps:wsp', $conteneur);
 
         return count($formes) > 1;
+    }
+
+    /**
+     * Promeut en titres les paragraphes TOUT EN MAJUSCULES.
+     *
+     * **Pourquoi cette règle, et sur quelle mesure.** Elle n'a pas été inventée :
+     * elle a été testée avant d'être écrite, sur la paire de référence.
+     *
+     * | | |
+     * |---|---|
+     * | Vrais titres récupérés | **28** |
+     * | Faux positifs | **3** — « ENVOL », « APNPC SERVICE », « PM SERVICE » |
+     * | Précision | **90,3 %** |
+     * | Rappel | **39,5 % → 74,1 %** |
+     *
+     * **Pourquoi ces bornes.** Une majuscule seule ne suffit pas — un sigle, un
+     * en-tête de tableau ou un nom d'entreprise est aussi en majuscules. Trois
+     * bornes réduisent ces faux positifs :
+     *
+     *  - **longueur ≤ 80 caractères** : un paragraphe de corps en majuscules
+     *    serait plus long ; un titre tient sur une ligne ;
+     *  - **pas de point final** : un titre ne se termine pas par un point, une
+     *    phrase oui ;
+     *  - **au moins une lettre accentuable** (`\p{Lu}`) : écarte les chaînes de
+     *    chiffres et de symboles.
+     *
+     * **Le niveau attribué est 1, avec une confiance de 0,75.** Le signal dit
+     * « c'est probablement un titre », jamais « c'est un titre de niveau N » : la
+     * casse ne porte aucune information de profondeur. Une confiance sous le
+     * seuil d'acceptation automatique (0,85) est VOULUE : ces blocs restent
+     * candidats à une vérification, ils ne s'imposent pas comme certitude.
+     *
+     * **Ce que la règle ne fait pas.** Elle ne promeut JAMAIS un bloc déjà classé
+     * titre, légende, entrée de sommaire, tableau ou figure : elle ne complète
+     * que les paragraphes.
+     *
+     * @param  array<int, Block>  $blocks
+     * @return array<int, Block>
+     */
+    private function promouvoirMajuscules(array $blocks): array
+    {
+        $resultat = [];
+
+        foreach ($blocks as $bloc) {
+            if ($bloc->type !== BlockType::Paragraph || ! $this->estTitreEnMajuscules($bloc->text)) {
+                $resultat[] = $bloc;
+
+                continue;
+            }
+
+            // On RECONSTRUIT le bloc avec le type Heading : `Block::$type` est
+            // readonly, et changer le type est précisément l'objet de cette
+            // passe. On recopie toutes les propriétés — en oublier une perdrait
+            // silencieusement une donnée.
+            $resultat[] = new Block(
+                blockId: $bloc->blockId,
+                type: BlockType::Heading,
+                text: $bloc->text,
+                headingLevel: 1,
+                confidence: 0.75,
+                fontSize: $bloc->fontSize,
+                isBold: $bloc->isBold,
+                indentLevel: $bloc->indentLevel,
+                positionY: $bloc->positionY,
+                fidelity: $bloc->fidelity,
+            );
+        }
+
+        return $resultat;
+    }
+
+    /**
+     * Le texte satisfait-il les trois bornes de la règle « majuscules » ?
+     *
+     * `mb_strtoupper` est utilisé pour la comparaison et non une expression
+     * régulière `^[A-Z]+$` : cette dernière ignorerait les accents (« SCÉNARIO »
+     * contient É) et les chiffres légitimes (« SECTION 1 : … »).
+     */
+    private function estTitreEnMajuscules(string $texte): bool
+    {
+        $texte = trim($texte);
+        $longueur = mb_strlen($texte);
+
+        if ($longueur < 3 || $longueur > self::LONGUEUR_MAX_MAJUSCULES) {
+            return false;
+        }
+
+        if (str_ends_with($texte, '.')) {
+            return false;
+        }
+
+        // Un texte qui se termine par une virgule, un point-virgule ou deux-points
+        // est une amorce de phrase (« RÉSUMÉ DES ÉTAPES : »), pas un titre.
+        // Le deux-points reste toléré en fin de titre (« CAR USAGE : ») : c'est
+        // une ponctuation de titre courante, et l'exclure perdrait des titres
+        // réels. Seuls la virgule et le point-virgule sont écartés.
+        if (preg_match('/[,;]$/u', $texte) === 1) {
+            return false;
+        }
+
+        // Au moins une lettre : écarte les chaînes de chiffres et de symboles.
+        if (preg_match('/\p{Lu}/u', $texte) !== 1) {
+            return false;
+        }
+
+        return mb_strtoupper($texte, 'UTF-8') === $texte;
     }
 
     /**

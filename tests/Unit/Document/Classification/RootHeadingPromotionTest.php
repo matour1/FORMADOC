@@ -44,11 +44,18 @@ class RootHeadingPromotionTest extends TestCase
 
     /**
      * Document dont aucun bloc ne porte de style ni de numération de titre.
+     *
+     * **Le texte est en CASSE NORMALE, et c'est important depuis le 2026-10-20.**
+     * Une règle détecte désormais les paragraphes TOUT EN MAJUSCULES comme des
+     * titres (précision mesurée : 90 %). Un titre en majuscules ne serait donc
+     * plus « un document sans titre », et ce test vérifierait autre chose que ce
+     * qu'il annonce. La première ligne portait « DEVIS DU PROJET MEDLINK » —
+     * elle est passée en casse normale pour que la condition testée reste vraie.
      */
     private function documentSansTitre(): StructuralDocument
     {
         $source = DocxFixture::create(
-            DocxFixture::paragraph('DEVIS DU PROJET MEDLINK')
+            DocxFixture::paragraph('Devis du projet MedLink')
             .DocxFixture::paragraph('Projet MedLink - plateforme de centralisation des carnets de sante.')
             .DocxFixture::paragraph('Le projet vise a regrouper les informations dispersees.')
         );
@@ -87,7 +94,7 @@ class RootHeadingPromotionTest extends TestCase
         $titres = $apres->headings();
 
         $this->assertCount(1, $titres, 'Un document sans titre doit en recevoir un.');
-        $this->assertSame('DEVIS DU PROJET MEDLINK', $titres[0]->text);
+        $this->assertSame('Devis du projet MedLink', $titres[0]->text);
         $this->assertSame(1, $titres[0]->headingLevel);
         $this->assertSame($titres[0]->blockId, $resultat['report']['root_heading_created']);
     }
