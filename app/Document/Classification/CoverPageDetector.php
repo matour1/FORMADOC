@@ -82,22 +82,32 @@ final class CoverPageDetector
     ];
 
     /**
-     * Titres qui prouvent un rapport COMPLET, pas une page de garde.
+     * Titres liminaires reconnus marquant le début des pièces liminaires d'un rapport.
      *
      * @var array<int, string>
      */
     private const LIMINAIRES = [
-        'sommaire', 'table des matieres', 'dedicace', 'remerciements',
-        'avant-propos', 'sigles', 'abreviations', 'liste des figures',
-        'liste des tableaux', 'liste des sigles', 'resume', 'abstract',
-        'introduction', 'introduction generale',
+        'sommaire', 'table des matieres', 'table des matières', 'tables des matieres',
+        'tables des matières', 'dedicace', 'dédicace', 'remerciements',
+        'avant-propos', 'sigles', 'abreviations', 'abréviations', 'liste des figures',
+        'liste de figures', 'liste des tableaux', 'liste de tableaux',
+        'liste des sigles', 'liste des illustrations', 'liste des annexes',
+        'resume', 'résumé', 'abstract', 'introduction', 'introduction generale',
+        'introduction générale',
     ];
 
     /**
-     * Détecte la page de garde et renvoie le nombre de blocs à supprimer.
+     * Détecte la page de garde (tout ce qui précède le premier titre liminaire
+     * ou de corps) et renvoie le nombre de blocs à supprimer.
      *
-     * Renvoie `0` quand il n'y a rien à supprimer — l'appelant n'a donc pas de
-     * cas particulier à traiter.
+     * Conformément au §5.2 des spécifications et à la décision D-002 :
+     * Le candidat est tout ce qui précède le premier titre liminaire reconnu
+     * (sommaire, dédicace, remerciements, avant-propos...) ou, à défaut, le
+     * premier titre détecté. Si ce candidat compte ≤ 40 blocs (≤ 2 pages) et
+     * comporte au moins 2 formules caractéristiques de couverture, il est
+     * supprimé.
+     *
+     * Renvoie `0` quand il n'y a rien à supprimer.
      *
      * @param  array<int, Block>  $blocs
      * @return array{supprimer: int, raison: string, marqueurs: array<int, string>}
@@ -108,30 +118,52 @@ final class CoverPageDetector
 
         $total = count($blocs);
 
-        if ($total === 0 || $total > self::MAX_BLOCS) {
-            $aucun['raison'] = $total === 0
-                ? 'document vide'
-                : "document trop volumineux ({$total} blocs) pour être une page de garde";
+        if ($total === 0) {
+            $aucun['raison'] = 'document vide';
 
             return $aucun;
         }
 
-        // Un titre liminaire prouve un rapport complet : on ne touche à rien.
-        foreach ($blocs as $bloc) {
-            if ($bloc->type !== BlockType::Heading) {
-                continue;
-            }
-
+        // 1. Trouver le premier titre liminaire reconnu
+        $indexFinCandidat = null;
+        foreach ($blocs as $index => $bloc) {
             if ($this->estLiminaire($bloc->text)) {
-                $aucun['raison'] = 'le document contient un titre liminaire : ce n\'est pas une page de garde isolée';
-
-                return $aucun;
+                $indexFinCandidat = $index;
+                break;
             }
         }
 
+        // 2. À défaut de liminaire, chercher le premier titre de corps (hors titre propre à la couverture)
+        if ($indexFinCandidat === null) {
+            foreach ($blocs as $index => $bloc) {
+                if ($bloc->type === BlockType::Heading && ! $this->estTitreDeCouverture($bloc->text)) {
+                    $indexFinCandidat = $index;
+                    break;
+                }
+            }
+        }
+
+        // Si aucun titre n'est trouvé, le document entier est candidat (couverture isolée)
+        $nbCandidats = $indexFinCandidat ?? $total;
+
+        if ($nbCandidats === 0) {
+            $aucun['raison'] = 'le document commence directement par un titre liminaire';
+
+            return $aucun;
+        }
+
+        // Garde-fou §5.2 : si le candidat dépasse 2 pages (MAX_BLOCS), ne rien supprimer et avertir
+        if ($nbCandidats > self::MAX_BLOCS) {
+            $aucun['raison'] = "candidat page de garde trop volumineux ({$nbCandidats} blocs > ".self::MAX_BLOCS.')';
+
+            return $aucun;
+        }
+
+        // 3. Vérifier la présence de marqueurs distincts de couverture sur la tranche candidate
+        $candidats = array_slice($blocs, 0, $nbCandidats);
         $trouves = [];
 
-        foreach ($blocs as $bloc) {
+        foreach ($candidats as $bloc) {
             $texte = $this->normaliser($bloc->text ?? '');
 
             if ($texte === '') {
@@ -147,19 +179,41 @@ final class CoverPageDetector
 
         if (count($trouves) < self::MIN_MARQUEURS) {
             $aucun['marqueurs'] = array_keys($trouves);
+            $aucun['raison'] = sprintf(
+                'marqueurs insuffisants dans les %d premiers blocs (%d/%d)',
+                $nbCandidats,
+                count($trouves),
+                self::MIN_MARQUEURS
+            );
 
             return $aucun;
         }
 
         return [
-            'supprimer' => $total,
+            'supprimer' => $nbCandidats,
             'raison' => sprintf(
                 'page de garde détectée (%d blocs, marqueurs : %s)',
-                $total,
+                $nbCandidats,
                 implode(', ', array_keys($trouves))
             ),
             'marqueurs' => array_keys($trouves),
         ];
+    }
+
+    /**
+     * Indique si un titre est typique d'une couverture (ex : RAPPORT DE STAGE).
+     */
+    private function estTitreDeCouverture(string $texte): bool
+    {
+        $texte = $this->normaliser($texte);
+
+        foreach (self::MARQUEURS as $marqueur) {
+            if (str_contains($texte, $marqueur)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -169,10 +223,15 @@ final class CoverPageDetector
     {
         $texte = $this->normaliser($texte);
 
+        if ($texte === '' || mb_strlen($texte) > 80) {
+            return false;
+        }
+
         foreach (self::LIMINAIRES as $liminaire) {
             if ($texte === $liminaire
                 || str_starts_with($texte, $liminaire.' ')
-                || str_starts_with($texte, $liminaire.':')) {
+                || str_starts_with($texte, $liminaire.':')
+                || str_starts_with($texte, $liminaire."\t")) {
                 return true;
             }
         }

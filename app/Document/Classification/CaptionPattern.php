@@ -224,10 +224,13 @@ final class CaptionPattern
      */
     public function isListEntry(string $text): bool
     {
-        // Forme typique : « Figure 1 : Titre ......... 12 » (points de conduite
-        // et numéro de page en fin de ligne).
-        return preg_match('/^(Figure|Tableau|Annexe|Planche)\s+/iu', ltrim($text)) === 1
-            && preg_match('/\.{3,}\s*\d+$/u', $text) === 1;
+        // Forme typique : « Figure 1 : Titre ......... 12 », « Figure 1 : Titre \t 12 »,
+        // « Tableau 1: LISTE DES ABBREVIATIONS \t vii » (points de conduite, tabulation ou
+        // espaces avec numéro de page arabe ou romain en fin de ligne).
+        $texte = trim($text);
+
+        return preg_match('/^(?:Figure|Tableau|Annexe|Planche)\s+/iu', $texte) === 1
+            && preg_match('/(?:\.{2,}|\t|\x{00A0}| {2,})\s*(?:\d{1,4}|[ivxlcdmIVXLCDM]{1,6})\.?$/u', $texte) === 1;
     }
 
     /**

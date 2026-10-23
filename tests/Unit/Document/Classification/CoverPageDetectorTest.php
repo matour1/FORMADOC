@@ -86,16 +86,32 @@ class CoverPageDetectorTest extends TestCase
     }
 
     /**
-     * **Un titre liminaire disqualifie, quel que soit le nombre de marqueurs.**
+     * **La page de garde précédant un titre liminaire est bien détectée et supprimée.**
      *
-     * Un document qui contient « SOMMAIRE » est un rapport complet : le
-     * supprimer reviendrait à détruire le document.
+     * Conformément au §5.2 et à la décision D-002 : tout ce qui précède le premier
+     * titre liminaire (ici SOMMAIRE) constitue la page de garde à supprimer.
      */
-    public function test_un_titre_liminaire_disqualifie_la_detection(): void
+    public function test_la_page_de_garde_devant_un_titre_liminaire_est_detectee(): void
     {
         $blocs = [
             $this->bloc('REPUBLIQUE DU CAMEROUN'),
             $this->bloc('RAPPORT DE STAGE'),
+            $this->bloc('SOMMAIRE', BlockType::Heading),
+            $this->bloc('DEDICACE', BlockType::Heading),
+        ];
+
+        $resultat = $this->detecteur()->detecter($blocs);
+
+        $this->assertSame(2, $resultat['supprimer']);
+        $this->assertStringContainsString('page de garde détectée', $resultat['raison']);
+    }
+
+    /**
+     * **Un document commençant directement par un titre liminaire ne supprime rien.**
+     */
+    public function test_un_document_sans_page_de_garde_commencant_par_un_sommaire_ne_supprime_rien(): void
+    {
+        $blocs = [
             $this->bloc('SOMMAIRE', BlockType::Heading),
             $this->bloc('DEDICACE', BlockType::Heading),
         ];
@@ -157,6 +173,20 @@ class CoverPageDetectorTest extends TestCase
         ];
 
         $this->assertSame(2, $this->detecteur()->detecter($blocs)['supprimer']);
+    }
+
+    public function test_un_document_sans_page_de_garde_commencant_par_du_texte_normal_ne_supprime_rien(): void
+    {
+        $blocs = [
+            $this->bloc('Ce document ne comporte aucune couverture.'),
+            $this->bloc('Le présent travail porte sur l\'architecture logicielle.'),
+            $this->bloc('Nous allons décrire la méthodologie employée.'),
+        ];
+
+        $resultat = $this->detecteur()->detecter($blocs);
+
+        $this->assertSame(0, $resultat['supprimer']);
+        $this->assertStringContainsString('marqueurs insuffisants', $resultat['raison']);
     }
 
     public function test_un_document_vide_ne_declenche_rien(): void

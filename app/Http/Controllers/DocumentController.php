@@ -906,9 +906,13 @@ class DocumentController extends Controller
     private function generateAndDownload(Document $document, ?Template $template = null): Response|RedirectResponse|BinaryFileResponse
     {
         try {
+            $structural = $document->structure?->structuralDocument();
             $structure = $document->structure?->structure;
 
-            if (empty($structure) || empty($structure['titres'] ?? [])) {
+            $hasHeadings = ($structural !== null && $structural->headings() !== [])
+                || (! empty($structure['titres'] ?? []));
+
+            if (! $hasHeadings) {
                 return back()->withErrors(['document' => 'Aucune structure détectée pour ce document.']);
             }
 

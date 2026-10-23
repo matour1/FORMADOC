@@ -94,10 +94,19 @@ final class DocxNativeAdapter implements InputAdapter
     private const INTITULES_GENERES = [
         'SOMMAIRE',
         'TABLE DES MATIERES',
+        'TABLES DES MATIERES',
+        'TABLE DES MATIÈRES',
+        'TABLES DES MATIÈRES',
         'LISTE DES FIGURES',
+        'LISTE DE FIGURES',
         'LISTE DES TABLEAUX',
+        'LISTE DE TABLEAUX',
         'LISTE DES ANNEXES',
+        'LISTE D\'ANNEXES',
+        'LISTE DE PLANCHES',
         'LISTE DES PLANCHES',
+        'LISTE DES ILLUSTRATIONS',
+        'LISTE D\'ILLUSTRATIONS',
     ];
 
     private readonly HeadingNumberingPattern $numberingPattern;
@@ -716,7 +725,7 @@ final class DocxNativeAdapter implements InputAdapter
         //
         // On ne teste QUE `wps:wsp` / `wpg:wgp` : `a:blip` reste du ressort du
         // chemin d'image, pour ne pas créer deux détections du même contenu.
-        if (($analysis['has_shape'] ?? false) === true) {
+        if (($analysis['has_shape'] ?? false) === true && $surroundingText === '') {
             return new Block(
                 blockId: (string) $analysis['block_id'],
                 type: BlockType::Shape,
@@ -754,7 +763,22 @@ final class DocxNativeAdapter implements InputAdapter
         }
 
         // --- 2. Légende pure (sans image) : pattern texte, 0 token ---
-        if ($caption !== null && ! $this->captionPattern->isListEntry($surroundingText)) {
+        if ($caption !== null) {
+            if ($this->captionPattern->isListEntry($surroundingText)) {
+                return new Block(
+                    blockId: (string) $analysis['block_id'],
+                    type: BlockType::TocEntry,
+                    text: $this->sansNumeroDePage($surroundingText),
+                    headingLevel: 1,
+                    fontSize: $analysis['font_size'],
+                    isBold: (bool) $analysis['is_bold'],
+                    indentLevel: $this->indentLevelFrom($analysis),
+                    positionY: $analysis['position_y'],
+                    fidelity: $this->fidelity(),
+                    confidence: 0.95,
+                );
+            }
+
             return $this->buildCaptionBlock($analysis, $caption);
         }
 
@@ -813,6 +837,24 @@ final class DocxNativeAdapter implements InputAdapter
                 // heuristique. Une entrée de sommaire ne doit pas déclencher de
                 // clarification — ce serait demander à l'utilisateur de trancher
                 // ce que le document dit explicitement.
+                confidence: 0.95,
+            );
+        }
+
+        // --- 2ter. Intitulé de frontispice régénéré (SOMMAIRE, TABLE DES MATIERES...) ---
+        // Conformément au §5.3, les éléments déjà générés et leur titre sont supprimés/reclassés
+        // en TocEntry afin de ne pas figurer en doublon dans le corps ni dans la table régénérée.
+        if ($this->estIntituleDeFrontispice($text)) {
+            return new Block(
+                blockId: (string) $analysis['block_id'],
+                type: BlockType::TocEntry,
+                text: $text,
+                headingLevel: 1,
+                fontSize: $analysis['font_size'],
+                isBold: (bool) $analysis['is_bold'],
+                indentLevel: $this->indentLevelFrom($analysis),
+                positionY: $analysis['position_y'],
+                fidelity: $this->fidelity(),
                 confidence: 0.95,
             );
         }
@@ -1095,6 +1137,7 @@ final class DocxNativeAdapter implements InputAdapter
         $ancre = $this->indexerZonesParParagraphe($document, $dansFallback);
 
         $ajouts = [];
+        $ancresFrontispice = [];
 
         foreach ($zones as $zone) {
             if (in_array($zone, $dansFallback, true)) {
@@ -1120,8 +1163,14 @@ final class DocxNativeAdapter implements InputAdapter
             // Un intitulé de frontispice que le générateur produit lui-même
             // (« SOMMAIRE », « TABLE DES MATIERES », listes) ne doit PAS devenir
             // un titre : il créerait une entrée dans le sommaire qu'on génère,
-            // et un doublon avec celui du générateur.
+            // et un doublon avec celui du générateur. Sa forme d'ancre doit être
+            // éliminée pour ne pas laisser de boîte de titre orpheline.
             if ($this->estIntituleDeFrontispice($texte)) {
+                $posFrontispice = $ancre[spl_object_id($zone)] ?? null;
+                if ($posFrontispice !== null) {
+                    $ancresFrontispice[$posFrontispice] = true;
+                }
+
                 continue;
             }
 
@@ -1152,7 +1201,7 @@ final class DocxNativeAdapter implements InputAdapter
             ];
         }
 
-        if ($ajouts === []) {
+        if ($ajouts === [] && $ancresFrontispice === []) {
             return $blocks;
         }
 
@@ -1179,13 +1228,24 @@ final class DocxNativeAdapter implements InputAdapter
             // Les titres promus dont l'ancre DÉSIGNE ce paragraphe passent avant
             // lui : la zone de texte est le plus souvent le titre de la page, et
             // le paragraphe qui l'ancre est un conteneur vide.
+            $aDesPromus = isset($parAncre[$position]) && $parAncre[$position] !== [];
             foreach ($parAncre[$position] ?? [] as $promu) {
                 $resultat[] = $this->reidentifier($promu, $index++);
             }
 
             unset($parAncre[$position]);
-            $resultat[] = $bloc;
-            $index++;
+
+            // Si ce paragraphe était le conteneur/forme d'un titre promu,
+            // ou d'un intitulé de frontispice (ex: SOMMAIRE), le titre remplace
+            // la forme : on ne conserve pas le conteneur vide ou la forme orpheline.
+            if ($aDesPromus && ($bloc->type === BlockType::Shape || trim($bloc->text) === '')) {
+                continue;
+            }
+            if (isset($ancresFrontispice[$position]) && ($bloc->type === BlockType::Shape || trim($bloc->text) === '')) {
+                continue;
+            }
+
+            $resultat[] = $this->reidentifier($bloc, $index++);
         }
 
         // Ceux dont l'ancre dépasse la fin (cas limite) vont en fin de document.

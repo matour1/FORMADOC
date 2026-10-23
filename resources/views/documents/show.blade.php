@@ -31,16 +31,36 @@
         if ($structurel !== null) {
             $pipelineNatif = true;
 
-            $titres = array_map(
-                static fn ($bloc): array => [
+            // Deux nombres, pas un seul.
+            //
+            // Un bloc de type `heading` peut porter une confiance INFÉRIEURE au
+            // seuil d'acceptation (0,85) : le classifieur le compte comme titre
+            // mais le soumet à confirmation. Annoncer « 208 titres détectés »
+            // revenait à affirmer comme établi ce que la même page demande de
+            // valider quelques lignes plus haut (« Confirmer 254 passages »).
+            // On sépare donc les titres ÉTABLIS des titres DÉDUITS.
+            $titresSur = [];
+            $titresAConfirmer = [];
+
+            foreach ($structurel->headings() as $bloc) {
+                $entree = [
                     'texte' => $bloc->text,
                     'niveau' => $bloc->headingLevel ?? 1,
                     'numero' => $bloc->displayNumber(),
-                ],
-                $structurel->headings(),
-            );
+                ];
+
+                if ($bloc->confidence >= \App\Document\Structure\Block::AUTO_ACCEPT_THRESHOLD) {
+                    $titresSur[] = $entree;
+                } else {
+                    $titresAConfirmer[] = $entree;
+                }
+            }
+
+            $titres = $titresSur;
             $sousTitres = [];
-            $titreCount = count($titres);
+            $titreCount = count($titresSur) + count($titresAConfirmer);
+            $titreCountSur = count($titresSur);
+            $titreCountAConfirmer = count($titresAConfirmer);
 
             $tableaux = array_map(
                 static fn ($bloc): array => [
@@ -76,13 +96,24 @@
             );
 
             $ambiguitesStructurelles = $structurel->ambiguous();
+            $coverPageInfo = $structurel->meta['cover_page'] ?? null;
         } else {
             $pipelineNatif = false;
+            $coverPageInfo = null;
             $data = $structure->structure ?? [];
 
             $titres = $data['titres'] ?? [];
             $sousTitres = $data['sous_titres'] ?? [];
             $titreCount = count($titres) + count($sousTitres);
+
+            // L'ancien format ne stocke pas de confiance par titre : on ne peut
+            // pas distinguer les titres établis des déductions. Ses ambiguïtés
+            // sont exposées séparément (`$ambiguities`). Annoncer « 0 à
+            // confirmer » ici serait faux dans l'autre sens ; on n'affiche donc
+            // la mention « dont … à confirmer » que si elle est mesurée.
+            $titreCountSur = $titreCount;
+            $titreCountAConfirmer = 0;
+            $titresAConfirmer = [];
             $tableaux = $data['tableaux'] ?? [];
             $images = $data['images'] ?? [];
             $legends = array_map($normaliserLegende, $data['legends'] ?? []);
@@ -301,7 +332,12 @@
                     <h2 class="card-title">Hiérarchie des titres détectée</h2>
                 </div>
                 @if ($titreCount > 0)
-                    <p style="font-family:var(--font-mono);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:.8rem">{{ $titreCount }} titres détectés</p>
+                    <p style="font-family:var(--font-mono);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:.8rem">
+                        {{ $titreCount }} titres détectés
+                        @if ($titreCountAConfirmer > 0)
+                            · dont <strong style="color:#92400e">{{ $titreCountAConfirmer }} à confirmer</strong>
+                        @endif
+                    </p>
                     <div style="background:var(--color-surface-2);border-radius:var(--radius-sm);padding:1.1rem 1.3rem">
                         @foreach ($titres as $titre)
                             <h3 style="font-weight:700;margin-bottom:.5rem">{{ $titre['texte'] ?? '' }}</h3>
@@ -309,6 +345,20 @@
                         @foreach ($sousTitres as $sousTitre)
                             <h4 style="font-weight:600;color:var(--color-text-secondary);margin-bottom:.5rem;margin-left:1.5rem">{{ $sousTitre['texte'] ?? '' }}</h4>
                         @endforeach
+
+                        {{-- Les titres DÉDUITS : soumis à confirmation, présentés
+                             comme tels. Les mêler aux titres établis reviendrait à
+                             faire passer une déduction pour une observation. --}}
+                        @if ($titreCountAConfirmer > 0)
+                            <div style="margin-top:1.1rem;padding-top:.9rem;border-top:1px dashed var(--color-border)">
+                                <p style="font-family:var(--font-mono);font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:.6rem">
+                                    Titres proposés — à confirmer
+                                </p>
+                                @foreach ($titresAConfirmer as $titre)
+                                    <h3 style="font-weight:600;color:var(--color-text-secondary);margin-bottom:.45rem">{{ $titre['texte'] ?? '' }}</h3>
+                                @endforeach
+                            </div>
+                        @endif
                     </div>
                 @else
                     <p style="color:var(--color-text-secondary);font-size:.88rem">Aucun titre détecté dans ce document.</p>
@@ -432,23 +482,26 @@
                 </div>
             </section>
 
-            {{-- Page de garde : FONCTIONNALITÉ NON DISPONIBLE dans cette version.
-                 Ce n'est pas un oubli mais une décision de périmètre : l'objectif de
-                 la version est la MISE EN FORME du document (titres, styles,
-                 numérotation, sommaire, listes). Un formulaire inerte serait plus
-                 trompeur qu'un message clair — l'utilisateur croirait pouvoir s'en
-                 servir. --}}
+            {{-- Page de garde : détection, suppression et signalement (D-002 & §5.2) --}}
             <section class="card" style="margin-bottom:1.25rem">
                 <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">
-                    <i data-lucide="info" style="width:19px;height:19px;color:var(--color-text-muted)"></i>
-                    <h2 class="card-title">Page de garde — fonctionnalité non disponible</h2>
+                    <i data-lucide="{{ $coverPageInfo ? 'shield-check' : 'info' }}" style="width:19px;height:19px;color:var(--color-primary)"></i>
+                    <h2 class="card-title">Page de garde</h2>
                 </div>
-                <p style="color:var(--color-text-secondary);font-size:.85rem;margin:0">
-                    La génération de page de garde n'est <strong>pas disponible</strong> dans cette
-                    version. FORMADOC se concentre sur la <strong>mise en forme</strong> de votre
-                    document : titres, styles, numérotation des figures et tableaux, sommaire
-                    et listes.
-                </p>
+                @if ($coverPageInfo)
+                    <p style="color:var(--color-text-secondary);font-size:.85rem;margin:0">
+                        <span class="badge badge-success" style="margin-right:.4rem">Supprimée</span>
+                        Une page de garde source a été détectée et retirée ({{ $coverPageInfo['supprime'] }} blocs).
+                        FORMADOC applique un gabarit de mise en forme strict sans couverture.
+                    </p>
+                @else
+                    <p style="color:var(--color-text-secondary);font-size:.85rem;margin:0">
+                        La génération de page de garde n'est <strong>pas disponible</strong> dans cette
+                        version. FORMADOC se concentre sur la <strong>mise en forme</strong> de votre
+                        document : titres, styles, numérotation des figures et tableaux, sommaire
+                        et listes.
+                    </p>
+                @endif
             </section>
         @endif
 

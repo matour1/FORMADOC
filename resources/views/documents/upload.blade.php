@@ -326,7 +326,9 @@
                     }
                     // Erreur : message + restauration
                     return resp.text().then(function (html) {
-                        const m = html.match(/<div class="[^"]*text-error[^"]*"[^>]*>([\s\S]*?)<\/div>/);
+                        const m = html.match(/<div class="[^"]*text-error[^"]*"[^>]*>([\s\S]*?)<\/div>/)
+                            || html.match(/<span class="[^"]*field-error[^"]*"[^>]*>([\s\S]*?)<\/span>/)
+                            || html.match(/<div class="[^"]*alert-danger[^"]*"[^>]*>([\s\S]*?)<\/div>/);
                         const message = m ? m[1].replace(/<[^>]+>/g, ' ').trim() : 'Erreur lors de l\'analyse du document.';
                         appendLog('Échec : ' + message, 'error');
                         titleEl.textContent = 'Analyse impossible';

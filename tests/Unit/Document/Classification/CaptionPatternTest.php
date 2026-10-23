@@ -143,6 +143,8 @@ class CaptionPatternTest extends TestCase
         $text = 'Figure 1 : Architecture .......... 12';
 
         $this->assertTrue($this->detector->isListEntry($text));
+        $this->assertTrue($this->detector->isListEntry("Figure 1: Organigramme de SOPAL Sarl\t8"));
+        $this->assertTrue($this->detector->isListEntry("Tableau 1: LISTE DES ABBREVIATIONS\tvii"));
     }
 
     public function test_une_legende_normale_n_est_pas_une_entree_de_liste(): void

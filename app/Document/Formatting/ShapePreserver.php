@@ -162,6 +162,17 @@ final class ShapePreserver
                     continue;
                 }
 
+                // Un cadre de texte isolé avec w:txbxContent est un conteneur de texte/titre
+                // promu ou supprimé, pas un diagramme vectoriel.
+                $groupes = $xpath->query('.//wpg:wgp', $noeud);
+                $formesDansNoeud = $xpath->query('.//wps:wsp', $noeud);
+                if (($groupes === false || $groupes->length === 0) && ($formesDansNoeud === false || $formesDansNoeud->length <= 1)) {
+                    $txbx = $xpath->query('.//w:txbxContent', $noeud);
+                    if ($txbx !== false && $txbx->length > 0) {
+                        continue;
+                    }
+                }
+
                 $fragment = $dom->saveXML($noeud);
 
                 if (is_string($fragment) && $fragment !== '') {
