@@ -8,6 +8,8 @@ use App\Document\Clarification\ClarificationService;
 use App\Document\Classification\BlockClassifier;
 use App\Document\Classification\ClassificationPolicy;
 use App\Document\Classification\DetectBlocksTool;
+use App\Document\Classification\HeadingClassifier;
+use App\Document\Classification\RuleBasedHeadingClassifier;
 use App\Document\Classification\SignalAggregator;
 use App\Document\DocumentPipeline;
 use App\Document\Editing\DocumentEditingService;
@@ -74,6 +76,12 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(SignalAggregator::class, function (): SignalAggregator {
             return new SignalAggregator(
                 preserveExistingHeadingConfidence: true,
+            );
+        });
+
+        $this->app->singleton(HeadingClassifier::class, function ($app): HeadingClassifier {
+            return new RuleBasedHeadingClassifier(
+                $app->make(SignalAggregator::class),
             );
         });
 
