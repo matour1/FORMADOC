@@ -198,6 +198,25 @@ final class SettingsCatalog
                 'description' => 'Masquer retire le moyen de la liste, sans le désactiver.',
                 'default' => true,
             ],
+            'geniuspay_actif' => [
+                'key' => 'payments.gateways.geniuspay.actif',
+                'type' => 'bool',
+                'group' => 'payments',
+                'label' => 'GeniusPay — moyen activé',
+                'description' => 'Désactiver refuse ce moyen PARTOUT. Sans clé d\'API renseignée, '
+                    .'le moyen n\'est de toute façon jamais proposé : un moyen non configuré mènerait '
+                    .'le client vers une page d\'erreur.',
+                'default' => true,
+            ],
+            'geniuspay_visible' => [
+                'key' => 'payments.gateways.geniuspay.visible',
+                'type' => 'bool',
+                'group' => 'payments',
+                'label' => 'GeniusPay — affiché dans l\'interface d\'achat',
+                'description' => 'Masquer retire le moyen de la liste proposée aux utilisateurs, sans '
+                    .'le désactiver : les liens de paiement continuent de fonctionner.',
+                'default' => true,
+            ],
             'offline_actif' => [
                 'key' => 'payments.gateways.offline.actif',
                 'type' => 'bool',

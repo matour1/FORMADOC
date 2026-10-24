@@ -382,4 +382,51 @@ class GeniusPayServiceTest extends TestCase
         $this->assertSame('completed', $resultat['statut']);
         $this->assertSame(5000, $resultat['montant']);
     }
+
+    // -------------------------------------------------------------------------
+    // Remboursement (POST /payments/{reference}/refund)
+    // -------------------------------------------------------------------------
+
+    public function test_un_remboursement_total_ou_partiel_transmet_les_bons_champs(): void
+    {
+        Http::fake([
+            '*/payments/MTX-REF-1/refund' => Http::response([
+                'success' => true,
+                'data' => [
+                    'reference' => 'MTX-REF-1',
+                    'status' => 'refunded',
+                    'refunded_amount' => 2500,
+                ],
+            ]),
+        ]);
+
+        $resultat = $this->service()->rembourserPaiement('MTX-REF-1', 2500, 'Demande client');
+
+        $this->assertTrue($resultat['ok']);
+        $this->assertSame('refunded', $resultat['statut']);
+        $this->assertSame(2500, $resultat['montantRembourse']);
+
+        Http::assertSent(function (Request $request): bool {
+            $corps = $request->data();
+
+            return str_ends_with($request->url(), '/payments/MTX-REF-1/refund')
+                && ($corps['amount'] ?? null) === 2500
+                && ($corps['reason'] ?? null) === 'Demande client';
+        });
+    }
+
+    public function test_un_remboursement_echoue_retourne_faux(): void
+    {
+        Http::fake([
+            '*/payments/MTX-REF-KO/refund' => Http::response([
+                'success' => false,
+                'message' => 'Transaction déjà remboursée',
+            ], 400),
+        ]);
+
+        $resultat = $this->service()->rembourserPaiement('MTX-REF-KO');
+
+        $this->assertFalse($resultat['ok']);
+        $this->assertSame('Transaction déjà remboursée', $resultat['message']);
+    }
 }

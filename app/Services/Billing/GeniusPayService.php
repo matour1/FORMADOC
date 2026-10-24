@@ -62,6 +62,7 @@ final class GeniusPayService
         ?string $telephone = null,
         ?string $pays = null,
         array $metadata = [],
+        string $description = 'Achat de crédits FORMADOC',
     ): array {
         if (! $this->estConfigure()) {
             return ['ok' => false, 'message' => 'GeniusPay n\'est pas configuré (clés d\'API absentes).'];
@@ -77,7 +78,7 @@ final class GeniusPayService
             'external_reference' => $referenceExterne,
             'success_url' => $successUrl,
             'error_url' => $errorUrl,
-            'description' => 'Achat de crédits FORMADOC',
+            'description' => $description !== '' ? $description : 'Achat de crédits FORMADOC',
         ];
 
         $client = array_filter([
@@ -188,6 +189,65 @@ final class GeniusPayService
             'montant' => isset($donnees['amount']) ? (int) $donnees['amount'] : null,
             'reference' => is_string($donnees['reference'] ?? null) ? $donnees['reference'] : null,
             'environnement' => is_string($donnees['environment'] ?? null) ? $donnees['environment'] : null,
+        ];
+    }
+
+    /**
+     * Rembourse une transaction (totalement ou partiellement) auprès de GeniusPay.
+     *
+     * Endpoint documenté : `POST /payments/{reference}/refund` avec `amount`
+     * (optionnel ; omis = remboursement total) et `reason` (optionnel).
+     *
+     * @param  int|null  $montantFcfa  Montant à rembourser en XAF (null = total)
+     * @return array{ok: bool, statut?: null|string, montantRembourse?: null|int, message?: string}
+     */
+    public function rembourserPaiement(string $reference, ?int $montantFcfa = null, ?string $motif = null): array
+    {
+        if ($reference === '') {
+            return ['ok' => false, 'message' => 'Référence de paiement absente.'];
+        }
+
+        if (! $this->estConfigure()) {
+            return ['ok' => false, 'message' => 'GeniusPay n\'est pas configuré (clés d\'API absentes).'];
+        }
+
+        $payload = [];
+
+        if ($montantFcfa !== null && $montantFcfa > 0) {
+            $payload['amount'] = $this->convertirEnXof($montantFcfa);
+        }
+
+        if (is_string($motif) && trim($motif) !== '') {
+            $payload['reason'] = trim($motif);
+        }
+
+        $reponse = $this->envoyer(
+            '/payments/'.rawurlencode($reference).'/refund',
+            $payload,
+            'REFUND-'.$reference.'-'.($montantFcfa ?? 'FULL'),
+        );
+
+        if ($reponse === null) {
+            return ['ok' => false, 'message' => 'GeniusPay est indisponible (réessayez plus tard).'];
+        }
+
+        $corps = $reponse->json();
+        $donnees = $corps['data'] ?? null;
+
+        if (! $reponse->successful() || ! is_array($donnees)) {
+            Log::warning('GeniusPay : remboursement refusé', [
+                'statut' => $reponse->status(),
+                'corps' => mb_substr((string) $reponse->body(), 0, 300),
+                'reference' => $reference,
+            ]);
+
+            return ['ok' => false, 'message' => (string) ($corps['message'] ?? 'Le remboursement a échoué.')];
+        }
+
+        return [
+            'ok' => true,
+            'statut' => is_string($donnees['status'] ?? null) ? $donnees['status'] : null,
+            'montantRembourse' => isset($donnees['refunded_amount']) ? (int) $donnees['refunded_amount'] : null,
         ];
     }
 

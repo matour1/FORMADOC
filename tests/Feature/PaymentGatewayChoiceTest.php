@@ -201,6 +201,41 @@ class PaymentGatewayChoiceTest extends TestCase
         );
     }
 
+    /**
+     * **Le choix de GeniusPay est routé vers GeniusPay, pas vers KPay.**
+     */
+    public function test_le_choix_geniuspay_est_route_vers_geniuspay(): void
+    {
+        config([
+            'geniuspay.api_key' => 'pk_sandbox_test',
+            'geniuspay.secret_key' => 'sk_sandbox_test',
+            'geniuspay.base_url' => 'https://pay.genius.ci/api/v1/merchant',
+            'payments.gateways.geniuspay.actif' => true,
+            'payments.gateways.geniuspay.visible' => true,
+        ]);
+
+        $lien = $this->lienEnLigne();
+
+        Http::fake([
+            'pay.genius.ci/*' => Http::response([
+                'success' => true,
+                'data' => [
+                    'checkout_url' => 'https://pay.genius.ci/checkout/link_xyz',
+                    'reference' => 'MTX-LINK-XYZ',
+                ],
+            ], 201),
+        ]);
+
+        $this->post(route('payment-link.payer', $lien->token), [
+            'gateway' => PaymentGatewayRegistry::GENIUSPAY,
+        ])->assertRedirect('https://pay.genius.ci/checkout/link_xyz');
+
+        $this->assertSame(
+            PaymentGatewayRegistry::GENIUSPAY,
+            $lien->fresh()->gateway,
+        );
+    }
+
     // -------------------------------------------------------------------------
     // Notification Monetbil
     // -------------------------------------------------------------------------

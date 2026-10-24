@@ -31,6 +31,7 @@ class SubscriptionService
         private readonly KPayService $kpay,
         private readonly CreditService $credits,
         private readonly InvoiceService $invoices,
+        private readonly ?GeniusPayService $geniusPay = null,
     ) {}
 
     /**
@@ -120,21 +121,48 @@ class SubscriptionService
 
         $externalId = 'SUB-'.$user->id.'-'.Str::uuid();
 
+        $metadata = [
+            'user_id' => $user->id,
+            'purpose' => 'subscription',
+            'plan_slug' => $plan->slug,
+            'plan_id' => $plan->id,
+            'amount_fcfa' => (int) $plan->price_fcfa,
+            'payment_method' => $paymentMethod,
+            'currency' => $currency,
+            'external_id' => $externalId,
+        ];
+
+        if ($paymentMethod === PaymentGatewayRegistry::GENIUSPAY) {
+            $result = ($this->geniusPay ?? app(GeniusPayService::class))->initierPaiement(
+                montantFcfa: (int) $plan->price_fcfa,
+                referenceExterne: $externalId,
+                successUrl: route('credits.return.geniuspay'),
+                errorUrl: route('credits.cancel.geniuspay'),
+                email: $user->email,
+                nom: $user->name,
+                metadata: $metadata,
+                description: 'Abonnement FORMADOC - '.$plan->name,
+            );
+
+            if (! $result['ok']) {
+                return ['ok' => false, 'message' => $result['message'] ?? 'Échec de l\'initialisation du paiement GeniusPay.'];
+            }
+
+            return [
+                'ok' => true,
+                'gatewayUrl' => $result['checkoutUrl'],
+                'externalId' => $externalId,
+                'reference' => $result['reference'] ?? '',
+            ];
+        }
+
         $result = $this->kpay->initGatewayPayment(
             amountFcfa: (int) $plan->price_fcfa,
             externalId: $externalId,
             returnUrl: route('account.index'),
             cancelUrl: route('account.index'),
             currency: $currency === 'XAF' ? 'XAF' : $currency,
-            metadata: [
-                'user_id' => $user->id,
-                'purpose' => 'subscription',
-                'plan_slug' => $plan->slug,
-                'plan_id' => $plan->id,
-                'amount_fcfa' => $plan->price_fcfa,
-                'payment_method' => $paymentMethod,
-                'currency' => $currency,
-            ],
+            metadata: $metadata,
         );
 
         if (! $result['ok']) {
@@ -197,7 +225,7 @@ class SubscriptionService
         // éviter la course entre deux webhooks concurrents : le check-then-act
         // hors transaction laissait une fenêtre où cancelCurrent() annulait
         // l'ancien abonnement alors qu'un doublon allait le remplacer 2 fois.
-        $externalId = (string) ($metadata['external_id'] ?? $payload['externalId'] ?? '');
+        $externalId = (string) ($metadata['external_id'] ?? $payload['externalId'] ?? $payload['reference'] ?? '');
 
         $already = false;
         DB::transaction(function () use ($user, $plan, $payload, $metadata, $externalId, &$already) {
@@ -338,22 +366,64 @@ class SubscriptionService
 
         $externalId = 'RENEW-'.$subscription->id.'-'.Str::uuid();
 
+        $metadata = [
+            'user_id' => $user->id,
+            'purpose' => 'subscription_renewal',
+            'subscription_id' => $subscription->id,
+            'plan_slug' => $plan->slug,
+            'plan_id' => $plan->id,
+            'amount_fcfa' => (int) $plan->price_fcfa,
+            'currency' => $subscription->currency ?: 'XAF',
+            'payment_method' => $subscription->payment_method ?: 'kpay',
+            'external_id' => $externalId,
+        ];
+
+        if ($subscription->payment_method === PaymentGatewayRegistry::GENIUSPAY) {
+            $result = ($this->geniusPay ?? app(GeniusPayService::class))->initierPaiement(
+                montantFcfa: (int) $plan->price_fcfa,
+                referenceExterne: $externalId,
+                successUrl: route('credits.return.geniuspay'),
+                errorUrl: route('credits.cancel.geniuspay'),
+                email: $user->email,
+                nom: $user->name,
+                metadata: $metadata,
+                description: 'Renouvellement FORMADOC - '.$plan->name,
+            );
+
+            if (! $result['ok']) {
+                Log::warning('SubscriptionService : échec renouvellement GeniusPay', [
+                    'subscription_id' => $subscription->id,
+                    'user_id' => $user->id,
+                    'message' => $result['message'] ?? 'unknown',
+                ]);
+
+                $subscription->update([
+                    'last_payment_status' => 'failed',
+                ]);
+
+                return ['ok' => false, 'reason' => 'geniuspay_init_failed', 'message' => $result['message'] ?? null];
+            }
+
+            $subscription->update([
+                'last_payment_status' => 'pending',
+                'external_id' => $externalId,
+            ]);
+
+            return [
+                'ok' => true,
+                'reason' => 'geniuspay_initiated',
+                'subscription' => $subscription,
+                'gatewayUrl' => $result['checkoutUrl'],
+            ];
+        }
+
         $result = $this->kpay->initGatewayPayment(
             amountFcfa: (int) $plan->price_fcfa,
             externalId: $externalId,
             returnUrl: route('account.index'),
             cancelUrl: route('account.index'),
             currency: $subscription->currency ?: 'XAF',
-            metadata: [
-                'user_id' => $user->id,
-                'purpose' => 'subscription_renewal',
-                'subscription_id' => $subscription->id,
-                'plan_slug' => $plan->slug,
-                'plan_id' => $plan->id,
-                'amount_fcfa' => $plan->price_fcfa,
-                'currency' => $subscription->currency ?: 'XAF',
-                'payment_method' => $subscription->payment_method ?: 'kpay',
-            ],
+            metadata: $metadata,
         );
 
         if (! $result['ok']) {

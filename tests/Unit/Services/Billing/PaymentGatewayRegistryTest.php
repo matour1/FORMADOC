@@ -278,7 +278,7 @@ class PaymentGatewayRegistryTest extends TestCase
     {
         $cas = [];
 
-        foreach (['kpay', 'monetbil'] as $moyen) {
+        foreach (['kpay', 'monetbil', 'geniuspay'] as $moyen) {
             foreach ([true, false] as $actif) {
                 foreach ([true, false] as $visible) {
                     $cas[$moyen.' actif='.var_export($actif, true).' visible='.var_export($visible, true)] = [

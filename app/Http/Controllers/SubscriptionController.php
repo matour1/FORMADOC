@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Invoice;
 use App\Models\Plan;
 use App\Services\Billing\InvoiceService;
+use App\Services\Billing\PaymentGatewayRegistry;
 use App\Services\Billing\SubscriptionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -61,9 +62,16 @@ class SubscriptionController extends Controller
     {
         $request->validate([
             'plan_id' => ['required', 'exists:plans,id'],
-            'payment_method' => ['required', 'in:card,kpay,orange,mtn'],
+            'payment_method' => ['required', 'in:card,kpay,orange,mtn,geniuspay'],
             'currency' => ['required', 'string', 'max:3'],
         ]);
+
+        $paymentMethod = (string) $request->string('payment_method');
+
+        if ($paymentMethod === PaymentGatewayRegistry::GENIUSPAY
+            && ! app(PaymentGatewayRegistry::class)->estProposable(PaymentGatewayRegistry::GENIUSPAY)) {
+            return back()->with('error', 'Ce moyen de paiement n\'est pas disponible.');
+        }
 
         $user = $request->user();
         $plan = Plan::findOrFail((int) $request->integer('plan_id'));
@@ -71,7 +79,7 @@ class SubscriptionController extends Controller
         $result = $this->subscriptions->initiateSubscription(
             $user,
             $plan,
-            paymentMethod: (string) $request->string('payment_method'),
+            paymentMethod: $paymentMethod,
             currency: strtoupper((string) $request->string('currency')),
         );
 
@@ -115,9 +123,16 @@ class SubscriptionController extends Controller
     {
         $request->validate([
             'plan_id' => ['required', 'exists:plans,id'],
-            'payment_method' => ['required', 'in:card,kpay,orange,mtn'],
+            'payment_method' => ['required', 'in:card,kpay,orange,mtn,geniuspay'],
             'currency' => ['required', 'string', 'max:3'],
         ]);
+
+        $paymentMethod = (string) $request->string('payment_method');
+
+        if ($paymentMethod === PaymentGatewayRegistry::GENIUSPAY
+            && ! app(PaymentGatewayRegistry::class)->estProposable(PaymentGatewayRegistry::GENIUSPAY)) {
+            return back()->with('error', 'Ce moyen de paiement n\'est pas disponible.');
+        }
 
         $user = $request->user();
         $plan = Plan::findOrFail((int) $request->integer('plan_id'));
@@ -128,7 +143,7 @@ class SubscriptionController extends Controller
         $result = $this->subscriptions->initiateSubscription(
             $user,
             $plan,
-            paymentMethod: (string) $request->string('payment_method'),
+            paymentMethod: $paymentMethod,
             currency: strtoupper((string) $request->string('currency')),
         );
 
