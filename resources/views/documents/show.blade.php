@@ -488,11 +488,16 @@
                     <i data-lucide="{{ $coverPageInfo ? 'shield-check' : 'info' }}" style="width:19px;height:19px;color:var(--color-primary)"></i>
                     <h2 class="card-title">Page de garde</h2>
                 </div>
-                @if ($coverPageInfo)
+                @if (($coverPageInfo['supprime'] ?? 0) > 0)
                     <p style="color:var(--color-text-secondary);font-size:.85rem;margin:0">
                         <span class="badge badge-success" style="margin-right:.4rem">Supprimée</span>
                         Une page de garde source a été détectée et retirée ({{ $coverPageInfo['supprime'] }} blocs).
                         FORMADOC applique un gabarit de mise en forme strict sans couverture.
+                    </p>
+                @elseif (! empty($coverPageInfo['avertissement']))
+                    <p style="color:var(--color-text-secondary);font-size:.85rem;margin:0">
+                        <span class="badge badge-warning" style="margin-right:.4rem">Conservée</span>
+                        {{ $coverPageInfo['avertissement'] }}
                     </p>
                 @else
                     <p style="color:var(--color-text-secondary);font-size:.85rem;margin:0">

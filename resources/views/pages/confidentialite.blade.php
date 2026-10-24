@@ -34,12 +34,12 @@
             <li>Facturation (contrat / obligation légale) : factures, reçus, historique d'achat.</li>
             <li>Support et communication (intérêt légitime) : répondre aux demandes, informer sur le service.</li>
             <li>Sécurité (intérêt légitime) : prévention des abus, journalisation.</li>
-            <li>Amélioration du produit (intérêt légitime) : statistiques agrégées anonymes.</li>
+            <li>Amélioration du produit et étalonnage de l'analyseur (intérêt légitime) : statistiques agrégées anonymes et évaluation interne de la précision des règles de détection structurelle sur les documents traités, sans conservation au-delà du délai de purge automatique ni publication d'extraits.</li>
         </ul>
 
         <h2 class="card-title" style="margin-top:1.5rem">4. Durée de conservation</h2>
         <ul>
-            <li>Documents téléversés : <strong>30 jours</strong> après le traitement, puis suppression automatique.</li>
+            <li>Documents téléversés et fichiers temporaires générés : <strong>72 heures</strong> après le traitement, puis suppression automatique.</li>
             <li>Compte : tant que le compte est actif, plus 30 jours après suppression.</li>
             <li>Factures : 10 ans (obligation fiscale).</li>
             <li>Journaux techniques : 12 mois maximum.</li>

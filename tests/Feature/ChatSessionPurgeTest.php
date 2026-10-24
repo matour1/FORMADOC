@@ -23,7 +23,7 @@ use Tests\TestCase;
  *
  * La commande files:purge-temp (cron quotidien) doit :
  *   - supprimer les previews de couverture expirées
- *     (storage/app/preview-*.docx) au-delà du TTL (24 h par défaut)
+ *     (storage/app/preview-*.docx) au-delà du TTL (72 h par défaut, décision H3)
  *   - conserver les previews récentes
  *   - supprimer les pièces jointes de sessions chat supprimées (orphelines)
  *   - conserver les pièces jointes des sessions toujours existantes
@@ -110,16 +110,19 @@ class ChatSessionPurgeTest extends TestCase
         File::put($recentPreview, 'recent');
         File::put($unrelated, 'rapport');
 
-        // Le preview "ancien" a plus de 24 h
-        touch($oldPreview, now()->subHours(30)->getTimestamp());
-        // Le preview "récent" a moins de 24 h
-        touch($recentPreview, now()->subHours(2)->getTimestamp());
+        // Le preview "ancien" a plus de 72 h (TTL par défaut H3)
+        touch($oldPreview, now()->subHours(75)->getTimestamp());
+        // Le preview "récent" a moins de 72 h
+        touch($recentPreview, now()->subHours(30)->getTimestamp());
 
         $this->artisan('files:purge-temp')->assertSuccessful();
 
-        $this->assertFileDoesNotExist($oldPreview, 'Preview expiré (> TTL) doit être supprimé.');
-        $this->assertFileExists($recentPreview, 'Preview récent (< TTL) doit être conservé.');
+        $this->assertFileDoesNotExist($oldPreview, 'Preview expiré (> TTL 72h) doit être supprimé.');
+        $this->assertFileExists($recentPreview, 'Preview récent (< TTL 72h) doit être conservé.');
         $this->assertFileExists($unrelated, 'Fichier hors préfixe preview- ne doit pas être touché.');
+
+        File::delete($recentPreview);
+        File::delete($unrelated);
     }
 
     public function test_files_purge_temp_supprime_les_pieces_jointes_des_sessions_supprimees(): void
@@ -161,13 +164,13 @@ class ChatSessionPurgeTest extends TestCase
         $fixture = $reportsDir.'/fixture_purge_tmp.docx';
         File::put($fixture, 'fixture');
 
-        touch($oldGen, now()->subHours(30)->getTimestamp());
-        touch($recentGen, now()->subHours(2)->getTimestamp());
+        touch($oldGen, now()->subHours(80)->getTimestamp());
+        touch($recentGen, now()->subHours(30)->getTimestamp());
 
         $this->artisan('files:purge-temp')->assertSuccessful();
 
-        $this->assertFileDoesNotExist($oldGen, 'gen_*.docx expiré (> TTL) doit être purgé.');
-        $this->assertFileExists($recentGen, 'gen_*.docx récent (< TTL) doit être conservé.');
+        $this->assertFileDoesNotExist($oldGen, 'gen_*.docx expiré (> TTL 72h) doit être purgé.');
+        $this->assertFileExists($recentGen, 'gen_*.docx récent (< TTL 72h) doit être conservé.');
         $this->assertFileExists($script, 'Script utilitaire .php doit être conservé.');
         $this->assertFileExists($fixture, 'Fixture reports/ doit être conservée.');
 
@@ -189,8 +192,9 @@ class ChatSessionPurgeTest extends TestCase
         $this->assertFileDoesNotExist($preview, 'Preview de plus de 1 h doit être supprimé avec --ttl-hours=1.');
 
         File::put($preview, 'x');
-        touch($preview, now()->subHours(10)->getTimestamp());
-        $this->artisan('files:purge-temp', ['--ttl-hours' => 24])->assertSuccessful();
-        $this->assertFileExists($preview, 'Preview de moins de 24 h doit être conservé avec le TTL par défaut.');
+        touch($preview, now()->subHours(30)->getTimestamp());
+        $this->artisan('files:purge-temp')->assertSuccessful();
+        $this->assertFileExists($preview, 'Preview de moins de 72 h doit être conservé avec le TTL par défaut (72 h).');
+        File::delete($preview);
     }
 }

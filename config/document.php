@@ -122,4 +122,13 @@ return [
         'max_entries' => (int) env('DOCUMENT_MAX_ENTRIES', 5_000),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Rétention des fichiers temporaires (décision H3)
+    |--------------------------------------------------------------------------
+    | Durée maximale de conservation (en heures) des fichiers temporaires et
+    | documents générés avant purge automatique par `files:purge-temp`.
+    */
+    'retention_hours' => (int) env('DOCUMENT_RETENTION_HOURS', 72),
+
 ];

@@ -50,7 +50,7 @@
         <p>
             Le plan Gratuit inclut 5 documents déterministes par mois et 0 traitement IA.
             Les quotas sont réinitialisés le 1er de chaque mois. Les documents téléversés
-            sont supprimés automatiquement après 30 jours.
+            et les fichiers générés sont supprimés automatiquement après <strong>72 heures</strong>.
         </p>
 
         <h2 class="card-title" style="margin-top:1.5rem">6. Obligations de l'utilisateur</h2>
@@ -61,12 +61,19 @@
             du service.
         </p>
 
-        <h2 class="card-title" style="margin-top:1.5rem">7. Données personnelles</h2>
+        <h2 class="card-title" style="margin-top:1.5rem">7. Données personnelles et amélioration du moteur d'analyse</h2>
         <p>
             Le traitement des données est décrit dans la
             <a href="{{ route('pages.privacy') }}">Politique de confidentialité</a>.
             L'activation de l'assistance IA implique l'envoi du contenu du document à un
             prestataire d'IA ; ce choix est toujours explicite et désactivé par défaut.
+        </p>
+        <p style="margin-top:.75rem">
+            À des fins exclusives de contrôle qualité, de mesure de précision et d'étalonnage
+            des règles déterministes de détection (titres, légendes, sommaires, mise en page),
+            l'analyseur interne de FORMADOC peut être exécuté sur les documents soumis afin
+            de produire des statistiques structurelles anonymisées, dans le strict respect de la
+            confidentialité et de la durée de rétention de 72 heures.
         </p>
 
         <h2 class="card-title" style="margin-top:1.5rem">8. Responsabilité</h2>

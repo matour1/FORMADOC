@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use App\Models\ChatSession;
@@ -9,14 +11,14 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 
-#[Signature('files:purge-temp {--ttl-hours=24 : Âge minimal en heures des fichiers temporaires à purger}')]
-#[Description('Purge les fichiers temporaires (RGPD P1-6 + P2-4) : previews cover preview-*.docx, DOCX générés orphelins gen_*.docx (storage/test_scripts) et pièces jointes de sessions chat supprimées')]
+#[Signature('files:purge-temp {--ttl-hours=72 : Âge minimal en heures des fichiers temporaires à purger}')]
+#[Description('Purge les fichiers temporaires (RGPD P1-6 + P2-4 + H3) : previews cover preview-*.docx, DOCX générés orphelins gen_*.docx (storage/test_scripts) et pièces jointes de sessions chat supprimées')]
 class PurgeTempFiles extends Command
 {
     /**
      * Exécute la purge des fichiers temporaires.
      *
-     * RGPD P1-6 + P2-4 — trois familles de fichiers éphémères :
+     * RGPD P1-6 + P2-4 + H3 — trois familles de fichiers éphémères :
      *   1. Previews de couverture : `storage/app/preview-*.docx` générés à la
      *      volée (CoverPageTemplateController::preview) et normalement supprimés
      *      au téléchargement (deleteFileAfterSend). Si l'URL signée (15 min)
@@ -31,14 +33,16 @@ class PurgeTempFiles extends Command
      *      session/compte (P1-6) ; cette commande couvre les orphelins
      *      (session déjà supprimée, purge interrompue, etc.).
      *
-     * Idempotente — aucune suppression pour les fichiers récents (TTL par défaut 24 h).
+     * Idempotente — aucune suppression pour les fichiers récents (TTL par défaut 72 h, décision H3).
      * Scheduler : routes/console.php — chaque jour à 02:30.
      * Les scripts utilitaires (storage/test_scripts/*.php, reports/) sont CONSERVÉS
      * (utilisés par les tests unitaires DocAnalyzer) : seuls gen_*.docx sont purgés.
      */
     public function handle(): int
     {
-        $ttlHours = max(1, (int) $this->option('ttl-hours'));
+        $optionTtl = $this->option('ttl-hours');
+        $defaultTtl = (int) config('document.retention_hours', 72);
+        $ttlHours = max(1, $optionTtl !== null ? (int) $optionTtl : $defaultTtl);
         $threshold = now()->subHours($ttlHours)->getTimestamp();
         $deleted = 0;
 
