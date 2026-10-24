@@ -23,8 +23,8 @@ class BlockCategoryTest extends TestCase
     public function test_les_quatre_categories_sont_enumerees_dans_l_ordre_canonique(): void
     {
         $this->assertSame([
-            BlockCategory::Figure,
             BlockCategory::Table,
+            BlockCategory::Figure,
             BlockCategory::Annexe,
             BlockCategory::Planche,
         ], BlockCategory::all());
