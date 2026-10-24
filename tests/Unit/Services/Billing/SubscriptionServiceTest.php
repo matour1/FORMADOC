@@ -214,6 +214,45 @@ class SubscriptionServiceTest extends TestCase
         $this->assertStringContainsString('plus disponible', $result['message']);
     }
 
+    public function test_initiate_subscription_plan_payant_init_geniuspay(): void
+    {
+        config([
+            'geniuspay.api_key' => 'pk_sandbox_test',
+            'geniuspay.secret_key' => 'sk_sandbox_test',
+            'geniuspay.base_url' => 'https://pay.genius.ci/api/v1/merchant',
+            'geniuspay.currency' => 'XOF',
+            'geniuspay.xaf_to_xof_rate' => 1.0,
+        ]);
+
+        Http::fake([
+            'https://pay.genius.ci/api/v1/merchant/payments' => Http::response([
+                'success' => true,
+                'data' => [
+                    'checkout_url' => 'https://pay.genius.ci/checkout/sub_123',
+                    'reference' => 'MTX-SUB-123',
+                ],
+            ], 201),
+        ]);
+
+        $user = User::factory()->create();
+        $plan = Plan::factory()->create(['price_fcfa' => 5000, 'is_active' => true]);
+
+        $result = $this->service->initiateSubscription($user, $plan, 'geniuspay', 'XAF');
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame('https://pay.genius.ci/checkout/sub_123', $result['gatewayUrl']);
+        $this->assertStringStartsWith('SUB-', $result['externalId']);
+
+        Http::assertSent(function ($request) use ($plan) {
+            return str_ends_with($request->url(), '/payments')
+                && $request['amount'] === 5000
+                && $request['currency'] === 'XOF'
+                && $request['metadata']['purpose'] === 'subscription'
+                && $request['metadata']['payment_method'] === 'geniuspay'
+                && $request['metadata']['plan_slug'] === $plan->slug;
+        });
+    }
+
     /* ------------------------------------------------------------------
      |  activateFromWebhook() (Q3a : facture à la souscription)
      | ------------------------------------------------------------------ */

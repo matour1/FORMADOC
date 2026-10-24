@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Models\KpayPayment;
 use App\Models\PaymentLink;
 use App\Services\Billing\CreditService;
+use App\Services\Billing\GeniusPayService;
 use App\Services\Billing\KPayService;
 use App\Services\Billing\MonetbilService;
 use App\Services\Billing\PaymentGatewayRegistry;
@@ -44,6 +45,7 @@ class PaymentLinkController extends Controller
         private readonly MonetbilService $monetbil,
         private readonly PaymentGatewayRegistry $passerelles,
         private readonly CreditService $credits,
+        private readonly ?GeniusPayService $geniusPay = null,
     ) {}
 
     /**
@@ -107,10 +109,52 @@ class PaymentLinkController extends Controller
             return $this->constaterKpay($lien);
         }
 
+        if ($lien->gateway === PaymentGatewayRegistry::GENIUSPAY) {
+            return $this->constaterGeniusPay($lien);
+        }
+
         // Monetbil : l'identifiant de transaction n'est connu qu'à l'arrivée de la
         // notification, jamais du retour. Sans lui, il n'y a rien à interroger —
         // c'est `notify()` qui constate, et il le fait immédiatement.
         return $lien;
+    }
+
+    /**
+     * Constatation GeniusPay : la `reference` est stockée dans `payment_id` à l'initiation.
+     */
+    private function constaterGeniusPay(PaymentLink $lien): PaymentLink
+    {
+        $local = KpayPayment::query()
+            ->where('metadata->payment_link_id', $lien->id)
+            ->latest('id')
+            ->first();
+
+        if ($local === null || empty($local->payment_id)) {
+            return $lien;
+        }
+
+        $service = $this->geniusPay ?? app(GeniusPayService::class);
+        $detail = $service->verifierPaiement((string) $local->payment_id);
+
+        if (! ($detail['ok'] ?? false) || ! $service->estUnSucces($detail['statut'] ?? null)) {
+            return $lien;
+        }
+
+        if (isset($detail['montant']) && (int) $detail['montant'] < (int) $lien->amount_fcfa) {
+            return $lien;
+        }
+
+        $resultat = $this->liens->regler(
+            lien: $lien,
+            reference: (string) $local->payment_id,
+            kpayPaymentId: $local->id,
+        );
+
+        if (! ($resultat['ok'] ?? false)) {
+            return $lien;
+        }
+
+        return $lien->fresh() ?? $lien;
     }
 
     /**
@@ -201,9 +245,72 @@ class PaymentLinkController extends Controller
                 ->with('error', 'Ce moyen de paiement n\'est pas disponible.');
         }
 
-        return $passerelle === PaymentGatewayRegistry::MONETBIL
-            ? $this->payerParMonetbil($lien, $token)
-            : $this->payerParKpay($lien, $token);
+        return match ($passerelle) {
+            PaymentGatewayRegistry::MONETBIL => $this->payerParMonetbil($lien, $token),
+            PaymentGatewayRegistry::GENIUSPAY => $this->payerParGeniusPay($lien, $token),
+            default => $this->payerParKpay($lien, $token),
+        };
+    }
+
+    /**
+     * Règlement par GeniusPay : initialisation du checkout hébergé puis redirection.
+     */
+    private function payerParGeniusPay(PaymentLink $lien, string $token): RedirectResponse
+    {
+        $externalId = 'LINK-'.$lien->id.'-'.Str::uuid();
+
+        $service = $this->geniusPay ?? app(GeniusPayService::class);
+        $resultat = $service->initierPaiement(
+            montantFcfa: (int) $lien->amount_fcfa,
+            referenceExterne: $externalId,
+            successUrl: route('payment-link.retour', $token),
+            errorUrl: route('payment-link.show', $token),
+            email: $lien->customer_email,
+            nom: $lien->customer_label,
+            metadata: [
+                'payment_link_id' => $lien->id,
+                'user_id' => $lien->user_id,
+                'purpose' => 'payment_link',
+                'credits' => $lien->credits,
+                'amount_fcfa' => (int) $lien->amount_fcfa,
+            ],
+            description: $lien->label ?: 'Règlement FORMADOC #'.$lien->id,
+        );
+
+        if (! ($resultat['ok'] ?? false)) {
+            Log::warning('Lien de paiement : initiation GeniusPay échouée', [
+                'lien_id' => $lien->id,
+                'message' => $resultat['message'] ?? null,
+            ]);
+
+            return redirect()
+                ->route('payment-link.show', $token)
+                ->with('error', $resultat['message'] ?? 'La passerelle de paiement est indisponible.');
+        }
+
+        KpayPayment::create([
+            'user_id' => $lien->user_id,
+            'payment_id' => ($resultat['reference'] ?? '') !== '' ? $resultat['reference'] : null,
+            'external_id' => $externalId,
+            'status' => 'PENDING',
+            'purpose' => 'payment_link',
+            'amount_fcfa' => (int) $lien->amount_fcfa,
+            'currency' => (string) config('geniuspay.currency', 'XOF'),
+            'return_url' => route('payment-link.retour', $token),
+            'cancel_url' => route('payment-link.show', $token),
+            'metadata' => [
+                'payment_link_id' => $lien->id,
+                'credits' => $lien->credits,
+                'gateway' => PaymentGatewayRegistry::GENIUSPAY,
+            ],
+            'expires_at' => isset($resultat['expiresAt'])
+                ? now()->parse($resultat['expiresAt'])
+                : now()->addHours(24),
+        ]);
+
+        $lien->forceFill(['gateway' => PaymentGatewayRegistry::GENIUSPAY])->save();
+
+        return redirect()->away($resultat['checkoutUrl']);
     }
 
     /**
@@ -353,10 +460,10 @@ class PaymentLinkController extends Controller
 
         abort_if($lien === null, 404);
 
-        if ($lien->gateway === PaymentGatewayRegistry::MONETBIL) {
-            // Aucune signature à vérifier côté Monetbil. On ne devine pas le statut
-            // depuis l'URL de retour : la notification est la seule source, et elle
-            // arrivera (ou non). Afficher un message d'attente est plus honnête
+        if ($lien->gateway === PaymentGatewayRegistry::MONETBIL || $lien->gateway === PaymentGatewayRegistry::GENIUSPAY) {
+            // Aucune signature à vérifier sur l'URL de retour pour Monetbil/GeniusPay.
+            // La notification (et la constatation directe via l'API sur la page du lien)
+            // est la seule source : afficher un message d'attente est plus honnête
             // qu'un succès optimiste suivi d'un remboursement.
             return redirect()
                 ->route('payment-link.show', $token)

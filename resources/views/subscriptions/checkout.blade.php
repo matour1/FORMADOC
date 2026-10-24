@@ -52,6 +52,15 @@
                             <span class="pm-name">MTN MoMo</span>
                             <span class="pm-note">MTN Cameroun</span>
                         </label>
+                        @if (app(\App\Services\Billing\PaymentGatewayRegistry::class)->estProposable(\App\Services\Billing\PaymentGatewayRegistry::GENIUSPAY))
+                            <label class="payment-method" data-method="geniuspay" role="button" tabindex="0">
+                                <input type="radio" name="payment_method" value="geniuspay" class="pm-radio-input">
+                                <span class="pm-radio"></span>
+                                <span class="pm-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10"/><path d="M7 12h6"/></svg></span>
+                                <span class="pm-name">GeniusPay</span>
+                                <span class="pm-note">Wave · Orange · MTN · Carte</span>
+                            </label>
+                        @endif
                     </div>
                 </div>
 
@@ -103,10 +112,11 @@
                     const radio = this.querySelector('input[type="radio"]');
                     if (radio) radio.checked = true;
                     const isCard = this.dataset.method === 'card';
+                    const isHosted = this.dataset.method === 'geniuspay';
                     const cardFields = document.getElementById('cardFields');
                     const mobileFields = document.getElementById('mobileMoneyFields');
                     if (cardFields) cardFields.style.display = isCard ? 'block' : 'none';
-                    if (mobileFields) mobileFields.style.display = isCard ? 'none' : 'block';
+                    if (mobileFields) mobileFields.style.display = (!isCard && !isHosted) ? 'block' : 'none';
                 });
                 // Accessibilité : sélection au clavier (Enter / Espace) — audit UI/UX P1
                 method.addEventListener('keydown', function (e) {

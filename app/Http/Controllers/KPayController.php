@@ -333,7 +333,10 @@ class KPayController extends Controller
         // rejetés comme « sans transaction », donc aucun paiement n'aurait jamais
         // été crédité — sans erreur visible, et sans qu'aucun test ne le voie
         // (les tests étaient écrits contre la même hypothèse fausse).
-        $transaction = is_array($evenement) ? ($evenement['data'] ?? null) : null;
+        $donnees = is_array($evenement) ? ($evenement['data'] ?? null) : null;
+        $transaction = is_array($donnees) && isset($donnees['transaction']) && is_array($donnees['transaction'])
+            ? $donnees['transaction']
+            : $donnees;
 
         if (! is_array($transaction)) {
             Log::warning('GeniusPay webhook : corps illisible ou sans données de transaction', [
@@ -344,12 +347,19 @@ class KPayController extends Controller
         }
 
         $reference = (string) ($transaction['reference'] ?? '');
-        $metadonnees = $transaction['metadata'] ?? [];
-        $userId = is_array($metadonnees) ? (int) ($metadonnees['user_id'] ?? 0) : 0;
+        $metadonnees = is_array($transaction['metadata'] ?? null) ? $transaction['metadata'] : [];
+        $purpose = (string) ($metadonnees['purpose'] ?? 'credit_purchase');
+        $userId = (int) ($metadonnees['user_id'] ?? 0);
 
-        // 2. Corrélation : sans compte identifié, on refuse plutôt que de créditer
-        //    au hasard. Un crédit à tort est une perte sèche et invisible.
-        if ($userId <= 0) {
+        if ($userId <= 0 && (int) ($metadonnees['payment_link_id'] ?? 0) > 0) {
+            $userId = (int) (PaymentLink::whereKey((int) $metadonnees['payment_link_id'])->value('user_id') ?? 0);
+        }
+
+        $estLienSansCompte = $purpose === 'payment_link' && (int) ($metadonnees['payment_link_id'] ?? 0) > 0;
+
+        // 2. Corrélation : sans compte identifié (hors lien sans compte), on refuse
+        //    plutôt que de créditer au hasard. Un crédit à tort est une perte sèche et invisible.
+        if ($userId <= 0 && ! $estLienSansCompte) {
             Log::warning('GeniusPay webhook : aucune corrélation, versement refusé', [
                 'reference' => $reference,
                 'evenement' => $evenement['event'] ?? null,
@@ -358,9 +368,9 @@ class KPayController extends Controller
             return response()->json(['status' => 'ignored']);
         }
 
-        $utilisateur = User::find($userId);
+        $utilisateur = $userId > 0 ? User::find($userId) : null;
 
-        if ($utilisateur === null) {
+        if ($utilisateur === null && ! $estLienSansCompte) {
             Log::warning('GeniusPay webhook : compte introuvable', ['user_id' => $userId, 'reference' => $reference]);
 
             return response()->json(['status' => 'ignored']);
@@ -383,12 +393,26 @@ class KPayController extends Controller
         Log::info('GeniusPay webhook reçu', [
             'user_id' => $userId,
             'reference' => $reference,
+            'purpose' => $purpose,
             'evenement' => $evenement['event'] ?? null,
             'statut' => $statut,
             'environnement' => $evenement['environment'] ?? null,
         ]);
 
         if (! $this->geniuspay->estUnSucces($statut)) {
+            if (in_array($statut, ['failed', 'cancelled'], true)
+                && in_array($purpose, ['subscription', 'subscription_renewal'], true)
+                && $utilisateur !== null) {
+                $subscriptionId = (int) ($metadonnees['subscription_id'] ?? 0);
+                $subscription = $subscriptionId > 0
+                    ? Subscription::find($subscriptionId)
+                    : $utilisateur->activeSubscription;
+
+                if ($subscription) {
+                    app(SubscriptionService::class)->markFailedPayment($subscription);
+                }
+            }
+
             return response()->json(['status' => 'received']);
         }
 
@@ -403,6 +427,60 @@ class KPayController extends Controller
             return response()->json(['status' => 'ignored']);
         }
 
+        // --- Cas A : Lien de paiement ---------------------------------------
+        if ($purpose === 'payment_link') {
+            $lienId = (int) ($metadonnees['payment_link_id'] ?? 0);
+            $lien = $lienId > 0 ? PaymentLink::find($lienId) : null;
+
+            if ($lien === null) {
+                Log::warning('GeniusPay webhook : lien de paiement introuvable', [
+                    'payment_link_id' => $lienId,
+                    'reference' => $reference,
+                ]);
+
+                return response()->json(['status' => 'ignored']);
+            }
+
+            if ($montant < (int) $lien->amount_fcfa) {
+                Log::warning('GeniusPay webhook : montant payé inférieur au montant du lien', [
+                    'lien_id' => $lien->id,
+                    'montant_paye' => $montant,
+                    'montant_attendu' => (int) $lien->amount_fcfa,
+                    'reference' => $reference,
+                ]);
+
+                return response()->json(['status' => 'ignored']);
+            }
+
+            $local = $reference !== ''
+                ? KpayPayment::where('payment_id', $reference)->first()
+                : null;
+
+            app(PaymentLinkService::class)->regler(
+                lien: $lien,
+                reference: $reference !== '' ? $reference : 'geniuspay:'.$lien->id,
+                kpayPaymentId: $local?->id,
+            );
+
+            return response()->json(['status' => 'received']);
+        }
+
+        // --- Cas B : Abonnement (souscription ou renouvellement) -------------
+        if (in_array($purpose, ['subscription', 'subscription_renewal'], true)) {
+            $activated = app(SubscriptionService::class)
+                ->activateFromWebhook($transaction, $metadonnees);
+
+            Log::info('GeniusPay webhook : abonnement traité', [
+                'user_id' => $userId,
+                'purpose' => $purpose,
+                'reference' => $reference,
+                'activated' => $activated,
+            ]);
+
+            return response()->json(['status' => 'received']);
+        }
+
+        // --- Cas C : Achat de crédits ----------------------------------------
         $credits = $this->catalogue->creditsPour($montant) ?? $montant;
 
         // 6. Crédit idempotent : la référence GeniusPay est la clé.

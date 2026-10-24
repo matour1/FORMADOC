@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\Invoice;
+use App\Models\PaymentLink;
+use App\Models\Plan;
+use App\Models\Subscription;
 use App\Models\User;
+use App\Services\Billing\PaymentLinkService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -302,6 +307,117 @@ class GeniusPayWebhookTest extends TestCase
             $bootstrap,
             'Sans exemption CSRF, Laravel répondrait 419 et le paiement ne serait jamais constaté.'
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // Abonnements et liens de paiement (D-006 / L2 : crédits ET abonnements)
+    // -------------------------------------------------------------------------
+
+    /**
+     * **Un webhook GeniusPay `completed` avec `purpose=subscription` active l'abonnement et crée la facture.**
+     */
+    public function test_un_webhook_d_abonnement_active_le_plan_et_cree_la_facture(): void
+    {
+        $utilisateur = $this->utilisateur();
+        $plan = Plan::factory()->create([
+            'slug' => 'standard',
+            'name' => 'Standard',
+            'price_fcfa' => 3000,
+            'is_active' => true,
+        ]);
+
+        $corps = (string) json_encode([
+            'id' => 'evt_sub_1',
+            'event' => 'payment.success',
+            'timestamp' => time(),
+            'environment' => 'sandbox',
+            'data' => [
+                'reference' => 'MTX-SUB-1',
+                'amount' => 3000,
+                'currency' => 'XOF',
+                'status' => 'completed',
+                'metadata' => [
+                    'user_id' => $utilisateur->id,
+                    'purpose' => 'subscription',
+                    'plan_id' => $plan->id,
+                    'plan_slug' => $plan->slug,
+                    'amount_fcfa' => 3000,
+                    'payment_method' => 'geniuspay',
+                    'currency' => 'XAF',
+                    'external_id' => 'SUB-'.$utilisateur->id.'-uuid',
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        $ts = (string) time();
+        $signature = hash_hmac('sha256', $ts.'.'.$corps, self::SECRET);
+
+        $this->call('POST', route('credits.notify.geniuspay'), [], [], [], [
+            'HTTP_X_WEBHOOK_SIGNATURE' => $signature,
+            'HTTP_X_WEBHOOK_TIMESTAMP' => $ts,
+            'CONTENT_TYPE' => 'application/json',
+        ], $corps)->assertOk();
+
+        $abonnement = Subscription::where('user_id', $utilisateur->id)->first();
+        $this->assertNotNull($abonnement);
+        $this->assertSame('active', $abonnement->status);
+        $this->assertSame('geniuspay', $abonnement->payment_method);
+        $this->assertSame($plan->id, $abonnement->plan_id);
+
+        $facture = Invoice::where('user_id', $utilisateur->id)->first();
+        $this->assertNotNull($facture);
+        $this->assertSame(3000, $facture->amount);
+        $this->assertSame('paid', $facture->status);
+    }
+
+    /**
+     * **Un webhook GeniusPay `completed` avec `purpose=payment_link` règle le lien et verse les crédits.**
+     */
+    public function test_un_webhook_de_lien_de_paiement_regle_le_lien(): void
+    {
+        $destinataire = $this->utilisateur();
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        $lien = app(PaymentLinkService::class)->creer(
+            donnees: [
+                'amount_fcfa' => 2500,
+                'mode' => PaymentLink::MODE_EN_LIGNE,
+                'label' => 'Lien GeniusPay',
+                'user_id' => $destinataire->id,
+            ],
+            auteur: $admin,
+        );
+
+        $corps = (string) json_encode([
+            'id' => 'evt_link_1',
+            'event' => 'payment.success',
+            'timestamp' => time(),
+            'environment' => 'sandbox',
+            'data' => [
+                'reference' => 'MTX-LINK-1',
+                'amount' => 2500,
+                'currency' => 'XOF',
+                'status' => 'completed',
+                'metadata' => [
+                    'payment_link_id' => $lien->id,
+                    'user_id' => $destinataire->id,
+                    'purpose' => 'payment_link',
+                    'credits' => 2500,
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        $ts = (string) time();
+        $signature = hash_hmac('sha256', $ts.'.'.$corps, self::SECRET);
+
+        $this->call('POST', route('credits.notify.geniuspay'), [], [], [], [
+            'HTTP_X_WEBHOOK_SIGNATURE' => $signature,
+            'HTTP_X_WEBHOOK_TIMESTAMP' => $ts,
+            'CONTENT_TYPE' => 'application/json',
+        ], $corps)->assertOk();
+
+        $this->assertSame(PaymentLink::STATUT_PAYE, $lien->fresh()->status);
+        $this->assertSame(2500, $destinataire->fresh()->credits_balance);
     }
 
     /**
