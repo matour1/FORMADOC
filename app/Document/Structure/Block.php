@@ -45,6 +45,7 @@ final readonly class Block
      * @param  null|string  $originalNumber  Numéro saisi dans le document (jamais fiable)
      * @param  null|string  $finalNumber  Numéro recalculé par le système
      * @param  null|CrossRef  $crossRef  Détail du renvoi croisé (type cross_ref)
+     * @param  bool  $pageBreakBefore  Saut de page forcé avant ce bloc (§5.5 : série de ≥ 3 paragraphes vides)
      */
     public function __construct(
         public string $blockId,
@@ -64,6 +65,7 @@ final readonly class Block
         public ?string $originalNumber = null,
         public ?string $finalNumber = null,
         public ?CrossRef $crossRef = null,
+        public bool $pageBreakBefore = false,
     ) {
         if ($this->blockId === '') {
             throw new InvalidArgumentException('Un bloc doit porter un identifiant.');
@@ -231,6 +233,11 @@ final readonly class Block
         return $this->copyWith(['tableData' => $tableData]);
     }
 
+    public function withPageBreakBefore(bool $pageBreakBefore): self
+    {
+        return $this->copyWith(['pageBreakBefore' => $pageBreakBefore]);
+    }
+
     /**
      * Crée une copie en remplaçant uniquement les propriétés fournies.
      *
@@ -270,6 +277,9 @@ final readonly class Block
             crossRef: array_key_exists('crossRef', $overrides)
                 ? $overrides['crossRef']
                 : $this->crossRef,
+            pageBreakBefore: array_key_exists('pageBreakBefore', $overrides)
+                ? (bool) $overrides['pageBreakBefore']
+                : $this->pageBreakBefore,
         );
     }
 
@@ -302,6 +312,7 @@ final readonly class Block
             'original_number' => $this->originalNumber,
             'final_number' => $this->finalNumber,
             'cross_ref' => $this->crossRef?->toArray(),
+            'page_break_before' => $this->pageBreakBefore,
         ];
     }
 
@@ -336,6 +347,7 @@ final readonly class Block
             originalNumber: isset($data['original_number']) ? (string) $data['original_number'] : null,
             finalNumber: isset($data['final_number']) ? (string) $data['final_number'] : null,
             crossRef: is_array($crossRef) ? CrossRef::fromArray($crossRef) : null,
+            pageBreakBefore: (bool) ($data['page_break_before'] ?? false),
         );
     }
 }

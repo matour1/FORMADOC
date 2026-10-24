@@ -663,6 +663,65 @@ class DocxNativeAdapterTest extends TestCase
         }
     }
 
+    // -------------------------------------------------------------------------
+    // §5.5 — Normalisation des paragraphes vides servant de séparateurs
+    // -------------------------------------------------------------------------
+
+    public function test_trois_paragraphes_vides_ou_plus_avant_un_titre_activent_page_break_before(): void
+    {
+        $document = $this->convertFixture(
+            DocxFixture::paragraph('Paragraphe précédent.')
+            .DocxFixture::emptyParagraph()
+            .DocxFixture::emptyParagraph()
+            .DocxFixture::emptyParagraph()
+            .DocxFixture::paragraph('1.1 Sous-section sur nouvelle page')
+        );
+
+        $this->assertCount(2, $document->blocks);
+        $this->assertFalse($document->blocks[0]->pageBreakBefore);
+        $this->assertSame(BlockType::Heading, $document->blocks[1]->type);
+        $this->assertTrue(
+            $document->blocks[1]->pageBreakBefore,
+            'Une série de ≥ 3 paragraphes vides consécutifs avant un titre doit positionner pageBreakBefore = true (§5.5).'
+        );
+        $this->assertSame(3, $document->meta['empty_paragraphs_normalized']);
+    }
+
+    public function test_moins_de_trois_paragraphes_vides_avant_un_titre_n_active_pas_page_break_before(): void
+    {
+        $document = $this->convertFixture(
+            DocxFixture::paragraph('Paragraphe précédent.')
+            .DocxFixture::emptyParagraph()
+            .DocxFixture::emptyParagraph()
+            .DocxFixture::paragraph('1.1 Sous-section enchaînée')
+        );
+
+        $this->assertCount(2, $document->blocks);
+        $this->assertFalse($document->blocks[1]->pageBreakBefore);
+        $this->assertSame(0, $document->meta['empty_paragraphs_normalized']);
+    }
+
+    public function test_un_paragraphe_avec_saut_de_section_ou_signet_interrompt_la_serie_de_paragraphes_vides(): void
+    {
+        // §5.5 — Exclusions obligatoires : tout paragraphe contenant une ancre,
+        // une image, un champ ou un saut de section n'est pas un paragraphe vide séparateur.
+        $paragrapheAvecSignet = '<w:p><w:bookmarkStart w:id="0" w:name="_Toc123"/><w:bookmarkEnd w:id="0"/></w:p>';
+
+        $document = $this->convertFixture(
+            DocxFixture::paragraph('Paragraphe précédent.')
+            .DocxFixture::emptyParagraph()
+            .$paragrapheAvecSignet
+            .DocxFixture::emptyParagraph()
+            .DocxFixture::paragraph('1.1 Sous-section')
+        );
+
+        $this->assertCount(2, $document->blocks);
+        $this->assertFalse(
+            $document->blocks[1]->pageBreakBefore,
+            'Un paragraphe portant une ancre (bookmarkStart) ne doit pas être compté dans une série de paragraphes vides (§5.5).'
+        );
+    }
+
     /**
      * Fichier de relations contenant une image.
      */

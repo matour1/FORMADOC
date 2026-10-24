@@ -272,10 +272,12 @@ class TableOfContentsGeneratorTest extends TestCase
         $this->assertCount(4, $resultat);
 
         $titres = array_column($resultat, 'title');
-        $this->assertContains('LISTE DES FIGURES', $titres);
-        $this->assertContains('LISTE DES TABLEAUX', $titres);
-        $this->assertContains('LISTE DES ANNEXES', $titres);
-        $this->assertContains('LISTE DES PLANCHES', $titres);
+        $this->assertSame([
+            'LISTE DES TABLEAUX',
+            'LISTE DES FIGURES',
+            'LISTE DES ANNEXES',
+            'LISTE DES PLANCHES',
+        ], $titres);
     }
 
     public function test_une_categorie_vide_est_omise(): void

@@ -102,6 +102,12 @@ final class PageBreakRules
             return false;
         }
 
+        // Un saut de page explicite détecté à la lecture (ou issu d'une série de
+        // ≥ 3 paragraphes vides normalisée selon §5.5) est toujours honoré.
+        if ($block->pageBreakBefore) {
+            return true;
+        }
+
         if ($this->estPieceLiminaire($block->text)) {
             return true;
         }

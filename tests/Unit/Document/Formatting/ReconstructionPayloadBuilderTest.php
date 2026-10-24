@@ -484,4 +484,30 @@ class ReconstructionPayloadBuilderTest extends TestCase
         $this->assertSame([], $payload['analysis']['titres'],
             'Une entrée de sommaire ne doit pas alimenter la liste des titres.');
     }
+
+    public function test_un_titre_de_niveau_deux_avec_page_break_before_recoit_page_break_dans_la_charge_utile(): void
+    {
+        // §5.5 : un titre de niveau 2 précédé d'une série de ≥ 3 paragraphes vides
+        // porte `pageBreakBefore = true`, que `PageBreakRules` honore en posant
+        // `page_break = true` sur l'élément généré.
+        $titreSansSaut = new Block(
+            blockId: 'b_001',
+            type: BlockType::Heading,
+            text: '1.1 Sous-section ordinaire',
+            headingLevel: 2,
+            pageBreakBefore: false,
+        );
+        $titreAvecSaut = new Block(
+            blockId: 'b_002',
+            type: BlockType::Heading,
+            text: '1.2 Sous-section après trois paragraphes vides',
+            headingLevel: 2,
+            pageBreakBefore: true,
+        );
+
+        $payload = (new ReconstructionPayloadBuilder)->build($this->rendered([$titreSansSaut, $titreAvecSaut]));
+
+        $this->assertFalse($payload['analysis']['body_complet'][0]['page_break']);
+        $this->assertTrue($payload['analysis']['body_complet'][1]['page_break']);
+    }
 }

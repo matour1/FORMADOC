@@ -472,6 +472,28 @@ class DocumentReconstructor
         );
         $section->addTOC(null, null, 1, 2);
 
+        // Liste des tableaux (légendes de type Tableau) — §7.3 : Tableaux avant Figures
+        $tableaux = $this->legendsByType($analysis, ['tableau', 'table']);
+        if ($tableaux !== []) {
+            $section->addPageBreak();
+            $section->addText(
+                'Liste des tableaux',
+                $resolver::fontStyle($this->gabarit, 'titre1'),
+                $resolver::titleParagraphStyle($this->gabarit)
+            );
+            foreach ($tableaux as $legend) {
+                // Champs SEQ littéraux (structures pré-Phase 3) : résolus
+                // avec un compteur LOCAL — le frontispice est écrit AVANT le
+                // corps et ne doit pas consommer la numérotation du corps.
+                $label = $this->resolveSeqFields((string) ($legend['label'] ?? ''), false);
+                $section->addText(sprintf(
+                    'Tableau %s : %s',
+                    $legend['number'] ?? '?',
+                    $label
+                ));
+            }
+        }
+
         // Liste des figures (légendes de type Figure)
         $figures = $this->legendsByType($analysis, ['figure', 'fig']);
         if ($figures !== []) {
@@ -482,31 +504,9 @@ class DocumentReconstructor
                 $resolver::titleParagraphStyle($this->gabarit)
             );
             foreach ($figures as $legend) {
-                // Champs SEQ littéraux (structures pré-Phase 3) : résolus
-                // avec un compteur LOCAL — le frontispice est écrit AVANT le
-                // corps et ne doit pas consommer la numérotation du corps.
                 $label = $this->resolveSeqFields((string) ($legend['label'] ?? ''), false);
                 $section->addText(sprintf(
                     'Figure %s : %s',
-                    $legend['number'] ?? '?',
-                    $label
-                ));
-            }
-        }
-
-        // Liste des tableaux (légendes de type Tableau)
-        $tableaux = $this->legendsByType($analysis, ['tableau', 'table']);
-        if ($tableaux !== []) {
-            $section->addPageBreak();
-            $section->addText(
-                'Liste des tableaux',
-                $resolver::fontStyle($this->gabarit, 'titre1'),
-                $resolver::titleParagraphStyle($this->gabarit)
-            );
-            foreach ($tableaux as $legend) {
-                $label = $this->resolveSeqFields((string) ($legend['label'] ?? ''), false);
-                $section->addText(sprintf(
-                    'Tableau %s : %s',
                     $legend['number'] ?? '?',
                     $label
                 ));

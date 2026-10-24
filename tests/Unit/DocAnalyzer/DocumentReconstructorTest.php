@@ -283,9 +283,14 @@ class DocumentReconstructorTest extends TestCase
         $this->assertStringContainsString('Architecture du système', $xml);
         $this->assertStringContainsString('Diagramme de classes', $xml);
 
-        // La liste des tableaux est générée
+        // La liste des tableaux est générée avant la liste des figures (§7.3)
         $this->assertStringContainsString('Liste des tableaux', $xml);
         $this->assertStringContainsString('Récapitulatif des besoins', $xml);
+        $this->assertLessThan(
+            strpos($xml, 'Liste des figures'),
+            strpos($xml, 'Liste des tableaux'),
+            'La Liste des tableaux doit précéder la Liste des figures dans le frontispice (§7.3).'
+        );
     }
 
     public function test_les_titres_de_frontispice_ne_s_incluent_pas_dans_le_toc(): void

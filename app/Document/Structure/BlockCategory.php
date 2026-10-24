@@ -79,13 +79,13 @@ enum BlockCategory: string
     }
 
     /**
-     * Toutes les catégories, dans l'ordre canonique de traitement.
+     * Toutes les catégories, dans l'ordre canonique de traitement (§7.3 : Tableaux avant Figures).
      *
      * @return array<int, self>
      */
     public static function all(): array
     {
-        return [self::Figure, self::Table, self::Annexe, self::Planche];
+        return [self::Table, self::Figure, self::Annexe, self::Planche];
     }
 
     /**

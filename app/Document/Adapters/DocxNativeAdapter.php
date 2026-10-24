@@ -238,6 +238,7 @@ final class DocxNativeAdapter implements InputAdapter
                     'cover_page' => $garde['supprimer'] > 0
                         ? ['supprime' => $garde['supprimer'], 'raison' => $garde['raison']]
                         : null,
+                    'empty_paragraphs_normalized' => $body['empty_paragraphs_normalized'],
                 ],
             );
         } finally {
@@ -259,7 +260,8 @@ final class DocxNativeAdapter implements InputAdapter
      *     paragraphs_read: int,
      *     paragraphs_skipped: int,
      *     tables_read: int,
-     *     tables_with_merges: int
+     *     tables_with_merges: int,
+     *     empty_paragraphs_normalized: int
      * }
      *
      * @throws DocxReadException
@@ -286,12 +288,16 @@ final class DocxNativeAdapter implements InputAdapter
         $tablesRead = 0;
         $tablesWithMerges = 0;
         $blockIndex = 0;
+        $consecutiveEmptyParagraphs = 0;
+        $emptyParagraphsBeforeBlock = [];
+        $emptyParagraphsNormalized = 0;
 
         // La position verticale est l'index de l'élément dans le corps : elle
         // sert uniquement à ORDONNER, jamais à mesurer une distance réelle (le
         // calcul de position exacte est du ressort du moteur de rendu).
         foreach (XmlLoader::childElements($body) as $index => $element) {
             if ($element->nodeName === 'w:tbl') {
+                $consecutiveEmptyParagraphs = 0;
                 $tableBlock = $this->readTable($tables, $element, $this->blockId($blockIndex), (float) $index);
 
                 if ($tableBlock === null) {
@@ -318,6 +324,15 @@ final class DocxNativeAdapter implements InputAdapter
             if ($analysis === null) {
                 $skipped++;
 
+                // §5.5 : un paragraphe portant une ancre, une image, un champ
+                // ou un saut de section n'est JAMAIS compté comme paragraphe
+                // vide séparateur.
+                if ($this->estParagrapheVideSeparateur($element)) {
+                    $consecutiveEmptyParagraphs++;
+                } else {
+                    $consecutiveEmptyParagraphs = 0;
+                }
+
                 continue;
             }
 
@@ -326,7 +341,10 @@ final class DocxNativeAdapter implements InputAdapter
             // sinon les paragraphes vides laisseraient des trous dans la
             // numérotation (b_0001, b_0003, b_0005…).
             $blockIndex++;
-            $blocks[] = $this->toBlock($analysis);
+            $block = $this->toBlock($analysis);
+            $emptyParagraphsBeforeBlock[(int) $index] = $consecutiveEmptyParagraphs;
+            $consecutiveEmptyParagraphs = 0;
+            $blocks[] = $block;
         }
 
         // --- Passe 2 : reclasser les entrées de sommaire PAR CONTENU ----------
@@ -374,12 +392,23 @@ final class DocxNativeAdapter implements InputAdapter
         // serait qu'une source de faux titres.
         $blocks = $this->promouvoirMajuscules($blocks);
 
+        // --- Passe 4 (§5.5) : normalisation des séries de paragraphes vides ---
+        // Une série de ≥ 3 paragraphes vides consécutifs précédant un titre
+        // servait de saut de page manuel : les paragraphes vides ont été retirés
+        // et on pose `pageBreakBefore = true` sur le titre qui suit.
+        $blocks = $this->normaliserSeriesParagraphesVides(
+            $blocks,
+            $emptyParagraphsBeforeBlock,
+            $emptyParagraphsNormalized
+        );
+
         return [
             'blocks' => $blocks,
             'paragraphs_read' => $read,
             'paragraphs_skipped' => $skipped,
             'tables_read' => $tablesRead,
             'tables_with_merges' => $tablesWithMerges,
+            'empty_paragraphs_normalized' => $emptyParagraphsNormalized,
         ];
     }
 
@@ -725,7 +754,8 @@ final class DocxNativeAdapter implements InputAdapter
         //
         // On ne teste QUE `wps:wsp` / `wpg:wgp` : `a:blip` reste du ressort du
         // chemin d'image, pour ne pas créer deux détections du même contenu.
-        if (($analysis['has_shape'] ?? false) === true && $surroundingText === '') {
+        if (($analysis['has_shape'] ?? false) === true
+            && ($surroundingText === '' || $analysis['images'] === ['embedded-object'])) {
             return new Block(
                 blockId: (string) $analysis['block_id'],
                 type: BlockType::Shape,
@@ -903,6 +933,7 @@ final class DocxNativeAdapter implements InputAdapter
                 // Volontairement sous le seuil : c'est LE cas justifiant
                 // l'appel au tool detect_blocks (§7).
                 confidence: 0.6,
+                pageBreakBefore: (bool) ($analysis['page_break_before'] ?? false),
             );
         }
 
@@ -917,6 +948,7 @@ final class DocxNativeAdapter implements InputAdapter
             positionY: $analysis['position_y'],
             fidelity: $this->fidelity(),
             confidence: 0.85,
+            pageBreakBefore: (bool) ($analysis['page_break_before'] ?? false),
         );
     }
 
@@ -1024,10 +1056,88 @@ final class DocxNativeAdapter implements InputAdapter
                 indentLevel: $bloc->indentLevel,
                 positionY: $bloc->positionY,
                 fidelity: $bloc->fidelity,
+                pageBreakBefore: $bloc->pageBreakBefore,
             );
         }
 
         return $resultat;
+    }
+
+    /**
+     * Normalise les séries de paragraphes vides consécutifs (§5.5).
+     *
+     * Une série de ≥ 3 paragraphes vides consécutifs dans `w:body` (hors
+     * cellules de tableau et hors paragraphes portant une ancre, une image,
+     * un champ ou un saut de section) servait de saut de page manuel : les
+     * paragraphes vides ont été retirés à la lecture et le titre qui suit
+     * reçoit `pageBreakBefore = true`.
+     *
+     * @param  array<int, Block>  $blocks
+     * @param  array<int, int>  $emptyParagraphsBeforeBlock  Index XML (`positionY`) → nombre de paragraphes vides précédents
+     * @return array<int, Block>
+     */
+    private function normaliserSeriesParagraphesVides(
+        array $blocks,
+        array $emptyParagraphsBeforeBlock,
+        int &$emptyParagraphsNormalized,
+    ): array {
+        $resultat = [];
+
+        foreach ($blocks as $bloc) {
+            $posKey = $bloc->positionY !== null ? (int) round($bloc->positionY) : null;
+            $nbVides = $posKey !== null ? ($emptyParagraphsBeforeBlock[$posKey] ?? 0) : 0;
+
+            if ($nbVides >= 3 && $bloc->type === BlockType::Heading) {
+                $emptyParagraphsNormalized += $nbVides;
+                $resultat[] = $bloc->withPageBreakBefore(true);
+
+                continue;
+            }
+
+            $resultat[] = $bloc;
+        }
+
+        return $resultat;
+    }
+
+    /**
+     * Un paragraphe sans texte exploitable est-il un vrai paragraphe vide séparateur (§5.5) ?
+     *
+     * Exclusions obligatoires (ne jamais supprimer ni compter comme séparateur vide) :
+     *  - tout paragraphe contenant une ancre (`w:bookmarkStart`, `wp:anchor`),
+     *    une image (`w:drawing`, `w:pict`, `w:object`), un champ (`w:fldSimple`,
+     *    `w:fldChar`, `w:instrText`) ou un saut de section (`w:sectPr`) ;
+     *  - tout paragraphe à l'intérieur d'une cellule de tableau (`w:tc`).
+     */
+    private function estParagrapheVideSeparateur(DOMElement $paragraph): bool
+    {
+        $parent = $paragraph->parentNode;
+        while ($parent instanceof DOMElement) {
+            if ($parent->nodeName === 'w:tc' || $parent->localName === 'tc') {
+                return false;
+            }
+            $parent = $parent->parentNode;
+        }
+
+        $exclusions = [
+            'w:sectPr',
+            'w:drawing',
+            'w:pict',
+            'w:object',
+            'w:fldSimple',
+            'w:fldChar',
+            'w:instrText',
+            'w:bookmarkStart',
+            'wp:anchor',
+        ];
+
+        foreach ($exclusions as $balise) {
+            if (XmlLoader::firstDescendant($paragraph, $balise) !== null) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -1285,6 +1395,8 @@ final class DocxNativeAdapter implements InputAdapter
             imageRef: $bloc->imageRef,
             tableData: $bloc->tableData,
             linkedBlockId: $bloc->linkedBlockId,
+            crossRef: $bloc->crossRef,
+            pageBreakBefore: $bloc->pageBreakBefore,
         );
     }
 
@@ -1380,6 +1492,7 @@ final class DocxNativeAdapter implements InputAdapter
             positionY: $analysis['position_y'],
             fidelity: $this->fidelity(),
             confidence: $confidence,
+            pageBreakBefore: (bool) ($analysis['page_break_before'] ?? false),
         );
     }
 
