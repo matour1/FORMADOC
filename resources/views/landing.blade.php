@@ -295,7 +295,7 @@
                     </details>
                     <details>
                         <summary>Que deviennent mes fichiers après le traitement ?</summary>
-                        <div class="faq-body">Vos fichiers sont supprimés automatiquement 30 jours après le traitement, pour votre confidentialité. Vous pouvez les télécharger à tout moment avant cette échéance.</div>
+                        <div class="faq-body">Vos fichiers sont supprimés automatiquement 72 heures après le traitement, pour votre confidentialité. Vous pouvez les télécharger à tout moment avant cette échéance.</div>
                     </details>
                     <details>
                         <summary>Comment sont facturés les traitements IA ?</summary>
@@ -307,7 +307,7 @@
                     </details>
                     <details>
                         <summary>Mes documents sont-ils conservés indéfiniment ?</summary>
-                        <div class="faq-body">Non, les fichiers téléversés sont supprimés automatiquement après 30 jours pour votre confidentialité.</div>
+                        <div class="faq-body">Non, les fichiers téléversés sont supprimés automatiquement après 72 heures pour votre confidentialité.</div>
                     </details>
                 </div>
             </div>

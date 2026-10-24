@@ -193,20 +193,32 @@ final class UserReportBuilder
 
         $warnings = [];
 
-        // 1. Page de garde supprimée
+        // 1. Page de garde supprimée ou candidat trop volumineux (§5.2)
         if ($coverRemovedBlocks > 0) {
             $raison = (string) ($coverPage['raison'] ?? 'première page détectée avant le corps du rapport');
+            $extrait = is_string($coverPage['extrait'] ?? null) && $coverPage['extrait'] !== ''
+                ? ' (début : « '.$coverPage['extrait'].' »)'
+                : '';
             $warnings[] = [
                 'code' => 'cover_page_removed',
                 'level' => 'info',
                 'title' => 'Page de garde supprimée',
                 'message' => sprintf(
-                    'La page de garde d\'origine a été retirée (%d bloc%s — %s). FORMADOC applique le gabarit directement à partir des pièces liminaires.',
+                    'La page de garde d\'origine a été retirée (%d bloc%s — %s)%s. FORMADOC applique le gabarit directement à partir des pièces liminaires.',
                     $coverRemovedBlocks,
                     $coverRemovedBlocks > 1 ? 's' : '',
                     $raison,
+                    $extrait,
                 ),
                 'count' => $coverRemovedBlocks,
+            ];
+        } elseif (! empty($coverPage['avertissement'])) {
+            $warnings[] = [
+                'code' => 'cover_page_skipped_too_large',
+                'level' => 'warning',
+                'title' => 'Page de garde conservée (> 2 pages)',
+                'message' => (string) $coverPage['avertissement'],
+                'count' => 1,
             ];
         }
 

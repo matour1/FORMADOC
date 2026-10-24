@@ -110,11 +110,17 @@ final class CoverPageDetector
      * Renvoie `0` quand il n'y a rien à supprimer.
      *
      * @param  array<int, Block>  $blocs
-     * @return array{supprimer: int, raison: string, marqueurs: array<int, string>}
+     * @return array{supprimer: int, raison: string, marqueurs: array<int, string>, avertissement: null|string, extrait: null|string}
      */
     public function detecter(array $blocs): array
     {
-        $aucun = ['supprimer' => 0, 'raison' => 'aucune page de garde détectée', 'marqueurs' => []];
+        $aucun = [
+            'supprimer' => 0,
+            'raison' => 'aucune page de garde détectée',
+            'marqueurs' => [],
+            'avertissement' => null,
+            'extrait' => null,
+        ];
 
         $total = count($blocs);
 
@@ -152,15 +158,25 @@ final class CoverPageDetector
             return $aucun;
         }
 
+        $candidats = array_slice($blocs, 0, $nbCandidats);
+        $extrait = $this->extraireDebut($candidats);
+
         // Garde-fou §5.2 : si le candidat dépasse 2 pages (MAX_BLOCS), ne rien supprimer et avertir
         if ($nbCandidats > self::MAX_BLOCS) {
             $aucun['raison'] = "candidat page de garde trop volumineux ({$nbCandidats} blocs > ".self::MAX_BLOCS.')';
+            if ($indexFinCandidat !== null) {
+                $aucun['extrait'] = $extrait;
+                $aucun['avertissement'] = sprintf(
+                    'La section précédant le premier titre liminaire comporte %d blocs (> 2 pages) : par sécurité, aucun bloc n\'a été supprimé%s.',
+                    $nbCandidats,
+                    $extrait !== null ? ' (début : « '.$extrait.' »)' : ''
+                );
+            }
 
             return $aucun;
         }
 
         // 3. Vérifier la présence de marqueurs distincts de couverture sur la tranche candidate
-        $candidats = array_slice($blocs, 0, $nbCandidats);
         $trouves = [];
 
         foreach ($candidats as $bloc) {
@@ -197,7 +213,40 @@ final class CoverPageDetector
                 implode(', ', array_keys($trouves))
             ),
             'marqueurs' => array_keys($trouves),
+            'avertissement' => null,
+            'extrait' => $extrait,
         ];
+    }
+
+    /**
+     * Extrait les premiers mots de la tranche candidate pour le rapport utilisateur (§5.2).
+     *
+     * @param  array<int, Block>  $candidats
+     */
+    private function extraireDebut(array $candidats): ?string
+    {
+        $morceaux = [];
+
+        foreach ($candidats as $bloc) {
+            $texte = trim($bloc->text ?? '');
+            if ($texte === '') {
+                continue;
+            }
+            $morceaux[] = $texte;
+            if (mb_strlen(implode(' · ', $morceaux)) >= 80) {
+                break;
+            }
+        }
+
+        if ($morceaux === []) {
+            return null;
+        }
+
+        $concat = implode(' · ', $morceaux);
+
+        return mb_strlen($concat) > 100
+            ? mb_substr($concat, 0, 97).'…'
+            : $concat;
     }
 
     /**

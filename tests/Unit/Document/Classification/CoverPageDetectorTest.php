@@ -189,6 +189,27 @@ class CoverPageDetectorTest extends TestCase
         $this->assertStringContainsString('marqueurs insuffisants', $resultat['raison']);
     }
 
+    public function test_un_candidat_de_plus_de_deux_pages_devant_un_liminaire_n_est_pas_supprime_et_emet_un_avertissement(): void
+    {
+        $blocs = [
+            $this->bloc('REPUBLIQUE DU CAMEROUN'),
+            $this->bloc('RAPPORT DE STAGE PRESENTE PAR JEAN DUPONT'),
+        ];
+
+        for ($i = 0; $i < CoverPageDetector::MAX_BLOCS; $i++) {
+            $blocs[] = $this->bloc('Paragraphe avant sommaire numéro '.$i);
+        }
+
+        $blocs[] = $this->bloc('SOMMAIRE', BlockType::Heading);
+
+        $resultat = $this->detecteur()->detecter($blocs);
+
+        $this->assertSame(0, $resultat['supprimer']);
+        $this->assertNotNull($resultat['avertissement']);
+        $this->assertStringContainsString('> 2 pages', $resultat['avertissement']);
+        $this->assertStringContainsString('REPUBLIQUE DU CAMEROUN', (string) $resultat['extrait']);
+    }
+
     public function test_un_document_vide_ne_declenche_rien(): void
     {
         $resultat = $this->detecteur()->detecter([]);

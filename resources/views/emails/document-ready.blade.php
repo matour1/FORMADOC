@@ -7,7 +7,7 @@
 Télécharger mon document
 @endcomponent
 
-Tes fichiers sont conservés **30 jours** puis supprimés automatiquement.
+Tes fichiers sont conservés **72 heures** puis supprimés automatiquement.
 
 Cordialement,<br>
 L'équipe **FORMADOC**

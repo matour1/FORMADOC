@@ -235,8 +235,13 @@ final class DocxNativeAdapter implements InputAdapter
                     'image_count' => count($this->imageRelations($package)),
                     // Trace de la suppression : le rapport utilisateur doit
                     // pouvoir dire ce qui a été retiré, et pourquoi.
-                    'cover_page' => $garde['supprimer'] > 0
-                        ? ['supprime' => $garde['supprimer'], 'raison' => $garde['raison']]
+                    'cover_page' => ($garde['supprimer'] > 0 || ($garde['avertissement'] ?? null) !== null)
+                        ? [
+                            'supprime' => $garde['supprimer'],
+                            'raison' => $garde['raison'],
+                            'avertissement' => $garde['avertissement'] ?? null,
+                            'extrait' => $garde['extrait'] ?? null,
+                        ]
                         : null,
                     'empty_paragraphs_normalized' => $body['empty_paragraphs_normalized'],
                 ],

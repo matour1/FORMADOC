@@ -38,13 +38,19 @@
             téléversés par les utilisateurs restent la propriété exclusive de leurs auteurs.
         </p>
 
-        <h2 class="card-title" style="margin-top:1.5rem">4. Responsabilité</h2>
+        <h2 class="card-title" style="margin-top:1.5rem">4. Responsabilité et conservation des fichiers</h2>
         <p>
             FORMADOC s'efforce d'assurer l'exactitude des informations publiées et la
             disponibilité du service, sans garantie d'absence totale d'interruption.
             L'éditeur ne saurait être tenu responsable d'un usage inapproprié des documents
             produits, ni de pertes de contenu consécutives à la suppression automatique
-            des fichiers (voir CGU, rétention de 30 jours).
+            des fichiers (voir CGU, rétention de <strong>72 heures</strong>).
+        </p>
+        <p style="margin-top:.75rem">
+            Dans le cadre de l'amélioration continue de son moteur déterministe, FORMADOC
+            peut procéder à des mesures techniques et statistiques internes d'analyse de
+            structure sur les documents soumis, sans divulgation à des tiers ni conservation
+            au-delà du délai légal de purge automatique de 72 heures.
         </p>
 
         <h2 class="card-title" style="margin-top:1.5rem">5. Droit applicable</h2>
