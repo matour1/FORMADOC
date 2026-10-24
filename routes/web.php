@@ -238,6 +238,7 @@ Route::middleware(['auth'])->group(function () {
         // elle est soumise à la même vérification d'appartenance que le reste.
         Route::post('/{document}/undo-edit', [DocumentController::class, 'undoEdit'])->name('documents.undo-edit');
         Route::post('/{document}/generate', [DocumentController::class, 'generate'])->name('documents.generate');
+        Route::get('/{document}/report', [DocumentController::class, 'downloadReport'])->name('documents.report');
 
         // Clarifications (R2) : confirmer les blocs dont la classification est
         // incertaine. Dans le groupe `auth` ET avec la même vérification

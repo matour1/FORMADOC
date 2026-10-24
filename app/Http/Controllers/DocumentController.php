@@ -27,6 +27,7 @@ use App\Services\Detection\StructureCorrectionService;
 use App\Services\Detection\TextExtractionService;
 use App\Services\DocumentGeneration\FormattedDocumentExporter;
 use App\Services\DocumentGeneration\PdfPreviewService;
+use App\Services\DocumentGeneration\UserReportBuilder;
 use App\Services\OpenRouter\OpenRouterService;
 use Exception;
 use Illuminate\Http\RedirectResponse;
@@ -91,6 +92,7 @@ class DocumentController extends Controller
         private readonly FormattedDocumentExporter $exporter,
         private readonly DocumentModePricing $pricing,
         private readonly DocumentCredits $documentCredits,
+        private readonly UserReportBuilder $reportBuilder,
     ) {}
 
     /**
@@ -534,6 +536,7 @@ class DocumentController extends Controller
         return view('documents.show', [
             'document' => $document,
             'structure' => $document->structure,
+            'userReport' => $this->reportBuilder->build($document),
             // Historique des actions annulables (R6 §9.7). Exposé ici parce que
             // c'est la page où l'utilisateur constate le résultat d'une édition :
             // proposer l'annulation ailleurs l'obligerait à chercher.
@@ -756,7 +759,29 @@ class DocumentController extends Controller
             'document' => $document,
             'structure' => $document->structure,
             'templates' => $templates,
+            'userReport' => $this->reportBuilder->build($document),
         ]);
+    }
+
+    /**
+     * Télécharge le rapport utilisateur structuré au format JSON (§9, D-F1).
+     */
+    public function downloadReport(Document $document): Response
+    {
+        $this->authorizeDocument($document);
+
+        $report = $this->reportBuilder->build($document);
+        $baseName = pathinfo((string) $document->filename, PATHINFO_FILENAME) ?: 'document';
+        $filename = $baseName.'_rapport.json';
+
+        return response(
+            (string) json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            200,
+            [
+                'Content-Type' => 'application/json; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            ]
+        );
     }
 
     /**

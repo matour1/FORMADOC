@@ -43,6 +43,10 @@
                 <div class="min-w-0 flex-1">
                     <p id="file-preview-name" class="fp-name"></p>
                     <p id="file-preview-meta" class="fp-meta"></p>
+                    <p id="file-time-estimate" class="fp-meta" style="margin-top:.3rem;font-weight:600;color:var(--color-primary);display:flex;align-items:center;gap:.35rem">
+                        <i data-lucide="clock" style="width:14px;height:14px"></i>
+                        <span id="file-time-estimate-text"></span>
+                    </p>
                     <div id="file-preview-content" class="fp-content hidden">
                         <span class="eyebrow" style="margin-bottom:.5rem">Aperçu du contenu</span>
                         <pre id="file-preview-text"></pre>
@@ -157,15 +161,43 @@
             const preview = document.getElementById('file-preview');
             const previewName = document.getElementById('file-preview-name');
             const previewMeta = document.getElementById('file-preview-meta');
+            const previewTimeText = document.getElementById('file-time-estimate-text');
             const previewText = document.getElementById('file-preview-text');
             const previewContent = document.getElementById('file-preview-content');
             const previewIcon = document.getElementById('file-preview-icon');
 
-            // ── Aperçu du fichier sélectionné ──────────────────────────────────
+            // ── Aperçu du fichier sélectionné & estimation du temps (F2) ───────
             function formatSize(bytes) {
                 if (bytes < 1024) return bytes + ' o';
                 if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' Ko';
                 return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
+            }
+
+            function estimateProcessingRange(bytes, mode) {
+                const sizeMb = Math.max(0.05, (bytes || 0) / (1024 * 1024));
+                let minSec = 5;
+                let maxSec = 15;
+
+                if (mode === 'precision') {
+                    minSec = Math.round(25 + sizeMb * 12);
+                    maxSec = Math.round(60 + sizeMb * 25);
+                } else if (mode === 'assiste') {
+                    minSec = Math.round(12 + sizeMb * 6);
+                    maxSec = Math.round(30 + sizeMb * 15);
+                } else {
+                    minSec = Math.max(3, Math.round(4 + sizeMb * 2));
+                    maxSec = Math.max(8, Math.round(10 + sizeMb * 5));
+                }
+
+                return 'Durée estimée : ' + minSec + ' à ' + maxSec + ' secondes';
+            }
+
+            function updateTimeEstimate() {
+                if (!input.files || input.files.length === 0 || !previewTimeText) {
+                    return;
+                }
+                const mode = document.querySelector('input[name="mode"]:checked')?.value || 'regex';
+                previewTimeText.textContent = estimateProcessingRange(input.files[0].size, mode);
             }
 
             function showPreview(file) {
@@ -173,6 +205,7 @@
 
                 previewName.textContent = file.name;
                 previewMeta.textContent = formatSize(file.size) + ' · ' + (file.type || 'inconnu');
+                updateTimeEstimate();
 
                 if (file.name.toLowerCase().endsWith('.txt')) {
                     previewIcon.innerHTML = '<i data-lucide="file-text"></i>';
@@ -203,6 +236,10 @@
 
             input.addEventListener('change', function () {
                 showPreview(input.files[0]);
+            });
+
+            document.querySelectorAll('input[name="mode"]').forEach(function (radio) {
+                radio.addEventListener('change', updateTimeEstimate);
             });
 
             // ── Soumission AJAX + animation d'analyse ──────────────────────────

@@ -503,6 +503,9 @@
                     </p>
                 @endif
             </section>
+
+            {{-- Rapport utilisateur structuré (§9, D-F1) --}}
+            <x-document-user-report :report="$userReport ?? null" />
         @endif
 
         {{-- Actions secondaires --}}
