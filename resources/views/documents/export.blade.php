@@ -264,6 +264,9 @@
                         @endforeach
                     </div>
 
+                    {{-- Rapport utilisateur structuré (§9, D-F1) --}}
+                    <x-document-user-report :report="$userReport ?? null" />
+
                     {{-- Aperçu du plan --}}
                     @if ($titreCount > 0)
                         <section class="card">
