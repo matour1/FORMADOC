@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Billing;
 
+use App\Models\KpayPayment;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
@@ -32,6 +33,7 @@ class SubscriptionService
         private readonly CreditService $credits,
         private readonly InvoiceService $invoices,
         private readonly ?GeniusPayService $geniusPay = null,
+        private readonly ?MonetbilService $monetbil = null,
     ) {}
 
     /**
@@ -108,8 +110,13 @@ class SubscriptionService
      *
      * @return array{ok: bool, gatewayUrl?: string, externalId?: string, message?: string}
      */
-    public function initiateSubscription(User $user, Plan $plan, string $paymentMethod = 'kpay', string $currency = 'XAF'): array
-    {
+    public function initiateSubscription(
+        User $user,
+        Plan $plan,
+        string $paymentMethod = 'kpay',
+        string $currency = 'XAF',
+        ?string $phone = null
+    ): array {
         if (! $plan->is_active) {
             return ['ok' => false, 'message' => 'Ce plan n\'est plus disponible.'];
         }
@@ -130,8 +137,12 @@ class SubscriptionService
             'payment_method' => $paymentMethod,
             'currency' => $currency,
             'external_id' => $externalId,
+            'phone' => $phone,
         ];
 
+        $registry = app(PaymentGatewayRegistry::class);
+
+        // 1. GeniusPay explicite
         if ($paymentMethod === PaymentGatewayRegistry::GENIUSPAY) {
             $result = ($this->geniusPay ?? app(GeniusPayService::class))->initierPaiement(
                 montantFcfa: (int) $plan->price_fcfa,
@@ -156,6 +167,62 @@ class SubscriptionService
             ];
         }
 
+        // 2. Monetbil (explicite ou pour mobile money Orange/MTN quand Monetbil est proposable)
+        if ($paymentMethod === PaymentGatewayRegistry::MONETBIL
+            || (($paymentMethod === 'orange' || $paymentMethod === 'mtn') && $registry->estProposable(PaymentGatewayRegistry::MONETBIL) && ! $registry->estProposable(PaymentGatewayRegistry::KPAY))) {
+            $service = app(MonetbilServiceRegistry::class)->pourMontant((int) $plan->price_fcfa, app(CreditPackCatalog::class));
+            $monetbilInstance = $this->monetbil ?? app(MonetbilService::class);
+            $result = $monetbilInstance->url(
+                amountFcfa: (int) $plan->price_fcfa,
+                paymentRef: $externalId,
+                returnUrl: route('account.index'),
+                notifyUrl: route('credits.notify'),
+                itemRef: 'SUB-'.$user->id,
+                customerEmail: $user->email,
+                phone: $phone,
+                userId: $user->id,
+                nomComplet: $user->name,
+                contexte: $metadata,
+                service: $service,
+            );
+
+            if (! ($result['ok'] ?? false)) {
+                return ['ok' => false, 'message' => $result['message'] ?? 'Échec de l\'initialisation du paiement Monetbil.'];
+            }
+
+            return [
+                'ok' => true,
+                'gatewayUrl' => $result['paymentUrl'],
+                'externalId' => $externalId,
+            ];
+        }
+
+        // 3. Repli GeniusPay si KPay n'est pas configuré mais GeniusPay l'est
+        if (! $registry->estProposable(PaymentGatewayRegistry::KPAY) && $registry->estProposable(PaymentGatewayRegistry::GENIUSPAY)) {
+            $result = ($this->geniusPay ?? app(GeniusPayService::class))->initierPaiement(
+                montantFcfa: (int) $plan->price_fcfa,
+                referenceExterne: $externalId,
+                successUrl: route('credits.return.geniuspay'),
+                errorUrl: route('credits.cancel.geniuspay'),
+                email: $user->email,
+                nom: $user->name,
+                metadata: $metadata,
+                description: 'Abonnement FORMADOC - '.$plan->name,
+            );
+
+            if (! $result['ok']) {
+                return ['ok' => false, 'message' => $result['message'] ?? 'Échec de l\'initialisation du paiement.'];
+            }
+
+            return [
+                'ok' => true,
+                'gatewayUrl' => $result['checkoutUrl'],
+                'externalId' => $externalId,
+                'reference' => $result['reference'] ?? '',
+            ];
+        }
+
+        // 4. Flux standard KPay
         $result = $this->kpay->initGatewayPayment(
             amountFcfa: (int) $plan->price_fcfa,
             externalId: $externalId,
@@ -163,11 +230,26 @@ class SubscriptionService
             cancelUrl: route('account.index'),
             currency: $currency === 'XAF' ? 'XAF' : $currency,
             metadata: $metadata,
+            customerEmail: $user->email,
         );
 
         if (! $result['ok']) {
             return ['ok' => false, 'message' => $result['message'] ?? 'Échec de l\'initialisation du paiement.'];
         }
+
+        KpayPayment::create([
+            'user_id' => $user->id,
+            'payment_id' => $result['paymentId'] ?? null,
+            'external_id' => $externalId,
+            'status' => 'PENDING',
+            'purpose' => 'subscription',
+            'amount_fcfa' => (int) $plan->price_fcfa,
+            'currency' => $currency === 'XAF' ? 'XAF' : $currency,
+            'return_url' => route('account.index'),
+            'cancel_url' => route('account.index'),
+            'metadata' => $metadata,
+            'expires_at' => isset($result['expiresAt']) ? now()->parse($result['expiresAt']) : now()->addHours(24),
+        ]);
 
         return [
             'ok' => true,

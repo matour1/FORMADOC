@@ -29,30 +29,18 @@
 
                 {{-- Note (étoiles) --}}
                 <div class="form-group">
-                    <label style="display:block">Note</label>
-                    <div class="star-rating" style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap" id="star-rating">
-                        @for ($i = 1; $i <= 5; $i++)
-                            <input type="radio" name="note" value="{{ $i }}" id="star{{ $i }}"
-                                   class="sr-only star-input" @checked(old('note') == $i) required>
-                            <label for="star{{ $i }}" class="star-label" style="cursor:pointer" data-value="{{ $i }}">
-                                <i data-lucide="star" class="star-icon" style="width:40px;height:40px"></i>
-                            </label>
-                        @endfor
-                        {{-- La legende passe a la ligne sur ecran etroit.
-                             Mesure avant correction : sur 360 px, les cinq etoiles
-                             (200 px) plus leurs espacements et cette legende (79 px)
-                             depassaient le conteneur de 10 px — assez pour creer une
-                             barre de defilement horizontale sur toute la page.
-                             `flex-wrap: wrap` laisse la legende descendre sous les
-                             etoiles plutot que d'elargir la page.
-
-                             NB : reduire la taille des etoiles sur mobile a ete
-                             essaye puis retire. Les etoiles portent
-                             `style="width:40px"` en attribut, et un style en ligne
-                             prime sur toute media query : la regle ne s'appliquait
-                             jamais (mesure : 40 px a toutes les largeurs). Du code
-                             mort qui laissait croire a un comportement inexistant. --}}
-                        <span style="font-size:.8rem;color:var(--color-text-muted);margin-left:.6rem;flex-basis:100%" id="star-caption">Sélectionnez une note</span>
+                    <label style="display:block;font-weight:600;margin-bottom:.4rem;">Note</label>
+                    <div class="star-rating" style="display:flex;flex-direction:column;gap:.35rem;" id="star-rating">
+                        <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:nowrap;">
+                            @for ($i = 1; $i <= 5; $i++)
+                                <input type="radio" name="note" value="{{ $i }}" id="star{{ $i }}"
+                                       class="sr-only star-input" @checked(old('note') == $i) required>
+                                <label for="star{{ $i }}" class="star-label" style="cursor:pointer;line-height:1;display:inline-flex;" data-value="{{ $i }}">
+                                    <i data-lucide="star" class="star-icon" style="width:clamp(28px, 7vw, 38px);height:clamp(28px, 7vw, 38px)"></i>
+                                </label>
+                            @endfor
+                        </div>
+                        <span style="font-size:.8rem;color:var(--color-text-muted);margin-top:.15rem;" id="star-caption">Sélectionnez une note</span>
                     </div>
                     @error('note')
                         <span class="field-error">{{ $message }}</span>
@@ -80,8 +68,15 @@
                 {{-- Avis --}}
                 <div class="form-group">
                     <label for="avis" style="display:block">Votre avis</label>
+                    <div class="feedback-tags" aria-label="Thèmes rapides">
+                        <button type="button" class="feedback-tag-btn" data-tag="Mise en forme académique impeccable">Mise en forme académique</button>
+                        <button type="button" class="feedback-tag-btn" data-tag="En-tête et pied de page très pratiques">En-tête & pied de page</button>
+                        <button type="button" class="feedback-tag-btn" data-tag="Vérification de conformité utile">Vérification de conformité</button>
+                        <button type="button" class="feedback-tag-btn" data-tag="Assistant IA rapide et pertinent">Assistant IA</button>
+                        <button type="button" class="feedback-tag-btn" data-tag="Gain de temps sur mon rapport de stage">Gain de temps</button>
+                    </div>
                     <textarea class="form-control @error('avis') is-invalid @enderror"
-                              id="avis" name="avis" rows="5" required
+                              id="avis" name="avis" rows="5" required style="margin-top:.55rem"
                               placeholder="Décrivez votre expérience avec FORMADOC...">{{ old('avis') }}</textarea>
                     <p style="font-size:.75rem;color:var(--color-text-muted);margin-top:.3rem">Minimum 10 caractères</p>
                     @error('avis')
@@ -166,6 +161,20 @@
             if (caption && selectedValue()) {
                 caption.textContent = captions[selectedValue()] || '';
             }
+
+            // Tags rapides pour enrichir l'avis en un clic
+            const avisTextarea = document.getElementById('avis');
+            document.querySelectorAll('.feedback-tag-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    if (!avisTextarea) return;
+                    const tag = btn.dataset.tag || '';
+                    btn.classList.toggle('active');
+                    if (avisTextarea.value.indexOf(tag) === -1) {
+                        avisTextarea.value = (avisTextarea.value.trim() ? avisTextarea.value.trim() + ' — ' : '') + tag + '. ';
+                        avisTextarea.focus();
+                    }
+                });
+            });
         })();
     </script>
     @endpush

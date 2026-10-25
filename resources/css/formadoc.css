@@ -410,7 +410,7 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
     display: flex; align-items: center; justify-content: center; transition: all var(--transition);
 }
 .theme-toggle:hover, .icon-btn:hover { background: var(--color-surface-2); border-color: var(--color-border); }
-.avatar-nav { width: 36px; height: 36px; border-radius: 50%; background: var(--color-primary); color: var(--color-on-primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; cursor: pointer; }
+.avatar-nav { width: 34px; height: 34px; min-width: 34px; aspect-ratio: 1 / 1; flex-shrink: 0; border-radius: 50%; background: var(--color-primary); color: var(--color-on-primary); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; cursor: pointer; }
 
 .page-container { padding: 2rem 2.25rem; flex: 1; max-width: 1320px; margin: 0 auto; width: 100%; }
 .page { display: none; animation: fadeSlide .3s ease; }
@@ -1283,6 +1283,16 @@ table.data-table tr:hover td { background: var(--color-surface-2); }
     .navbar-search span.search-label { display: none; }
     .page-container { padding: 1.5rem 1rem; }
     .stat-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 640px) {
+    .navbar { padding: 0 .6rem; gap: .35rem; }
+    .navbar-left { gap: .35rem; min-width: 0; flex: 1; }
+    .navbar-actions { gap: .25rem; flex-shrink: 0; align-items: center; }
+    .navbar-search { max-width: 140px; }
+    .navbar-search input { font-size: .78rem; padding: .35rem .45rem .35rem 1.8rem; }
+    .avatar-nav { width: 32px; height: 32px; min-width: 32px; flex-shrink: 0; }
+    .credits-badge { font-size: .74rem; padding: .25rem .5rem; }
 }
 
 /* ============================================================
@@ -2275,3 +2285,340 @@ a.flow-step:hover { background: var(--color-surface-2); color: var(--color-text)
    Le defaut a deja ete mesure ailleurs dans ce fichier. */
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
 .form-grid > * { min-width: 0; }
+
+/* ============================================================
+   Étape En-tête & Pied de page + Aperçu page académique
+   ============================================================ */
+.hf-config-card {
+    border-left: 4px solid var(--color-primary);
+}
+.hf-layout {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 1.4rem;
+    align-items: start;
+}
+.hf-layout > * {
+    min-width: 0;
+}
+.hf-preview-sheet {
+    background: #ffffff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 1rem 1.15rem;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+    font-family: "Times New Roman", Times, serif;
+    color: #1e293b;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 230px;
+}
+.hf-preview-header {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #475569;
+    border-bottom: 1px solid #cbd5e1;
+    padding-bottom: 0.45rem;
+    margin-bottom: 0.75rem;
+    word-break: break-word;
+}
+.hf-preview-body {
+    font-size: 0.78rem;
+    line-height: 1.5;
+    text-align: justify;
+    color: #334155;
+    margin: 0.35rem 0;
+}
+.hf-preview-body-title {
+    font-weight: 700;
+    font-size: 0.84rem;
+    text-transform: uppercase;
+    margin-bottom: 0.35rem;
+    color: #0f172a;
+}
+.hf-preview-footer {
+    border-top: 1px solid #cbd5e1;
+    padding-top: 0.45rem;
+    margin-top: 0.75rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.72rem;
+    color: #334155;
+}
+.hf-preview-page-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    padding: 0.1rem 0.45rem;
+    font-weight: 700;
+    font-size: 0.7rem;
+    white-space: nowrap;
+}
+
+/* ============================================================
+   Analyse & Vérification de Conformité Académique
+   ============================================================ */
+.compliance-card {
+    border-left: 4px solid var(--color-secondary);
+}
+.compliance-card.is-partiel {
+    border-left-color: #d97706;
+}
+.compliance-card.is-attention {
+    border-left-color: var(--color-correction);
+}
+.compliance-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+.compliance-score-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    font-family: var(--font-mono);
+}
+.compliance-score-num {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--color-primary);
+}
+.compliance-cat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 0.9rem;
+}
+.compliance-cat-box {
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0.9rem 1rem;
+    min-width: 0;
+}
+.compliance-cat-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    margin-bottom: 0.6rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+}
+.compliance-check-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+}
+.compliance-check-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+.compliance-check-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.68rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+}
+.compliance-check-icon.ok {
+    background: var(--color-secondary-tint);
+    color: var(--color-secondary);
+}
+.compliance-check-icon.warn {
+    background: #fef3c7;
+    color: #b45309;
+}
+.compliance-missing-box {
+    margin-top: 1rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius-sm);
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    color: #92400e;
+    font-size: 0.82rem;
+}
+.compliance-missing-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+}
+.compliance-missing-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: #ffffff;
+    border: 1px solid #fcd34d;
+    color: #92400e;
+    padding: 0.2rem 0.55rem;
+    border-radius: var(--radius-full);
+    font-size: 0.74rem;
+    font-weight: 600;
+}
+
+/* ============================================================
+   Référentiel académique (page Upload & Processus)
+   ============================================================ */
+.academic-spec-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 0.85rem;
+    margin-top: 0.85rem;
+}
+.academic-spec-card {
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0.85rem 0.95rem;
+    min-width: 0;
+}
+.academic-spec-card h3 {
+    font-size: 0.82rem;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.academic-spec-card p {
+    font-size: 0.76rem;
+    color: var(--color-text-secondary);
+    line-height: 1.45;
+    margin: 0;
+}
+
+/* ============================================================
+   Feedback tags & quick chips
+   ============================================================ */
+.feedback-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 0.4rem;
+}
+.feedback-tag-btn {
+    border: 1px solid var(--color-border);
+    background: var(--color-surface-2);
+    color: var(--color-text-secondary);
+    border-radius: var(--radius-full);
+    padding: 0.35rem 0.75rem;
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.feedback-tag-btn:hover,
+.feedback-tag-btn.active {
+    background: var(--color-primary-tint);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+/* ============================================================
+   Responsive Mobile Global (Assistant IA, Paramètres, Crédits,
+   Processus de mise en forme, Export, Feedback)
+   ============================================================ */
+.export-bento-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.4rem;
+    align-items: start;
+}
+.export-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.9rem;
+}
+.two-col-responsive {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.4rem;
+}
+.three-col-responsive {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+
+@media (max-width: 960px) {
+    .hf-layout {
+        grid-template-columns: 1fr;
+    }
+    .export-bento-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .two-col-responsive,
+    .three-col-responsive {
+        grid-template-columns: 1fr;
+    }
+    .export-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .upload-steps {
+        flex-wrap: wrap;
+        gap: 0.45rem;
+    }
+    .upload-step-sep {
+        display: none;
+    }
+    .flow-steps {
+        overflow-x: auto;
+        padding-bottom: 0.35rem;
+    }
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+    .payment-methods {
+        grid-template-columns: 1fr !important;
+    }
+    .tabs {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+    }
+    .tabs .tab {
+        white-space: nowrap;
+        min-height: 44px;
+    }
+}
+
+@media (max-width: 480px) {
+    .export-stats-grid {
+        grid-template-columns: 1fr;
+    }
+    .compliance-cat-grid {
+        grid-template-columns: 1fr;
+    }
+    .btn {
+        min-height: 42px;
+    }
+}

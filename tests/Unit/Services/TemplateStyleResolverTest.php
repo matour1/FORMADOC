@@ -21,7 +21,7 @@ class TemplateStyleResolverTest extends TestCase
         $this->assertSame('Times New Roman', $defaults['police']);
         $this->assertSame(16, $defaults['tailles']['titre1']);
         $this->assertSame(12, $defaults['tailles']['corps']);
-        $this->assertSame('1F3864', $defaults['couleurs']['titre1']);
+        $this->assertSame('000000', $defaults['couleurs']['titre1']);
         $this->assertSame(1.5, $defaults['interligne']);
         $this->assertSame(1440, $defaults['marges']['top']);
     }
@@ -41,7 +41,7 @@ class TemplateStyleResolverTest extends TestCase
         $this->assertSame(11, $normalized['tailles']['corps']);
         $this->assertSame(16, $normalized['tailles']['titre1']);
         $this->assertSame(2.0, $normalized['interligne']);
-        $this->assertSame('1F3864', $normalized['couleurs']['titre1']);
+        $this->assertSame('000000', $normalized['couleurs']['titre1']);
     }
 
     public function test_font_style_titres_est_gras_avec_taille_du_gabarit(): void

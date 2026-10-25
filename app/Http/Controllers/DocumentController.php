@@ -26,6 +26,7 @@ use App\Services\Detection\LegendDetectionService;
 use App\Services\Detection\StructureCorrectionService;
 use App\Services\Detection\TextExtractionService;
 use App\Services\DocumentGeneration\FormattedDocumentExporter;
+use App\Services\DocumentGeneration\FormattingComplianceService;
 use App\Services\DocumentGeneration\PdfPreviewService;
 use App\Services\DocumentGeneration\UserReportBuilder;
 use App\Services\OpenRouter\OpenRouterService;
@@ -93,7 +94,30 @@ class DocumentController extends Controller
         private readonly DocumentModePricing $pricing,
         private readonly DocumentCredits $documentCredits,
         private readonly UserReportBuilder $reportBuilder,
+        private readonly FormattingComplianceService $compliance = new FormattingComplianceService,
     ) {}
+
+    /**
+     * Fusionne les paramètres du gabarit sélectionné avec la configuration
+     * d'en-tête et de pied de page (`theme`, `redacteur`, `mention_redacteur`)
+     * validée par l'utilisateur pour ce document.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function effectiveTemplateParams(Document $document, ?Template $template): ?array
+    {
+        $params = is_array($template?->params) ? $template->params : [];
+        $hfConfig = $this->compliance->extractHeaderFooterConfig($document);
+
+        foreach (['theme', 'redacteur', 'mention_redacteur'] as $key) {
+            $val = trim((string) ($hfConfig[$key] ?? ''));
+            if ($val !== '') {
+                $params[$key] = $val;
+            }
+        }
+
+        return $params === [] ? null : $params;
+    }
 
     /**
      * Écrit le DOCX du document : nouveau pipeline si possible, ancien sinon.
@@ -115,6 +139,7 @@ class DocumentController extends Controller
     private function writeDocument(Document $document, string $outputPath, ?Template $template): string
     {
         $structural = $document->structure?->structuralDocument();
+        $templateParams = $this->effectiveTemplateParams($document, $template);
 
         if ($structural !== null && app(DocumentPipeline::class)->isNativeEnabled()) {
             try {
@@ -122,7 +147,7 @@ class DocumentController extends Controller
                     $structural,
                     storage_path('uploads/'.$document->path),
                     $outputPath,
-                    $template?->params,
+                    $templateParams,
                 );
 
                 return $resultat['path'];
@@ -158,9 +183,10 @@ class DocumentController extends Controller
         // Complète le binaire des images depuis l'archive source : sans cela les
         // images du corps sont perdues à la reconstruction.
         $structure = $this->enrichBodyImages($document, $structure);
+        $templateParams = $this->effectiveTemplateParams($document, $template);
 
         // `$cover` a été retiré de la signature : le gabarit est le 3e paramètre.
-        return (new DocumentReconstructor)->reconstruct($structure, $outputPath, $template?->params);
+        return (new DocumentReconstructor)->reconstruct($structure, $outputPath, $templateParams);
     }
 
     /**
@@ -533,10 +559,14 @@ class DocumentController extends Controller
                     : DocumentModePricing::MODE_REGEX);
         }
 
+        $complianceReport = $this->compliance->evaluate($document);
+
         return view('documents.show', [
             'document' => $document,
             'structure' => $document->structure,
             'userReport' => $this->reportBuilder->build($document),
+            'complianceReport' => $complianceReport,
+            'headerFooterConfig' => $complianceReport['header_footer'],
             // Historique des actions annulables (R6 §9.7). Exposé ici parce que
             // c'est la page où l'utilisateur constate le résultat d'une édition :
             // proposer l'annulation ailleurs l'obligerait à chercher.
@@ -755,11 +785,15 @@ class DocumentController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'description', 'params']);
 
+        $complianceReport = $this->compliance->evaluate($document);
+
         return view('documents.export', [
             'document' => $document,
             'structure' => $document->structure,
             'templates' => $templates,
             'userReport' => $this->reportBuilder->build($document),
+            'complianceReport' => $complianceReport,
+            'headerFooterConfig' => $complianceReport['header_footer'],
         ]);
     }
 
@@ -1615,6 +1649,38 @@ class DocumentController extends Controller
     }
 
     /**
+     * Enregistre le contenu personnalisé de l'en-tête (thème du rapport) et du
+     * pied de page (nom / mention du rédacteur) pour ce document.
+     */
+    public function updateHeaderFooter(Request $request, Document $document): RedirectResponse
+    {
+        $this->authorizeDocument($document);
+
+        $structure = $document->structure;
+        if ($structure === null) {
+            return back()->withErrors(['document' => 'Aucune structure détectée pour ce document.']);
+        }
+
+        $validated = $request->validate([
+            'theme' => ['nullable', 'string', 'max:300'],
+            'redacteur' => ['nullable', 'string', 'max:180'],
+            'mention_redacteur' => ['nullable', 'string', 'max:250'],
+        ]);
+
+        $data = is_array($structure->structure) ? $structure->structure : [];
+        $data['header_footer_config'] = [
+            'theme' => trim((string) ($validated['theme'] ?? '')),
+            'redacteur' => trim((string) ($validated['redacteur'] ?? '')),
+            'mention_redacteur' => trim((string) ($validated['mention_redacteur'] ?? '')),
+            'updated_at' => now()->toIso8601String(),
+        ];
+
+        $structure->update(['structure' => $data]);
+
+        return back()->with('success', 'Contenu de l\'en-tête et du pied de page enregistré.');
+    }
+
+    /**
      * Enregistre la validation utilisateur de la structure (Phase 4).
      *
      * Les corrections validées sont appliquées à la structure, mémorisées
@@ -1633,6 +1699,18 @@ class DocumentController extends Controller
 
         $corrections = $request->validated('corrections') ?? [];
         $corrected = (new StructureCorrectionService)->apply($structure->structure, $corrections);
+
+        if ($request->hasAny(['theme', 'redacteur', 'mention_redacteur'])) {
+            $existingHf = is_array($corrected['header_footer_config'] ?? null)
+                ? $corrected['header_footer_config']
+                : [];
+            $corrected['header_footer_config'] = [
+                'theme' => trim((string) ($request->validated('theme') ?? $existingHf['theme'] ?? '')),
+                'redacteur' => trim((string) ($request->validated('redacteur') ?? $existingHf['redacteur'] ?? '')),
+                'mention_redacteur' => trim((string) ($request->validated('mention_redacteur') ?? $existingHf['mention_redacteur'] ?? '')),
+                'updated_at' => now()->toIso8601String(),
+            ];
+        }
 
         $structure->update([
             'structure' => $corrected,

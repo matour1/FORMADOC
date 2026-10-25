@@ -46,31 +46,41 @@ class SubscriptionController extends Controller
         $currentPlan = $request->user()->currentPlanSlug();
         $isUpgrade = $this->isUpgrade($currentPlan, $plan->slug);
 
+        $registry = app(PaymentGatewayRegistry::class);
+
         return view('subscriptions.checkout', [
             'plan' => $plan,
             'currency' => $currency,
             'price' => $price,
             'currentPlan' => $currentPlan,
             'isUpgrade' => $isUpgrade,
+            'geniusPayProposable' => $registry->estProposable(PaymentGatewayRegistry::GENIUSPAY),
+            'kpayProposable' => $registry->estProposable(PaymentGatewayRegistry::KPAY),
+            'monetbilProposable' => $registry->estProposable(PaymentGatewayRegistry::MONETBIL),
         ]);
     }
 
     /**
-     * Initialise la souscription (init KPay → redirection passerelle).
+     * Initialise la souscription (init KPay / Monetbil / GeniusPay → redirection passerelle).
      */
     public function subscribe(Request $request): RedirectResponse
     {
         $request->validate([
             'plan_id' => ['required', 'exists:plans,id'],
-            'payment_method' => ['required', 'in:card,kpay,orange,mtn,geniuspay'],
+            'payment_method' => ['required', 'in:card,kpay,orange,mtn,geniuspay,monetbil'],
             'currency' => ['required', 'string', 'max:3'],
+            'phone' => ['nullable', 'string', 'max:25'],
         ]);
 
         $paymentMethod = (string) $request->string('payment_method');
+        $registry = app(PaymentGatewayRegistry::class);
 
-        if ($paymentMethod === PaymentGatewayRegistry::GENIUSPAY
-            && ! app(PaymentGatewayRegistry::class)->estProposable(PaymentGatewayRegistry::GENIUSPAY)) {
+        if ($paymentMethod === PaymentGatewayRegistry::GENIUSPAY && ! $registry->estProposable(PaymentGatewayRegistry::GENIUSPAY)) {
             return back()->with('error', 'Ce moyen de paiement n\'est pas disponible.');
+        }
+
+        if ($paymentMethod === PaymentGatewayRegistry::MONETBIL && ! $registry->estProposable(PaymentGatewayRegistry::MONETBIL)) {
+            return back()->with('error', 'Le paiement Monetbil n\'est pas disponible.');
         }
 
         $user = $request->user();
@@ -81,6 +91,7 @@ class SubscriptionController extends Controller
             $plan,
             paymentMethod: $paymentMethod,
             currency: strtoupper((string) $request->string('currency')),
+            phone: (string) $request->input('phone', ''),
         );
 
         if (! $result['ok']) {
@@ -123,15 +134,20 @@ class SubscriptionController extends Controller
     {
         $request->validate([
             'plan_id' => ['required', 'exists:plans,id'],
-            'payment_method' => ['required', 'in:card,kpay,orange,mtn,geniuspay'],
+            'payment_method' => ['required', 'in:card,kpay,orange,mtn,geniuspay,monetbil'],
             'currency' => ['required', 'string', 'max:3'],
+            'phone' => ['nullable', 'string', 'max:25'],
         ]);
 
         $paymentMethod = (string) $request->string('payment_method');
+        $registry = app(PaymentGatewayRegistry::class);
 
-        if ($paymentMethod === PaymentGatewayRegistry::GENIUSPAY
-            && ! app(PaymentGatewayRegistry::class)->estProposable(PaymentGatewayRegistry::GENIUSPAY)) {
+        if ($paymentMethod === PaymentGatewayRegistry::GENIUSPAY && ! $registry->estProposable(PaymentGatewayRegistry::GENIUSPAY)) {
             return back()->with('error', 'Ce moyen de paiement n\'est pas disponible.');
+        }
+
+        if ($paymentMethod === PaymentGatewayRegistry::MONETBIL && ! $registry->estProposable(PaymentGatewayRegistry::MONETBIL)) {
+            return back()->with('error', 'Le paiement Monetbil n\'est pas disponible.');
         }
 
         $user = $request->user();
@@ -145,6 +161,7 @@ class SubscriptionController extends Controller
             $plan,
             paymentMethod: $paymentMethod,
             currency: strtoupper((string) $request->string('currency')),
+            phone: (string) $request->input('phone', ''),
         );
 
         if (! $result['ok']) {

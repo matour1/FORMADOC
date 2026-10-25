@@ -42,4 +42,3 @@ interface HeadingClassifier
      */
     public function isConfidentHeading(Block $block): bool;
 }
-

@@ -305,6 +305,7 @@ final class UserReportBuilder
             'corrections_totals' => $totals,
             'warnings' => $warnings,
             'has_warnings' => $warnings !== [],
+            'compliance' => (new FormattingComplianceService)->evaluate($document),
         ];
     }
 
@@ -399,6 +400,7 @@ final class UserReportBuilder
             'corrections_totals' => $totals,
             'warnings' => $warnings,
             'has_warnings' => $warnings !== [],
+            'compliance' => (new FormattingComplianceService)->evaluate($document),
         ];
     }
 }

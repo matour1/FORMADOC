@@ -38,9 +38,9 @@ class TemplateSeeder extends Seeder
                         'corps' => 12,
                     ],
                     'couleurs' => [
-                        'titre1' => '1F3864',
-                        'titre2' => '1F3864',
-                        'titre3' => '1F3864',
+                        'titre1' => '000000',
+                        'titre2' => '000000',
+                        'titre3' => '000000',
                         'corps' => '000000',
                     ],
                     'interligne' => 1.5,

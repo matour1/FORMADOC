@@ -53,6 +53,13 @@ class RegexTitleDetector
     ];
 
     /**
+     * Mots-clés de niveau 2 (sections).
+     */
+    private const MOTS_CLES_NIVEAU_2 = [
+        'SECTION\s+[IVXLCDM\d]+',
+    ];
+
+    /**
      * Légendes exclues des titres (faux positifs).
      */
     private const LEGENDE_PATTERN = '/^(?:figure|tableau|image|schéma|schema|graphique)\s*\d+/iu';
@@ -134,6 +141,12 @@ class RegexTitleDetector
         $motsCles = implode('|', self::MOTS_CLES_NIVEAU_1);
         if (preg_match('/^(?:'.$motsCles.')(?:\s|[:.\-—]|$)/iu', $text) === 1) {
             return 1;
+        }
+
+        // Mots-clés de niveau 2 (Section...)
+        $motsCles2 = implode('|', self::MOTS_CLES_NIVEAU_2);
+        if (preg_match('/^(?:'.$motsCles2.')(?:\s|[:.\-—]|$)/iu', $text) === 1) {
+            return 2;
         }
 
         // Numérotation décimale : le niveau = nombre de segments

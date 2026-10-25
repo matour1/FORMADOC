@@ -60,9 +60,9 @@ final class TemplateEngine
                 'legende' => 10,
             ],
             'couleurs' => [
-                'titre1' => '1F3864',
-                'titre2' => '1F3864',
-                'titre3' => '1F3864',
+                'titre1' => '000000',
+                'titre2' => '000000',
+                'titre3' => '000000',
                 'corps' => '000000',
                 'legende' => '44546A',
             ],
@@ -88,6 +88,9 @@ final class TemplateEngine
                 'header_texte' => 'FFFFFF',
                 'bordure' => true,
             ],
+            'theme' => '',
+            'redacteur' => '',
+            'mention_redacteur' => '',
         ];
     }
 
@@ -114,7 +117,7 @@ final class TemplateEngine
         // Les clés plates écrasent directement — sauf si la valeur est vide :
         // un champ de formulaire laissé vide produirait une police (ou un
         // alignement) inexistant, et le rendu échouerait silencieusement.
-        foreach (['police', 'interligne', 'alignement_titres', 'alignement_corps'] as $key) {
+        foreach (['police', 'interligne', 'alignement_titres', 'alignement_corps', 'theme', 'redacteur', 'mention_redacteur'] as $key) {
             if (! isset($template[$key]) || ! is_scalar($template[$key])) {
                 continue;
             }

@@ -298,11 +298,32 @@ final class ReconstructionPayloadBuilder
     }
 
     /**
-     * Niveau de titre ramené dans l'intervalle géré par le reconstructeur.
+     * Niveau de titre ramené dans l'intervalle géré par le reconstructeur,
+     * respectant strictement la hiérarchie académique.
      */
     private function headingDepth(Block $block): int
     {
-        return min(HeadingFormatter::MAX_LEVEL, max(1, $block->headingLevel ?? 1));
+        $rawLevel = $block->headingLevel;
+        $text = trim($block->text);
+
+        // Si le niveau n'est pas renseigné (ex. ligne isolée en gras), c'est une section/sous-titre (2), pas un grand titre (1).
+        if ($rawLevel === null) {
+            return 2;
+        }
+
+        // Dans un document académique, le niveau 1 est STRICTEMENT réservé aux divisions majeures
+        // (Partie, Chapitre, Introduction, Conclusion, Dédicace, Remerciements, Résumé, Abstract, Bibliographie, Annexes...).
+        // Les sous-parties numérotées ("1. HISTORIQUE:", "1. Authentification", "Stack technique") sont
+        // des sections (niveau 2) ou sous-sections (niveau 3), jamais des grands titres (niveau 1).
+        if ($rawLevel === 1 && ! $this->pageBreaks->estDivisionMajeure($text)) {
+            if (preg_match('/^(?:\d+\.\d+|[a-z]\))/ui', $text)) {
+                return 3;
+            }
+
+            return 2;
+        }
+
+        return min(HeadingFormatter::MAX_LEVEL, max(1, $rawLevel));
     }
 
     /**

@@ -906,4 +906,76 @@ class DocumentReconstructorTest extends TestCase
         $xml = $this->readPart($outputPath, 'word/document.xml');
         $this->assertStringContainsString('[Image: pixel.png]', $xml);
     }
+
+    public function test_le_theme_et_la_mention_redacteur_du_gabarit_sont_prioritaires(): void
+    {
+        $analysis = $this->sampleAnalysis();
+        $analysis['en_tetes'] = [
+            ['texte' => 'Ancien en-tête source'],
+        ];
+        $analysis['pieds_de_page'] = [
+            ['texte' => 'Ancien pied source'],
+        ];
+
+        $outputPath = $this->tempDir.'/custom_header_footer.docx';
+        (new DocumentReconstructor)->reconstruct($analysis, $outputPath, [
+            'theme' => 'CONCEPTION ET REALISATION D\'UNE PLATEFORME MEDICALE',
+            'mention_redacteur' => 'RÉDIGÉ EN VUE D\'ÊTRE PRÉSENTÉ PAR : DJOMO KAMGA Jean',
+        ]);
+
+        $headerXml = $this->readPart($outputPath, 'word/header1.xml');
+        $footerXml = $this->readPart($outputPath, 'word/footer1.xml');
+
+        $this->assertStringContainsString('CONCEPTION ET REALISATION D\'UNE PLATEFORME MEDICALE', $headerXml);
+        $this->assertStringContainsString('RÉDIGÉ EN VUE D\'ÊTRE PRÉSENTÉ PAR : DJOMO KAMGA Jean', $footerXml);
+    }
+
+    public function test_les_pieces_liminaires_sont_preservees_en_section_romaine_avant_l_introduction(): void
+    {
+        $analysis = [
+            'titres' => [
+                ['texte' => 'DEDICACE', 'niveau' => 1, 'position' => ['section_index' => 1, 'element_index' => 1, 'parent' => 'body']],
+                ['texte' => 'REMERCIEMENTS', 'niveau' => 1, 'position' => ['section_index' => 1, 'element_index' => 3, 'parent' => 'body']],
+                ['texte' => 'INTRODUCTION GENERALE', 'niveau' => 1, 'position' => ['section_index' => 1, 'element_index' => 5, 'parent' => 'body']],
+                ['texte' => 'CHAPITRE I : CADRE DU STAGE', 'niveau' => 1, 'position' => ['section_index' => 1, 'element_index' => 7, 'parent' => 'body']],
+            ],
+            'sous_titres' => [],
+            'en_tetes' => [],
+            'pieds_de_page' => [],
+            'tableaux' => [],
+            'images' => [],
+            'legends' => [],
+            'body_complet' => [
+                ['type' => 'titre', 'text' => 'DEDICACE', 'niveau' => 1, 'position' => ['section_index' => 1, 'element_index' => 1, 'parent' => 'body']],
+                ['type' => 'texte', 'text' => 'À ma famille.', 'position' => ['section_index' => 1, 'element_index' => 2, 'parent' => 'body']],
+                ['type' => 'titre', 'text' => 'REMERCIEMENTS', 'niveau' => 1, 'position' => ['section_index' => 1, 'element_index' => 3, 'parent' => 'body']],
+                ['type' => 'texte', 'text' => 'Je remercie mon encadreur.', 'position' => ['section_index' => 1, 'element_index' => 4, 'parent' => 'body']],
+                ['type' => 'titre', 'text' => 'INTRODUCTION GENERALE', 'niveau' => 1, 'position' => ['section_index' => 1, 'element_index' => 5, 'parent' => 'body']],
+                ['type' => 'texte', 'text' => 'Le présent rapport porte sur la plateforme.', 'position' => ['section_index' => 1, 'element_index' => 6, 'parent' => 'body']],
+                ['type' => 'titre', 'text' => 'CHAPITRE I : CADRE DU STAGE', 'niveau' => 1, 'position' => ['section_index' => 1, 'element_index' => 7, 'parent' => 'body']],
+            ],
+        ];
+
+        $outputPath = $this->tempDir.'/liminaires_romains.docx';
+        (new DocumentReconstructor)->reconstruct($analysis, $outputPath);
+
+        $xml = $this->readPart($outputPath, 'word/document.xml');
+
+        // Les pièces liminaires (DEDICACE, REMERCIEMENTS + leur texte) sont bien écrites dans le document
+        $this->assertStringContainsString('DEDICACE', $xml);
+        $this->assertStringContainsString('À ma famille.', $xml);
+        $this->assertStringContainsString('REMERCIEMENTS', $xml);
+        $this->assertStringContainsString('Je remercie mon encadreur.', $xml);
+
+        // Et elles apparaissent AVANT la fin de la Section 1 (numérotée en lowerRoman)
+        $posDedicace = strpos($xml, 'DEDICACE');
+        $posRoman = strpos($xml, 'w:fmt="lowerRoman"');
+        $posIntro = strpos($xml, 'INTRODUCTION GENERALE', $posRoman !== false ? $posRoman : 0);
+
+        $this->assertNotFalse($posDedicace);
+        $this->assertNotFalse($posRoman);
+        $this->assertNotFalse($posIntro);
+        $this->assertLessThan($posRoman, $posDedicace, 'DEDICACE doit se trouver dans la Section 1 (numérotation romaine)');
+        $this->assertLessThan($posIntro, $posRoman, 'INTRODUCTION GENERALE doit se trouver dans la Section 2 (numérotation arabe)');
+    }
 }

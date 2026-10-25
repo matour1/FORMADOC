@@ -52,4 +52,3 @@ final class RuleBasedHeadingClassifier implements HeadingClassifier
         return $verdict['is_heading'] && $verdict['confidence'] >= Block::AUTO_ACCEPT_THRESHOLD;
     }
 }
-

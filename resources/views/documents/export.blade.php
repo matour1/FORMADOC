@@ -80,11 +80,112 @@
             </div>
         </div>
 
-        <div class="grid" style="display:grid;grid-template-columns:2fr 1fr;gap:1.4rem;align-items:start">
+        <div class="grid export-bento-grid">
 
             {{-- Colonne principale : récapitulatif (bento) --}}
             <div style="display:flex;flex-direction:column;gap:1.4rem;min-width:0"
                  x-data="formatExport({{ $selectedTemplateId ?: 'null' }})">
+
+                {{-- Rapport de vérification de conformité académique (Volet 3) --}}
+                @if (! empty($complianceReport))
+                    @php
+                        $compStatus = $complianceReport['status'] ?? 'partiel';
+                    @endphp
+                    <section class="card compliance-card is-{{ $compStatus }}">
+                        <div class="compliance-head">
+                            <div>
+                                <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.25rem">
+                                    <i data-lucide="shield-check" style="width:19px;height:19px;color:var(--color-primary)"></i>
+                                    <h2 class="card-title">Vérification de conformité académique</h2>
+                                </div>
+                                <p style="color:var(--color-text-secondary);font-size:.84rem;margin:0">
+                                    Contrôle du respect de la structure de référence (Sections 1 & 2, en-tête/pied, Times New Roman 12 pt justifié, Table des matières).
+                                </p>
+                            </div>
+                            <div class="compliance-score-badge">
+                                <div>
+                                    <span class="compliance-score-num">{{ $complianceReport['score'] }}%</span>
+                                    <span style="font-size:.72rem;color:var(--color-text-muted);display:block">
+                                        {{ $complianceReport['passed_count'] }}/{{ $complianceReport['total_count'] }} critères
+                                    </span>
+                                </div>
+                                <span class="badge {{ $compStatus === 'conforme' ? 'badge-success' : ($compStatus === 'partiel' ? 'badge-warning' : 'badge-danger') }}">
+                                    {{ $complianceReport['status_label'] }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="compliance-cat-grid">
+                            @foreach ($complianceReport['categories'] ?? [] as $cat)
+                                <div class="compliance-cat-box">
+                                    <div class="compliance-cat-title">
+                                        <span>{{ $cat['label'] }}</span>
+                                        <span class="mono" style="font-size:.72rem;color:var(--color-text-muted)">
+                                            {{ $cat['passed'] }}/{{ $cat['total'] }}
+                                        </span>
+                                    </div>
+                                    <ul class="compliance-check-list">
+                                        @foreach ($cat['items'] as $item)
+                                            <li class="compliance-check-item">
+                                                <span class="compliance-check-icon {{ $item['passed'] ? 'ok' : 'warn' }}">
+                                                    {{ $item['passed'] ? '✓' : '!' }}
+                                                </span>
+                                                <div style="min-width:0">
+                                                    <div style="font-weight:600;color:var(--color-text)">{{ $item['label'] }}</div>
+                                                    <div style="font-size:.73rem;color:var(--color-text-muted)">{{ $item['detail'] }}</div>
+                                                </div>
+                                            </li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                            @endforeach
+                        </div>
+                    </section>
+                @endif
+
+                {{-- Rappel & Ajustement rapide de l'En-tête et du Pied de page (Volet 1) --}}
+                @php
+                    $hf = $headerFooterConfig ?? [
+                        'theme' => $document->metadata['theme'] ?? '',
+                        'redacteur' => $document->metadata['redacteur'] ?? '',
+                        'mention_redacteur' => $document->metadata['mention_redacteur'] ?? '',
+                        'effective_header' => $document->metadata['theme'] ?? '',
+                        'effective_footer' => $document->metadata['mention_redacteur'] ?? '',
+                    ];
+                @endphp
+                <section class="card hf-config-card">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin-bottom:.6rem">
+                        <div style="display:flex;align-items:center;gap:.5rem">
+                            <i data-lucide="panel-top" style="width:19px;height:19px;color:var(--color-primary)"></i>
+                            <h2 class="card-title">Contenu de l'en-tête et du pied de page appliqués</h2>
+                        </div>
+                        <span class="badge badge-info">Romain (i, ii…) → Arabe (1, 2…)</span>
+                    </div>
+                    <form method="POST" action="{{ route('documents.header-footer.update', $document) }}">
+                        @csrf
+                        <div class="form-grid" style="margin-bottom:.85rem">
+                            <div class="form-group" style="margin-bottom:0">
+                                <label for="export_hf_theme">En-tête (Thème du rapport)</label>
+                                <input type="text" id="export_hf_theme" name="theme" class="form-control" maxlength="300"
+                                       value="{{ old('theme', $hf['theme'] ?: $hf['effective_header']) }}"
+                                       placeholder="Thème du rapport…">
+                            </div>
+                            <div class="form-group" style="margin-bottom:0">
+                                <label for="export_hf_mention">Pied de page (Mention du rédacteur)</label>
+                                <input type="text" id="export_hf_mention" name="mention_redacteur" class="form-control" maxlength="300"
+                                       value="{{ old('mention_redacteur', $hf['mention_redacteur'] ?: $hf['effective_footer']) }}"
+                                       placeholder="RÉDIGÉ EN VUE D'ÊTRE PRÉSENTÉ PAR : …">
+                                <input type="hidden" name="redacteur" value="{{ $hf['redacteur'] }}">
+                            </div>
+                        </div>
+                        <div style="display:flex;justify-content:flex-end">
+                            <button type="submit" class="btn btn-secondary btn-sm">
+                                <i data-lucide="save" style="width:14px;height:14px"></i>
+                                Mettre à jour l'en-tête / pied de page
+                            </button>
+                        </div>
+                    </form>
+                </section>
 
                 {{-- Page de garde : FONCTIONNALITÉ NON DISPONIBLE dans cette version.
                      Le formulaire de sélection de modèle a été supprimé en même
@@ -244,7 +345,7 @@
                     </div>
 
                     {{-- Bento : statistiques de la structure --}}
-                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.9rem">
+                    <div class="export-stats-grid">
                         @php
                             $stats = [
                                 ['git-branch', 'Titres', $titreCount],

@@ -66,12 +66,12 @@
             const hintEl = document.getElementById('processing-hint');
             const elapsedEl = document.getElementById('processing-elapsed');
             const lines = [
-                'Analyse du document…',
-                'Détection de la structure : OK',
-                'Validation des ambiguïtés : OK',
-                'Application du gabarit choisi…',
-                'Génération du DOCX reconstruit…',
-                'Préparation du téléchargement…'
+                'Analyse de la structure et des sections académiques…',
+                'Application de l\'en-tête (thème) et du pied de page (rédacteur)…',
+                'Construction des pièces liminaires en chiffres romains (i, ii, iii…)…',
+                'Mise en forme du corps en chiffres arabes (1, 2, 3…) — Times New Roman 12 pt justifié…',
+                'Génération du Sommaire, des Listes (tableaux/figures) et de la Table des matières finale…',
+                'Vérification de la conformité académique et préparation du DOCX…'
             ];
             const exportUrl = @json(route('documents.export', $document));
 

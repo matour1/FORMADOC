@@ -247,4 +247,58 @@ class BlockClassifierTest extends TestCase
 
         $this->assertSame('memoire', $result['document']->meta['gabarit']);
     }
+
+    public function test_l_ia_ameliore_la_qualite_et_desambiguise_les_titres_complexes(): void
+    {
+        config(['openrouter.api_key' => 'sk-test-valid-key']);
+
+        $openRouterMock = $this->createMock(OpenRouterService::class);
+        $openRouterMock->expects($this->once())
+            ->method('chat')
+            ->willReturn([
+                'content' => (string) json_encode([
+                    'results' => [
+                        [
+                            'block_id' => 'b_0002',
+                            'predicted_type' => 'heading_2',
+                            'confidence' => 0.95,
+                            'signal_used' => 'academic_semantic_heading',
+                        ],
+                    ],
+                ]),
+                'cost_usd' => 0.0001,
+                'cost_credits' => 1,
+            ]);
+
+        $detectBlocks = new DetectBlocksTool($openRouterMock);
+
+        $classifier = new BlockClassifier(
+            new SignalAggregator,
+            $detectBlocks,
+            new ClassificationPolicy,
+        );
+
+        // b_0001 est déterministe (1. Introduction)
+        // b_0002 est ambigu en déterministe (sans numérotation, confiance < 0.7)
+        // b_0003 est un paragraphe normal
+        $document = $this->document([
+            $this->block('b_0001', '1. Introduction'),
+            $this->block('b_0002', 'Cadre Méthodologique et Approche Pratique'),
+            $this->block('b_0003', 'Ce paragraphe décrit la méthodologie retenue pour collecter les données.'),
+        ]);
+
+        $result = $classifier->classify($document, 'default', aiEnabled: true);
+
+        // Vérification de l'amélioration de la qualité grâce à l'IA :
+        // 1. Le bloc ambigu a été consulté et appliqué
+        $this->assertSame(1, $result['report']['ai_consulted']);
+        $this->assertSame(1, $result['report']['ai_applied']);
+        // 2. Plus aucune ambiguïté ne reste à clarifier
+        $this->assertSame([], $result['report']['clarification_needed']);
+        // 3. Le type et le niveau ont été promus avec précision
+        $b2 = $result['document']->blockById('b_0002');
+        $this->assertNotNull($b2);
+        $this->assertSame(BlockType::Heading, $b2->type);
+        $this->assertSame(2, $b2->headingLevel);
+    }
 }

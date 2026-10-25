@@ -306,6 +306,14 @@ final class SignalAggregator
                 category: $block->category?->value,
                 reason: 'Élément tableau explicite dans le XML.',
             ),
+            BlockType::TocEntry => $this->verdict(
+                type: BlockType::TocEntry,
+                confidence: 0.98,
+                signals: ['explicit_type:toc_entry'],
+                headingLevel: $block->headingLevel,
+                category: null,
+                reason: 'Entrée de sommaire issue du document source.',
+            ),
             BlockType::Header => $this->verdict(
                 type: BlockType::Header,
                 confidence: 0.98,
@@ -574,6 +582,21 @@ final class SignalAggregator
     private function looksLikeIsolatedHeading(string $text): bool
     {
         if ($text === '' || mb_strlen($text) > 80) {
+            return false;
+        }
+
+        // Ligne de sigle / acronyme avec définition : « API : Application Programming Interface »
+        if (preg_match('/^[A-Z0-9\/_\-]{2,12}\s*:\s+[A-Z\p{Lu}]/u', $text) === 1) {
+            return false;
+        }
+
+        // Mentions de source ou attributions
+        if (preg_match('/^(?:source|auteur|note)\s*:/iu', $text) === 1) {
+            return false;
+        }
+
+        // Phrases d'introduction ou formules terminées par deux-points : « Formules utilisées : », « On obtient ainsi : »
+        if (preg_match('/:\s*$/u', $text) === 1 && ! preg_match('/^(?:CHAPITRE|PARTIE|SECTION|SOUS-SECTION)\b/ui', $text)) {
             return false;
         }
 

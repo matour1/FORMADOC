@@ -47,8 +47,9 @@ class DocumentReconstructor
     private const WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
     /**
-     * Titres de frontispice exclus du corps (gérés dans la section 1 :
-     * sommaire, listes…). Comparés en majuscules, sans accents.
+     * Titres générés automatiquement par le reconstructeur (sommaire de tête,
+     * listes des tableaux/figures, table des matières de fin) : exclus du flux
+     * source pour éviter les doublons.
      *
      * @var string[]
      */
@@ -56,18 +57,46 @@ class DocumentReconstructor
         'SOMMAIRE',
         'TABLE DES MATIERES',
         'TABLE DES MATIÈRES',
+        'TABLE DE MATIERES',
+        'TABLE DE MATIÈRES',
         'LISTE DES FIGURES',
         'LISTE DES TABLEAUX',
+    ];
+
+    /**
+     * Intitulés des pièces liminaires rédigées par l'auteur qui doivent
+     * figurer dans la Section 1 (numérotation romaine i, ii, iii…) lorsqu'elles
+     * précèdent l'introduction ou le premier chapitre du corps.
+     *
+     * @var string[]
+     */
+    private const LIMINAIRE_TITLES = [
+        'DEDICACE',
+        'DÉDICACE',
+        'REMERCIEMENTS',
+        'REMERCIMENTS',
+        'AVANT-PROPOS',
+        'AVANT PROPOS',
+        'PREFACE',
+        'PRÉFACE',
         'LISTE DES ABREVIATIONS',
         'LISTE DES ABRÉVIATIONS',
-        'LISTE DES ANNEXES',
+        'LISTE DES SIGLES',
+        'LISTE DES SIGLE ET ABREVIATIONS',
+        'LISTE DES SIGLE ET ABRÉVIATIONS',
+        'LISTE DES SIGLES ET ABREVIATIONS',
+        'LISTE DES SIGLES ET ABRÉVIATIONS',
         'SIGLES ET ABREVIATIONS',
         'SIGLES ET ABRÉVIATIONS',
-        'REMERCIEMENTS',
-        'DEDICACE',
+        'TABLE DES ABREVIATIONS',
+        'TABLE DES ABRÉVIATIONS',
+        'LISTE DES ANNEXES',
+        'LISTE DES PLANCHES',
         'RESUME',
         'RÉSUMÉ',
         'ABSTRACT',
+        'EXECUTIVE SUMMARY',
+        'GLOSSAIRE',
     ];
 
     /**
@@ -167,16 +196,19 @@ class DocumentReconstructor
         $this->gabarit = TemplateStyleResolver::normalize($gabarit);
         $this->registerTitleStyles($phpWord);
 
+        // ── Séparation pièces liminaires (Section 1, romain) / corps (Section 2, arabe)
+        [$liminaires, $corpsElements] = $this->partitionBodyComplet($analysis);
+
         // ── Section 1 : frontispice (numérotation romaine) ────────────────────
         $sectionStyle = TemplateStyleResolver::sectionStyle($this->gabarit);
         $frontSection = $phpWord->addSection(array_merge(['pageNumberingStart' => 1], $sectionStyle));
         $this->applyHeaderFooter($frontSection, $analysis, 'roman');
-        $this->writeFrontispiece($frontSection, $analysis);
+        $this->writeFrontispiece($frontSection, $analysis, $liminaires);
 
         // ── Section 2 : corps (numérotation arabe, redémarre à 1) ─────────────
         $bodySection = $phpWord->addSection(array_merge(['pageNumberingStart' => 1], $sectionStyle));
         $this->applyHeaderFooter($bodySection, $analysis, 'Arabic');
-        $this->writeBody($bodySection, $analysis);
+        $this->writeBody($bodySection, $analysis, $corpsElements);
 
         // ── Section 3 : table des matières, en TOUTE FIN de document ──────────
         //
@@ -326,13 +358,12 @@ class DocumentReconstructor
      */
     private function applyHeaderFooter(Section $section, array $analysis, string $pageFormat): void
     {
-        $headerText = trim((string) ($analysis['en_tetes'][0]['texte'] ?? ''));
+        // Le thème renseigné explicitement par l'utilisateur (étape En-tête & Pied de page)
+        // prime sur l'en-tête brut détecté ; à défaut, on conserve l'en-tête source.
+        $headerText = trim((string) ($this->gabarit['theme'] ?? ''));
 
-        // À défaut d'en-tête détecté, on reprend le THÈME du rapport depuis le
-        // gabarit : la règle demande « l'en-tête doit contenir le thème ». Un
-        // document sans en-tête source sortait jusqu'ici sans en-tête du tout.
         if ($headerText === '') {
-            $headerText = trim((string) ($this->gabarit['theme'] ?? ''));
+            $headerText = trim((string) ($analysis['en_tetes'][0]['texte'] ?? ''));
         }
 
         if ($headerText !== '') {
@@ -343,18 +374,15 @@ class DocumentReconstructor
 
         $footerText = $this->cleanFooterText((string) ($analysis['pieds_de_page'][0]['texte'] ?? ''));
 
-        // Mention du rédacteur : « rédigé par [nom] », puis le numéro de page.
-        //
-        // Elle est COMPOSÉE et non recopiée : le texte source d'un pied de page
-        // contient souvent le numéro (« Page 3 »), qui serait alors figé ou
-        // dupliqué avec le champ PAGE ajouté juste après.
+        // Mention du rédacteur : « rédigé par [nom] » (ou mention personnalisée),
+        // puis le numéro de page. Lorsque l'utilisateur configure explicitement la
+        // mention ou le rédacteur, elle remplace l'ancien texte de pied de page afin
+        // d'éviter toute duplication.
         $mention = $this->mentionRedacteur();
 
         if ($mention !== null) {
             $footer->addText($mention.'  |  ', ['size' => 9]);
-        }
-
-        if ($footerText !== '') {
+        } elseif ($footerText !== '') {
             $footer->addText($footerText, ['size' => 9]);
             $footer->addText('  |  ', ['size' => 9]);
         }
@@ -431,46 +459,58 @@ class DocumentReconstructor
     }
 
     /**
-     * Écrit la section frontispice : sommaire (TOC), liste des figures et
-     * liste des tableaux (depuis les légendes). Rien si aucun titre.
-     *
-     * **Deux règles de mise en forme du propriétaire sont appliquées ici.**
-     *
-     *  1. **Le sommaire ne liste que les niveaux 1 et 2.** C'était 1-3 : le
-     *     sommaire incluait les sous-sections, ce qui le faisait déborder sur
-     *     plusieurs pages alors qu'il doit « tenir sur une page ». La distinction
-     *     avec la table des matières (tous niveaux, en fin de document) n'existait
-     *     nulle part.
-     *  2. **Chaque liste occupe une page dédiée.** Les intitulés se suivaient
-     *     jusqu'ici sans saut : « Liste des figures » collait au sommaire, puis
-     *     « Liste des tableaux » collait aux figures.
+     * Écrit la section frontispice : sommaire (TOC), pièces liminaires de l'auteur
+     * (dédicace, remerciements, avant-propos, liste des sigles, résumé, abstract)
+     * et listes générées (liste des tableaux, liste des figures).
      *
      * @param  array<string, mixed>  $analysis
+     * @param  array<int, array<string, mixed>>  $liminaires
      */
-    private function writeFrontispiece(Section $section, array $analysis): void
+    private function writeFrontispiece(Section $section, array $analysis, array $liminaires = []): void
     {
-        $hasTitles = ! empty($analysis['titres']) || ! empty($analysis['sous_titres']);
-        if (! $hasTitles) {
+        $hasTitles = $this->contientDesTitres($analysis);
+        if (! $hasTitles && $liminaires === []) {
             return;
         }
 
         $resolver = TemplateStyleResolver::class;
+        $titreLevels = $this->titreLevelMap($analysis);
 
-        // Sommaire : le titre est un paragraphe STYLÉ (et non un addTitle) :
-        // le champ TOC natif PhpWord liste UNE entrée par élément Title de
-        // la collection globale — un "SOMMAIRE" en addTitle s'inclurait
-        // lui-même dans la table des matières (défaut 4). On utilise donc
-        // addText avec les styles de titre du gabarit, puis le champ TOC
-        // (niveaux 1-2, mis à jour à l'ouverture via updateFields).
-        //
-        // Le sommaire est sur la PREMIÈRE page du frontispice : aucun saut avant
-        // lui. Les listes qui suivent, elles, commencent chacune sur une page.
-        $section->addText(
-            'SOMMAIRE',
-            $resolver::fontStyle($this->gabarit, 'titre1'),
-            $resolver::titleParagraphStyle($this->gabarit)
-        );
-        $section->addTOC(null, null, 1, 2);
+        if ($hasTitles) {
+            $section->addText(
+                'SOMMAIRE',
+                $resolver::fontStyle($this->gabarit, 'titre1'),
+                $resolver::titleParagraphStyle($this->gabarit)
+            );
+            $section->addTOC(null, null, 1, 2);
+        }
+
+        // Pièces liminaires rédigées par l'auteur (Dédicace, Remerciements,
+        // Avant-propos, Liste des sigles et abréviations, Résumé, Abstract…) :
+        // placées en Section 1 (numérotation romaine i, ii, iii…), chacune sur
+        // une page dédiée, avec leur contenu intégral préservé.
+        foreach ($liminaires as $element) {
+            $texte = $this->resolveSeqFields(trim((string) ($element['text'] ?? '')));
+            $type = (string) ($element['type'] ?? 'autre');
+
+            if ($texte === '' && ! in_array($type, ['image', 'saut', 'tableau'], true)) {
+                continue;
+            }
+
+            $positionKey = self::positionKey($element['position'] ?? null);
+            $niveau = $titreLevels[$positionKey] ?? null;
+
+            if ($type === 'titre' || $niveau !== null) {
+                $section->addPageBreak();
+                $section->addTitle($texte, 1);
+
+                continue;
+            }
+
+            $elementSansDoubleSaut = $element;
+            $elementSansDoubleSaut['page_break'] = false;
+            $this->writeElement($section, $elementSansDoubleSaut, $resolver, $texte);
+        }
 
         // Liste des tableaux (légendes de type Tableau) — §7.3 : Tableaux avant Figures
         $tableaux = $this->legendsByType($analysis, ['tableau', 'table']);
@@ -482,9 +522,6 @@ class DocumentReconstructor
                 $resolver::titleParagraphStyle($this->gabarit)
             );
             foreach ($tableaux as $legend) {
-                // Champs SEQ littéraux (structures pré-Phase 3) : résolus
-                // avec un compteur LOCAL — le frontispice est écrit AVANT le
-                // corps et ne doit pas consommer la numérotation du corps.
                 $label = $this->resolveSeqFields((string) ($legend['label'] ?? ''), false);
                 $section->addText(sprintf(
                     'Tableau %s : %s',
@@ -515,58 +552,170 @@ class DocumentReconstructor
     }
 
     /**
+     * Sépare `body_complet` en deux séquences :
+     *  - `liminaires` : pièces liminaires (Dédicace, Remerciements, Avant-propos,
+     *    Liste des sigles/abréviations, Résumé, Abstract…) situées AVANT le début
+     *    du corps (Introduction générale, Première partie, Chapitre I…), destinées
+     *    à la Section 1 (numérotation romaine i, ii, iii…) ;
+     *  - `corps` : tous les éléments du corps à partir de l'Introduction générale
+     *    ou du premier titre/paragraphe non liminaire, destinés à la Section 2
+     *    (numérotation arabe commençant à 1).
+     *
+     * @param  array<string, mixed>  $analysis
+     * @return array{0: array<int, array<string, mixed>>, 1: array<int, array<string, mixed>>}
+     */
+    private function partitionBodyComplet(array $analysis): array
+    {
+        $bodyComplet = $analysis['body_complet'] ?? [];
+        if (! is_array($bodyComplet) || $bodyComplet === []) {
+            return [[], []];
+        }
+
+        $titreLevels = $this->titreLevelMap($analysis);
+        $liminaires = [];
+        $corps = [];
+        $dansLiminaire = false;
+        $corpsCommence = false;
+
+        foreach ($bodyComplet as $element) {
+            $texte = trim((string) ($element['text'] ?? ''));
+            $type = (string) ($element['type'] ?? 'autre');
+            $positionKey = self::positionKey($element['position'] ?? null);
+            $niveau = $titreLevels[$positionKey] ?? null;
+            $estTitre = ($type === 'titre' || $niveau !== null);
+
+            if ($this->estTitreAutoGenere($texte)) {
+                continue;
+            }
+
+            if (! $corpsCommence) {
+                if ($estTitre) {
+                    if ($this->estTitreLiminaire($texte)) {
+                        $dansLiminaire = true;
+                        $liminaires[] = $element;
+
+                        continue;
+                    }
+
+                    $corpsCommence = true;
+                    $dansLiminaire = false;
+                    $corps[] = $element;
+
+                    continue;
+                }
+
+                if ($dansLiminaire) {
+                    $liminaires[] = $element;
+
+                    continue;
+                }
+            }
+
+            $corps[] = $element;
+        }
+
+        return [$liminaires, $corps];
+    }
+
+    /**
+     * Vérifie si un intitulé correspond à une table générée automatiquement
+     * (Sommaire, Table des matières, Liste des figures/tableaux).
+     */
+    private function estTitreAutoGenere(string $texte): bool
+    {
+        $normalise = $this->normaliserIntitule($texte);
+        if ($normalise === '') {
+            return false;
+        }
+
+        return in_array($normalise, self::FRONTISPIECE_TITLES, true);
+    }
+
+    /**
+     * Vérifie si un intitulé correspond à une pièce liminaire rédigée par l'auteur
+     * (Dédicace, Remerciements, Avant-propos, Liste des sigles, Résumé, Abstract…).
+     */
+    private function estTitreLiminaire(string $texte): bool
+    {
+        $normalise = $this->normaliserIntitule($texte);
+        if ($normalise === '') {
+            return false;
+        }
+
+        foreach (self::LIMINAIRE_TITLES as $intitule) {
+            $cible = $this->normaliserIntitule($intitule);
+            if ($normalise === $cible || str_starts_with($normalise, $cible.' ') || str_starts_with($normalise, $cible.':')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Normalise un intitulé pour la comparaison (majuscules, sans accents, sans ponctuation finale).
+     */
+    private function normaliserIntitule(string $texte): string
+    {
+        $texte = mb_strtoupper(trim($texte));
+        $texte = strtr($texte, [
+            'É' => 'E', 'È' => 'E', 'Ê' => 'E', 'Ë' => 'E',
+            'À' => 'A', 'Â' => 'A', 'Ä' => 'A',
+            'Î' => 'I', 'Ï' => 'I',
+            'Ô' => 'O', 'Ö' => 'O',
+            'Ù' => 'U', 'Û' => 'U', 'Ü' => 'U',
+            'Ç' => 'C',
+        ]);
+        $texte = (string) preg_replace('/\s+/u', ' ', $texte);
+
+        return trim($texte, " \t\n\r\0\x0B:;.,-–—");
+    }
+
+    /**
      * Écrit le corps du document : TOUS les éléments détectés (titres,
      * sous-titres, paragraphes, listes, tableaux, images) dans l'ordre
      * d'apparition, avec la mise en forme du gabarit choisi.
      *
-     * La source de vérité est `body_complet` (extrait par DocumentParser,
-     * conservé dans la structure) : chaque élément est restitué à sa
-     * position, sans perte de contenu. Les catégories `titres`/`sous_titres`
-     * servent uniquement de repli si `body_complet` est absent (anciens
-     * documents analysés avant cette version).
-     *
      * @param  array<string, mixed>  $analysis
+     * @param  array<int, array<string, mixed>>  $corpsElements
      */
-    private function writeBody(Section $section, array $analysis): void
+    private function writeBody(Section $section, array $analysis, array $corpsElements = []): void
     {
         $resolver = TemplateStyleResolver::class;
         $bodyComplet = $analysis['body_complet'] ?? [];
-
-        // Map position → niveau de titre (titres + sous_titres détectés).
-        // Permet de styler en HeadingN les paragraphes 'texte' du body_complet
-        // qui correspondent à des titres détectés par les règles/regex
-        // (ex : MAJUSCULES sans style Heading → type 'texte' dans le parse).
-        // Sans cette map, ces titres resteraient de simples paragraphes de
-        // corps et le TOC (champ natif, ne liste que les styles HeadingN)
-        // serait vide — défaut 1 de la Phase 3.
         $titreLevels = $this->titreLevelMap($analysis);
 
         // ── Mode principal : body_complet présent (reconstruction fidèle) ──
         if (is_array($bodyComplet) && $bodyComplet !== []) {
-            foreach ($bodyComplet as $element) {
+            $premierElementSection = true;
+
+            foreach ($corpsElements as $element) {
                 $texte = trim((string) ($element['text'] ?? ''));
                 $type = (string) ($element['type'] ?? 'autre');
 
-                // Champs SEQ littéraux (structures pré-Phase 3) : résolus en
-                // numéros concrets avec un compteur global par type, comme
-                // Word (Figure 1, 2, 3… ; Tableau 1, 2, 3…).
                 $texte = $this->resolveSeqFields($texte);
 
                 if ($texte === '' && ! in_array($type, ['image', 'saut', 'tableau'], true)) {
                     continue;
                 }
 
-                // Titres de frontispice (SOMMAIRE, listes…) : gérés en section 1
-                if (in_array(mb_strtoupper($texte), self::FRONTISPIECE_TITLES, true)) {
+                if ($this->estTitreAutoGenere($texte)) {
                     continue;
                 }
 
-                // Titre détecté (règles/regex) mais rendu en 'texte' par le
-                // parse : on le restitue avec le style natif HeadingN afin
-                // qu'il alimente le champ TOC et reçoive le gabarit.
+                // La Section 2 commence déjà sur une nouvelle page : éviter un
+                // saut de page redondant tout en haut de la première page du corps.
+                if ($premierElementSection) {
+                    $element['page_break'] = false;
+                    $premierElementSection = false;
+                }
+
                 $positionKey = self::positionKey($element['position'] ?? null);
                 $niveau = $titreLevels[$positionKey] ?? null;
                 if ($niveau !== null && $type !== 'titre') {
+                    if (($element['page_break'] ?? false) === true) {
+                        $section->addPageBreak();
+                    }
                     $section->addTitle($texte, min(3, max(1, (int) $niveau)));
 
                     continue;
@@ -591,7 +740,6 @@ class DocumentReconstructor
             $items[] = $item;
         }
 
-        // Tri par position (section_index, puis element_index)
         usort($items, static function (array $a, array $b): int {
             return self::comparePositions(
                 $a['position'] ?? null,
@@ -605,12 +753,10 @@ class DocumentReconstructor
                 continue;
             }
 
-            // Les titres de frontispice (SOMMAIRE, listes…) sont en section 1
-            if (in_array(mb_strtoupper($texte), self::FRONTISPIECE_TITLES, true)) {
+            if ($this->estTitreAutoGenere($texte)) {
                 continue;
             }
 
-            // Champs SEQ littéraux (structures pré-Phase 3)
             $texte = $this->resolveSeqFields($texte);
 
             $niveau = min(3, max(1, (int) ($item['niveau'] ?? 1)));

@@ -73,10 +73,16 @@ final class HeadingNumberingPattern
         // 1) → énumération : niveau 1 mais PEU FIABLE (voir isReliable)
         ['pattern' => '/^(\d+)\)\s/u', 'level' => 1, 'kind' => 'enumerated', 'reliable' => false],
 
+        // Mot-clés de sections (niveau 2) et sous-sections (niveau 3)
+        ['pattern' => '/^SECTION\s+([IVXLCDM\d]+)/ui', 'level' => 2, 'kind' => 'section', 'reliable' => true],
+        ['pattern' => '/^SOUS-SECTION\s+([IVXLCDM\d]+)/ui', 'level' => 3, 'kind' => 'section', 'reliable' => true],
+
         // Mot-clés explicites de niveau 1 (majuscules, usuels en français)
+        ['pattern' => '/^(?:PREMI[EÈ]RE|DEUXI[EÈ]ME|TROISI[EÈ]ME|[0-9]+[EÈ]ME)\s+PARTIE\b/ui', 'level' => 1, 'kind' => 'keyword', 'reliable' => true],
         ['pattern' => '/^(CHAPITRE|PARTIE|TITRE)\s+([IVXLCDM\d]+)/u', 'level' => 1, 'kind' => 'keyword', 'reliable' => true],
         ['pattern' => '/^(INTRODUCTION|CONCLUSION|RESUME|RÉSUMÉ|ABSTRACT|SOMMAIRE|REMERCIEMENTS|DEDICACE|DÉDICACE)\b/u', 'level' => 1, 'kind' => 'keyword', 'reliable' => true],
-        ['pattern' => '/^(BIBLIOGRAPHIE|ANNEXES?|GLOSSAIRE)\b/u', 'level' => 1, 'kind' => 'keyword', 'reliable' => true],
+        ['pattern' => '/^(BIBLIOGRAPHIE|R[EÉ]F[EÉ]RENCES\s+BIBLIOGRAPHIQUES|WEBOGRAPHIE|ANNEXES?|GLOSSAIRE)\b/ui', 'level' => 1, 'kind' => 'keyword', 'reliable' => true],
+        ['pattern' => '/^(AVANT[\s-]*PROPOS|LISTE\s+DES\s+(?:SIGLES?|ABR[EÉ]VIATIONS?|FIGURES|TABLEAUX|ANNEXES?))\b/ui', 'level' => 1, 'kind' => 'keyword', 'reliable' => true],
 
         // Numérotation romaine : I., II., III. → niveau 1
         ['pattern' => '/^([IVXLCDM]+)[.)]\s/u', 'level' => 1, 'kind' => 'roman', 'reliable' => true],

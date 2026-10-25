@@ -237,6 +237,188 @@
                 </form>
             </section>
 
+            {{-- ================================================================
+                 VOLET 1 : Étape Contenu de l'En-tête et du Pied de page
+                 ================================================================ --}}
+            @php
+                $hf = $headerFooterConfig ?? [
+                    'theme' => $document->metadata['theme'] ?? '',
+                    'redacteur' => $document->metadata['redacteur'] ?? '',
+                    'mention_redacteur' => $document->metadata['mention_redacteur'] ?? '',
+                    'effective_header' => $document->metadata['theme'] ?? ($enTetes[0]['texte'] ?? ''),
+                    'effective_footer' => $document->metadata['mention_redacteur'] ?? ($piedsDePage[0]['texte'] ?? ''),
+                ];
+            @endphp
+            <section class="card hf-config-card" style="margin-bottom:1.25rem">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin-bottom:.6rem">
+                    <div style="display:flex;align-items:center;gap:.5rem">
+                        <i data-lucide="panel-top" style="width:19px;height:19px;color:var(--color-primary)"></i>
+                        <h2 class="card-title">Contenu de l'en-tête et du pied de page</h2>
+                    </div>
+                    <span class="badge badge-info">Norme académique Times New Roman 9 pt</span>
+                </div>
+                <p style="color:var(--color-text-secondary);font-size:.85rem;margin-bottom:1.1rem">
+                    Définissez le texte exact de l'<strong>en-tête</strong> (thème du rapport) et du <strong>pied de page</strong>
+                    (mention du rédacteur). La numérotation des pages est ajoutée automatiquement :
+                    <strong>chiffres romains (i, ii, iii…)</strong> pour les pièces liminaires, puis
+                    <strong>chiffres arabes (1, 2, 3…)</strong> à partir de l'Introduction générale.
+                </p>
+
+                <div class="hf-layout">
+                    <form method="POST" action="{{ route('documents.header-footer.update', $document) }}" id="hf-config-form">
+                        @csrf
+                        <div class="form-group">
+                            <label for="hf_theme">Texte de l'en-tête (Thème du rapport)</label>
+                            <input type="text"
+                                   id="hf_theme"
+                                   name="theme"
+                                   class="form-control"
+                                   maxlength="300"
+                                   value="{{ old('theme', $hf['theme'] ?: $hf['effective_header']) }}"
+                                   placeholder="Ex. : CONCEPTION ET RÉALISATION D'UNE PLATEFORME DE NUMÉRISATION ET DE PARTAGE DES CARNETS MÉDICAUX">
+                            <span class="form-hint" style="font-size:.75rem;color:var(--color-text-muted)">
+                                Affiché en haut de chaque page (Times New Roman 9 pt, aligné à gauche avec filet inférieur).
+                            </span>
+                        </div>
+
+                        <div class="form-grid" style="margin-bottom:.85rem">
+                            <div class="form-group" style="margin-bottom:0">
+                                <label for="hf_redacteur">Nom et prénom du rédacteur</label>
+                                <input type="text"
+                                       id="hf_redacteur"
+                                       name="redacteur"
+                                       class="form-control"
+                                       maxlength="160"
+                                       value="{{ old('redacteur', $hf['redacteur']) }}"
+                                       placeholder="Ex. : DJOMO KAMGA Jean">
+                            </div>
+                            <div class="form-group" style="margin-bottom:0">
+                                <label for="hf_mention_redacteur">Mention complète du pied de page</label>
+                                <input type="text"
+                                       id="hf_mention_redacteur"
+                                       name="mention_redacteur"
+                                       class="form-control"
+                                       maxlength="300"
+                                       value="{{ old('mention_redacteur', $hf['mention_redacteur'] ?: $hf['effective_footer']) }}"
+                                       placeholder="Ex. : RÉDIGÉ EN VUE D'ÊTRE PRÉSENTÉ PAR : DJOMO KAMGA Jean">
+                            </div>
+                        </div>
+
+                        <div style="display:flex;justify-content:flex-end;gap:.6rem;flex-wrap:wrap">
+                            <button type="submit" class="btn btn-secondary btn-sm">
+                                <i data-lucide="save" style="width:15px;height:15px"></i>
+                                Enregistrer l'en-tête et le pied de page
+                            </button>
+                        </div>
+                    </form>
+
+                    {{-- Aperçu temps réel de la feuille académique --}}
+                    <div>
+                        <p style="font-family:var(--font-mono);font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:.45rem">
+                            Aperçu de la mise en page (Section 1 & Section 2)
+                        </p>
+                        <div class="hf-preview-sheet" aria-label="Aperçu de l'en-tête et du pied de page">
+                            <div class="hf-preview-header" id="hf-preview-header-text">
+                                {{ $hf['effective_header'] ?: 'THÈME DU RAPPORT DE STAGE (EN-TÊTE 9 PT)' }}
+                            </div>
+                            <div class="hf-preview-body">
+                                <div class="hf-preview-body-title">INTRODUCTION GÉNÉRALE</div>
+                                <p style="margin:0">
+                                    Corps du rapport en police <strong>Times New Roman 12 pt</strong>,
+                                    texte justifié, interligne 1,5 et marges normalisées de 2,5 cm sur les 4 côtés.
+                                </p>
+                            </div>
+                            <div class="hf-preview-footer">
+                                <span id="hf-preview-footer-text" style="word-break:break-word">
+                                    {{ $hf['effective_footer'] ?: 'RÉDIGÉ EN VUE D\'ÊTRE PRÉSENTÉ PAR : …' }}
+                                </span>
+                                <span class="hf-preview-page-pill" title="Chiffres romains en pièces liminaires, chiffres arabes dans le corps">
+                                    i … | 1
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {{-- ================================================================
+                 VOLET 3 : Analyse & Vérification de Conformité Académique
+                 ================================================================ --}}
+            @if (! empty($complianceReport))
+                @php
+                    $compStatus = $complianceReport['status'] ?? 'partiel';
+                @endphp
+                <section class="card compliance-card is-{{ $compStatus }}" style="margin-bottom:1.25rem">
+                    <div class="compliance-head">
+                        <div>
+                            <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.25rem">
+                                <i data-lucide="shield-check" style="width:19px;height:19px;color:var(--color-primary)"></i>
+                                <h2 class="card-title">Analyse et vérification de conformité académique</h2>
+                            </div>
+                            <p style="color:var(--color-text-secondary);font-size:.84rem;margin:0">
+                                Contrôle automatique de la structure, des pièces liminaires, du corps du rapport et des normes typographiques.
+                            </p>
+                        </div>
+                        <div class="compliance-score-badge">
+                            <div>
+                                <span class="compliance-score-num">{{ $complianceReport['score'] }}%</span>
+                                <span style="font-size:.72rem;color:var(--color-text-muted);display:block">
+                                    {{ $complianceReport['passed_count'] }}/{{ $complianceReport['total_count'] }} critères validés
+                                </span>
+                            </div>
+                            <span class="badge {{ $compStatus === 'conforme' ? 'badge-success' : ($compStatus === 'partiel' ? 'badge-warning' : 'badge-danger') }}">
+                                {{ $complianceReport['status_label'] }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="compliance-cat-grid">
+                        @foreach ($complianceReport['categories'] ?? [] as $catKey => $cat)
+                            <div class="compliance-cat-box">
+                                <div class="compliance-cat-title">
+                                    <span>{{ $cat['label'] }}</span>
+                                    <span class="mono" style="font-size:.72rem;color:var(--color-text-muted)">
+                                        {{ $cat['passed'] }}/{{ $cat['total'] }}
+                                    </span>
+                                </div>
+                                <ul class="compliance-check-list">
+                                    @foreach ($cat['items'] as $item)
+                                        <li class="compliance-check-item">
+                                            <span class="compliance-check-icon {{ $item['passed'] ? 'ok' : 'warn' }}">
+                                                {{ $item['passed'] ? '✓' : '!' }}
+                                            </span>
+                                            <div style="min-width:0">
+                                                <div style="font-weight:600;color:var(--color-text)">{{ $item['label'] }}</div>
+                                                <div style="font-size:.73rem;color:var(--color-text-muted)">{{ $item['detail'] }}</div>
+                                            </div>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endforeach
+                    </div>
+
+                    @if (! empty($complianceReport['missing_sections']))
+                        <div class="compliance-missing-box">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap">
+                                <div>
+                                    <strong>Sections académiques non détectées dans le fichier source :</strong>
+                                    <div class="compliance-missing-pills">
+                                        @foreach ($complianceReport['missing_sections'] as $missingSec)
+                                            <span class="compliance-missing-pill">{{ $missingSec }}</span>
+                                        @endforeach
+                                    </div>
+                                </div>
+                                <a href="{{ route('chat.index') }}" class="btn btn-secondary btn-sm">
+                                    <i data-lucide="sparkles" style="width:14px;height:14px"></i>
+                                    Rédiger avec l'Assistant IA
+                                </a>
+                            </div>
+                        </div>
+                    @endif
+                </section>
+            @endif
+
             {{-- Validation des ambiguïtés --}}
             <section class="card" style="margin-bottom:1.25rem">
                 <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:1rem">
@@ -249,8 +431,11 @@
                         Aucune ambiguïté restante : les corrections ont été appliquées au plan.
                     </p>
                 @else
-                    <form method="POST" action="{{ route('documents.validate', $document) }}">
+                    <form method="POST" action="{{ route('documents.validate', $document) }}" id="validate-structure-form">
                         @csrf
+                        <input type="hidden" name="theme" id="validate_hf_theme" value="{{ old('theme', $hf['theme'] ?: $hf['effective_header']) }}">
+                        <input type="hidden" name="redacteur" id="validate_hf_redacteur" value="{{ old('redacteur', $hf['redacteur']) }}">
+                        <input type="hidden" name="mention_redacteur" id="validate_hf_mention_redacteur" value="{{ old('mention_redacteur', $hf['mention_redacteur'] ?: $hf['effective_footer']) }}">
 
                         @if (count($ambiguities) > 0)
                             <p style="color:var(--color-text-secondary);font-size:.88rem;margin-bottom:1rem">
@@ -372,7 +557,7 @@
                         <i data-lucide="panel-top" style="width:19px;height:19px;color:var(--color-primary)"></i>
                         <h2 class="card-title">En-têtes et pieds de page</h2>
                     </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.4rem">
+                    <div class="two-col-responsive">
                         <div>
                             <p style="font-family:var(--font-mono);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:.5rem">En-têtes</p>
                             <ul style="display:flex;flex-direction:column;gap:.3rem;list-style:none">
@@ -439,7 +624,7 @@
                     <h2 class="card-title">Images et tableaux détectés</h2>
                 </div>
 
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.4rem">
+                <div class="two-col-responsive">
                     <div>
                         <p style="font-family:var(--font-mono);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:.5rem">
                             Images ({{ count($images) }})
@@ -526,4 +711,53 @@
         </div>
 
     </div>
+
+    @push('scripts')
+    <script>
+        (function () {
+            const themeInput = document.getElementById('hf_theme');
+            const redacteurInput = document.getElementById('hf_redacteur');
+            const mentionInput = document.getElementById('hf_mention_redacteur');
+
+            const previewHeader = document.getElementById('hf-preview-header-text');
+            const previewFooter = document.getElementById('hf-preview-footer-text');
+
+            const hiddenTheme = document.getElementById('validate_hf_theme');
+            const hiddenRedacteur = document.getElementById('validate_hf_redacteur');
+            const hiddenMention = document.getElementById('validate_hf_mention_redacteur');
+
+            function syncHeaderFooterPreview() {
+                const themeVal = (themeInput?.value || '').trim();
+                const redacteurVal = (redacteurInput?.value || '').trim();
+                let mentionVal = (mentionInput?.value || '').trim();
+
+                if (!mentionVal && redacteurVal) {
+                    mentionVal = "RÉDIGÉ EN VUE D'ÊTRE PRÉSENTÉ PAR : " + redacteurVal;
+                }
+
+                if (previewHeader) {
+                    previewHeader.textContent = themeVal || 'THÈME DU RAPPORT DE STAGE (EN-TÊTE 9 PT)';
+                }
+                if (previewFooter) {
+                    previewFooter.textContent = mentionVal || "RÉDIGÉ EN VUE D'ÊTRE PRÉSENTÉ PAR : …";
+                }
+
+                if (hiddenTheme) hiddenTheme.value = themeVal;
+                if (hiddenRedacteur) hiddenRedacteur.value = redacteurVal;
+                if (hiddenMention) hiddenMention.value = mentionVal;
+            }
+
+            themeInput?.addEventListener('input', syncHeaderFooterPreview);
+            redacteurInput?.addEventListener('input', function () {
+                if (mentionInput && (!mentionInput.value.trim() || mentionInput.value.startsWith("RÉDIGÉ EN VUE D'ÊTRE PRÉSENTÉ PAR :"))) {
+                    mentionInput.value = redacteurInput.value.trim()
+                        ? "RÉDIGÉ EN VUE D'ÊTRE PRÉSENTÉ PAR : " + redacteurInput.value.trim()
+                        : '';
+                }
+                syncHeaderFooterPreview();
+            });
+            mentionInput?.addEventListener('input', syncHeaderFooterPreview);
+        })();
+    </script>
+    @endpush
 @endsection

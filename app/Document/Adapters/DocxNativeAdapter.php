@@ -1050,11 +1050,13 @@ final class DocxNativeAdapter implements InputAdapter
             // readonly, et changer le type est précisément l'objet de cette
             // passe. On recopie toutes les propriétés — en oublier une perdrait
             // silencieusement une donnée.
+            $isMajor = preg_match('/^(?:CHAPITRE|PARTIE|TITRE|INTRODUCTION|CONCLUSION|RESUME|RÉSUMÉ|ABSTRACT|SOMMAIRE|REMERCIEMENTS|DEDICACE|DÉDICACE|AVANT[\s-]*PROPOS|BIBLIOGRAPHIE|ANNEXES?)\b/ui', $bloc->text) === 1;
+
             $resultat[] = new Block(
                 blockId: $bloc->blockId,
                 type: BlockType::Heading,
                 text: $bloc->text,
-                headingLevel: 1,
+                headingLevel: $isMajor ? 1 : 2,
                 confidence: 0.75,
                 fontSize: $bloc->fontSize,
                 isBold: $bloc->isBold,
@@ -1171,6 +1173,15 @@ final class DocxNativeAdapter implements InputAdapter
         // une ponctuation de titre courante, et l'exclure perdrait des titres
         // réels. Seuls la virgule et le point-virgule sont écartés.
         if (preg_match('/[,;]$/u', $texte) === 1) {
+            return false;
+        }
+
+        // Sigle avec définition ou mention de source : pas un titre
+        if (preg_match('/^[A-Z0-9\/_\-]{2,12}\s*:\s+[A-Z\p{Lu}]/u', $texte) === 1) {
+            return false;
+        }
+
+        if (preg_match('/^(?:source|auteur|note)\s*:/iu', $texte) === 1) {
             return false;
         }
 

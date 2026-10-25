@@ -328,10 +328,10 @@
                 {{-- Chips de suggestions (quand la conversation est vide) --}}
                 @if ($messages->isEmpty())
                     <div class="suggest-chips" id="chatSuggest">
-                        <button type="button" class="suggest-chip" data-prompt="Analyse la structure de ma pièce jointe et dis-moi ce que tu y détectes.">Analyser un rapport</button>
-                        <button type="button" class="suggest-chip" data-prompt="Reconstruis mon document avec la structure détectée.">Reconstruire un document</button>
-                        <button type="button" class="suggest-chip" data-prompt="Cherche des sources récentes sur le changement climatique au Cameroun.">Recherche web</button>
-                        <button type="button" class="suggest-chip" data-prompt="Génère une image pour illustrer mon rapport.">Générer une image</button>
+                        <button type="button" class="suggest-chip" data-prompt="Analyse la structure de ma pièce jointe et vérifie sa conformité académique.">Analyser un rapport</button>
+                        <button type="button" class="suggest-chip" data-prompt="Reconstruis mon document selon la norme académique (pièces liminaires en chiffres romains, corps en chiffres arabes, Times New Roman 12 pt justifié).">Reconstruire un document</button>
+                        <button type="button" class="suggest-chip" data-prompt="Rédige un Résumé et un Abstract académiques avec mots-clés pour mon rapport.">Résumé & Abstract</button>
+                        <button type="button" class="suggest-chip" data-prompt="Cherche des sources récentes sur mon sujet et génère une bibliographie normée.">Recherche web & Bibliographie</button>
                     </div>
                 @endif
 

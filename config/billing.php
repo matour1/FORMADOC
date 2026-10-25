@@ -68,7 +68,7 @@ return [
             'libelle' => 'Découverte',
             'description' => 'Pour un document court ou quelques corrections.',
             'populaire' => false,
-            'service' => env('MONETBIL_SERVICE_PACK_1000'),
+            'service' => env('MONETBIL_SERVICE_PACK_1000', 'pack_1000'),
         ],
         [
             'montant' => 3000,
@@ -76,7 +76,7 @@ return [
             'libelle' => 'Mémoire',
             'description' => 'De quoi traiter un rapport de stage complet.',
             'populaire' => true,
-            'service' => env('MONETBIL_SERVICE_PACK_3000'),
+            'service' => env('MONETBIL_SERVICE_PACK_3000', 'pack_3000'),
         ],
         [
             'montant' => 5000,
@@ -84,7 +84,7 @@ return [
             'libelle' => 'Projet',
             'description' => 'Plusieurs documents, ou un mémoire volumineux.',
             'populaire' => false,
-            'service' => env('MONETBIL_SERVICE_PACK_5000'),
+            'service' => env('MONETBIL_SERVICE_PACK_5000', 'pack_5000'),
         ],
     ],
 

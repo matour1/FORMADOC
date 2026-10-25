@@ -1,10 +1,10 @@
 @php
-    // Étapes du parcours : Upload → Validation → Traitement → Export
+    // Étapes du parcours : Upload → En-tête, Pied & Validation → Mise en forme & Vérification → Export conforme
     $flowSteps = [
-        1 => ['label' => 'Upload',        'desc' => 'Téléversez votre rapport',        'icon' => 'file-up',      'route' => 'documents.create'],
-        2 => ['label' => 'Validation',    'desc' => 'Vérifiez la structure détectée',  'icon' => 'check-square', 'route' => 'documents.show'],
-        3 => ['label' => 'Traitement',    'desc' => 'Mise en forme automatique',        'icon' => 'wand-2',       'route' => 'documents.processing'],
-        4 => ['label' => 'Export',        'desc' => 'Téléchargez votre DOCX',           'icon' => 'download',     'route' => 'documents.export'],
+        1 => ['label' => 'Upload & Analyse',          'desc' => 'Téléversez et analysez votre rapport',              'icon' => 'file-up',      'route' => 'documents.create'],
+        2 => ['label' => 'En-tête, Pied & Structure', 'desc' => 'Configurez en-tête/pied et vérifiez la conformité', 'icon' => 'check-square', 'route' => 'documents.show'],
+        3 => ['label' => 'Mise en forme',             'desc' => 'Application de la norme académique',                'icon' => 'wand-2',       'route' => 'documents.processing'],
+        4 => ['label' => 'Vérification & Export',     'desc' => 'Contrôle de conformité et téléchargement DOCX',     'icon' => 'download',     'route' => 'documents.export'],
     ];
     $activeStep = $activeStep ?? 1;
     $document = $document ?? null;

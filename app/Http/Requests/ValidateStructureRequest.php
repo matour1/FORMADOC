@@ -49,6 +49,9 @@ class ValidateStructureRequest extends FormRequest
         return [
             'corrections' => ['nullable', 'array'],
             'corrections.*' => ['required', 'string', Rule::in(['1', '2', '3', 'remove'])],
+            'theme' => ['nullable', 'string', 'max:300'],
+            'redacteur' => ['nullable', 'string', 'max:180'],
+            'mention_redacteur' => ['nullable', 'string', 'max:250'],
         ];
     }
 

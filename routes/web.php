@@ -232,6 +232,7 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/{document}/preview-pdf', [DocumentController::class, 'previewPdf'])->name('documents.preview-pdf');
         Route::get('/{document}/preview-pdf/file', [DocumentController::class, 'previewPdfFile'])->name('documents.preview-pdf.file');
         Route::post('/{document}/validate', [DocumentController::class, 'validate'])->name('documents.validate');
+        Route::post('/{document}/header-footer', [DocumentController::class, 'updateHeaderFooter'])->name('documents.header-footer.update');
         Route::post('/{document}/reanalyze', [DocumentController::class, 'reanalyze'])->name('documents.reanalyze');
         // Annulation d'une modification faite par le chat (R6 §9.7). Reste dans
         // le groupe `auth` : l'annulation agit sur le contenu d'un document, donc

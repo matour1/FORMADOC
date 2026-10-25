@@ -24,13 +24,13 @@
              l'upload, alors que le gabarit se choisit à l'export — un décalage
              entre ce que l'écran promet et ce que le produit fait. --}}
         <div class="upload-steps" aria-label="Étapes de la mise en forme">
-            <div class="upload-step active"><span class="num">1</span> Téléverser</div>
+            <div class="upload-step active"><span class="num">1</span> Téléverser & Analyser</div>
             <div class="upload-step-sep"></div>
-            <div class="upload-step"><span class="num">2</span> Vérifier la structure</div>
+            <div class="upload-step"><span class="num">2</span> En-tête, Pied & Conformité</div>
             <div class="upload-step-sep"></div>
-            <div class="upload-step"><span class="num">3</span> Choisir un gabarit</div>
+            <div class="upload-step"><span class="num">3</span> Mise en forme académique</div>
             <div class="upload-step-sep"></div>
-            <div class="upload-step"><span class="num">4</span> Télécharger le DOCX</div>
+            <div class="upload-step"><span class="num">4</span> Vérification & Export DOCX</div>
         </div>
 
         {{-- Carte d'upload --}}
@@ -135,12 +135,41 @@
             </div>
         </div>
 
+        {{-- Norme académique de référence appliquée par FORMADOC --}}
+        <section class="card" style="margin-top:1.5rem">
+            <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.35rem">
+                <i data-lucide="award" style="width:19px;height:19px;color:var(--color-primary)"></i>
+                <h2 class="card-title">Structure & Norme Académique Appliquée</h2>
+            </div>
+            <p style="color:var(--color-text-secondary);font-size:.83rem;margin:0">
+                Chaque rapport mis en forme respecte strictement la structure académique de référence (norme DQP / BTS / Licence / Master) :
+            </p>
+            <div class="academic-spec-grid">
+                <div class="academic-spec-card">
+                    <h3><i data-lucide="panel-top" style="width:15px;height:15px;color:var(--color-primary)"></i> En-tête & Pied de page</h3>
+                    <p>En-tête avec le thème du rapport (Times New Roman 9 pt). Pied de page avec la mention « RÉDIGÉ EN VUE D'ÊTRE PRÉSENTÉ PAR : … » et pagination automatique.</p>
+                </div>
+                <div class="academic-spec-card">
+                    <h3><i data-lucide="book-open" style="width:15px;height:15px;color:var(--color-primary)"></i> I. Pièces liminaires (i, ii, iii…)</h3>
+                    <p>Sommaire, Dédicace, Remerciements, Avant-propos, Liste des sigles/abréviations, Liste des tableaux, Liste des figures, Résumé & Abstract sur pages dédiées.</p>
+                </div>
+                <div class="academic-spec-card">
+                    <h3><i data-lucide="file-text" style="width:15px;height:15px;color:var(--color-primary)"></i> II. Corps du rapport (1, 2, 3…)</h3>
+                    <p>Introduction générale (début page 1), Première & Deuxième Parties, Chapitres I à IV, Sections numérotées, Conclusion générale & Bibliographie.</p>
+                </div>
+                <div class="academic-spec-card">
+                    <h3><i data-lucide="list-tree" style="width:15px;height:15px;color:var(--color-primary)"></i> III. Typographie & Table finale</h3>
+                    <p>Police Times New Roman 12 pt, texte justifié, interligne 1,5, marges 2,5 cm, tableaux/figures légendés et Table des matières complète en fin de document.</p>
+                </div>
+            </div>
+        </section>
+
         {{-- Aperçu du parcours --}}
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:1.5rem">
+        <div class="three-col-responsive" style="margin-top:1.25rem">
             @foreach ([
-                ['check-square', 'Validation', 'Vérifiez et corrigez la structure détectée'],
-                ['wand-2', 'Traitement', 'Mise en forme selon le gabarit institutionnel'],
-                ['download', 'Export', 'Téléchargez votre DOCX reconstruit'],
+                ['check-square', 'En-tête, Pied & Validation', 'Personnalisez l\'en-tête/pied de page et validez la structure'],
+                ['shield-check', 'Analyse de Conformité', 'Vérification automatique des sections académiques et du style'],
+                ['download', 'Export DOCX & PDF', 'Téléchargez votre rapport mis en forme prêt à déposer'],
             ] as $step)
                 <div class="card" style="padding:1.1rem">
                     <i data-lucide="{{ $step[0] }}" style="width:20px;height:20px;color:var(--color-primary)"></i>

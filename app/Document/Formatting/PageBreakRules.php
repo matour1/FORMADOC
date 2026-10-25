@@ -51,6 +51,8 @@ final class PageBreakRules
         'SOMMAIRE',
         'TABLE DES MATIERES',
         'TABLE DES MATIÈRES',
+        'TABLE DE MATIERES',
+        'TABLE DE MATIÈRES',
         'DEDICACE',
         'DÉDICACE',
         'REMERCIEMENTS',
@@ -66,6 +68,10 @@ final class PageBreakRules
         'LISTE DES ABREVIATIONS',
         'LISTE DES ABRÉVIATIONS',
         'LISTE DES SIGLES',
+        'LISTE DES SIGLE ET ABREVIATIONS',
+        'LISTE DES SIGLE ET ABRÉVIATIONS',
+        'LISTE DES SIGLES ET ABREVIATIONS',
+        'LISTE DES SIGLES ET ABRÉVIATIONS',
         'SIGLES ET ABREVIATIONS',
         'SIGLES ET ABRÉVIATIONS',
         'TABLE DES ABREVIATIONS',
@@ -77,12 +83,22 @@ final class PageBreakRules
         'INTRODUCTION',
         'INTRODUCTION GENERALE',
         'INTRODUCTION GÉNÉRALE',
+        'PREMIERE PARTIE',
+        'PREMIÈRE PARTIE',
+        'DEUXIEME PARTIE',
+        'DEUXIÈME PARTIE',
+        'TROISIEME PARTIE',
+        'TROISIÈME PARTIE',
+        'CONCLUSION',
+        'CONCLUSION GENERALE',
+        'CONCLUSION GÉNÉRALE',
         'BIBLIOGRAPHIE',
         'REFERENCES BIBLIOGRAPHIQUES',
         'RÉFÉRENCES BIBLIOGRAPHIQUES',
         'WEBOGRAPHIE',
         'ANNEXES',
         'ANNEXE',
+        'CHAPITRE',
     ];
 
     /**
@@ -112,9 +128,19 @@ final class PageBreakRules
             return true;
         }
 
-        // Un titre de niveau 1 ouvre une page. Un titre de niveau 2 ou 3 s'enchaîne.
+        // Un titre de niveau 1 ouvre une page s'il s'agit d'une division majeure
+        // (Chapitre, Partie, Pièce liminaire, Conclusion, Bibliographie...).
+        // Les sous-sections ou points numérotés (« 1. Contexte », « SECTION 1 ») s'enchaînent sans saut.
         if ($block->type->isHeading()) {
-            return ($block->headingLevel ?? 1) <= 1;
+            if ($block->headingLevel !== null && $block->headingLevel <= 1) {
+                if (preg_match('/^(?:\d+\.|\d+\)|SECTION\b)/ui', trim($block->text))) {
+                    return false;
+                }
+
+                return $this->estDivisionMajeure($block->text);
+            }
+
+            return false;
         }
 
         return false;
@@ -144,6 +170,31 @@ final class PageBreakRules
             if (str_starts_with($normalise, $intitule)) {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    /**
+     * Le texte désigne-t-il une division majeure du document ouvrant une page ?
+     * (Pièces liminaires, chapitres, parties, titres majeurs).
+     */
+    public function estDivisionMajeure(string $texte): bool
+    {
+        $normalise = $this->normaliser($texte);
+
+        if ($normalise === '') {
+            return false;
+        }
+
+        if ($this->estPieceLiminaire($texte)) {
+            return true;
+        }
+
+        if (str_starts_with($normalise, 'CHAPITRE')
+            || str_starts_with($normalise, 'PARTIE')
+            || str_starts_with($normalise, 'TITRE ')) {
+            return true;
         }
 
         return false;

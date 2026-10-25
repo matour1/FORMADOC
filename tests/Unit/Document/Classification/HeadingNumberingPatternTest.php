@@ -126,6 +126,19 @@ class HeadingNumberingPatternTest extends TestCase
         $this->assertSame('alpha', $detected['kind']);
     }
 
+    public function test_une_section_est_reconnue_comme_niveau_deux(): void
+    {
+        $d1 = $this->detector->detect('SECTION 1: ENVIRONNEMENT INTERNE');
+        $this->assertNotNull($d1);
+        $this->assertSame(2, $d1['level']);
+        $this->assertSame('section', $d1['kind']);
+
+        $d2 = $this->detector->detect('SECTION II — Cadre théorique');
+        $this->assertNotNull($d2);
+        $this->assertSame(2, $d2['level']);
+        $this->assertSame('section', $d2['kind']);
+    }
+
     // -------------------------------------------------------------------------
     // Rejets (faux positifs à éviter)
     // -------------------------------------------------------------------------

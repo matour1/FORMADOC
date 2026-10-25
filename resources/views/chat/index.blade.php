@@ -5,72 +5,58 @@
 @section('content')
     <div class="page-header" style="margin-bottom:1.1rem;">
         <div>
-            <span class="eyebrow">Assistant</span>
-            <h1>Assistant IA</h1>
-            <p>Analyse, rédaction et actions sur vos documents.</p>
+            <span class="eyebrow">Assistant & Rédaction</span>
+            <h1>Assistant IA FORMADOC</h1>
+            <p>Analyse de conformité, correction académique et mise en forme intelligente.</p>
         </div>
-        <div class="credits-badge {{ auth()->user()->credits_balance < 100 ? 'low' : '' }}" title="Solde de crédits — 1 crédit = 1 FCFA">
-            <i data-lucide="coins" style="width:14px;height:14px"></i>
-            {{ number_format(auth()->user()->credits_balance, 0, ',', ' ') }} crédits
+        <div class="credits-badge {{ auth()->user()->credits_balance < 100 ? 'low' : '' }}" title="Solde de crédits — 1 crédit = 1 FCFA" style="border-radius:var(--radius-full);padding:.4rem .85rem;box-shadow:var(--shadow-1);">
+            <i data-lucide="coins" style="width:15px;height:15px"></i>
+            <strong>{{ number_format(auth()->user()->credits_balance, 0, ',', ' ') }}</strong> crédits
         </div>
     </div>
 
     <div class="chat-layout">
-
-        {{--
-            Le BANDEAU DE CONFIRMATION DE COUT a ete retire.
-
-            Il s'affichait sur `session('pending_cost')`, un flash que PLUS AUCUN
-            code ne pose : l'etape de confirmation a ete supprimee du controleur.
-            Le bandeau etait donc du code mort — mais aussi un mensonge en
-            puissance : s'il s'affichait un jour, il proposerait « Confirmer et
-            envoyer » pour un mecanisme inexistant, en renvoyant `confirm_cost`,
-            champ que `send()` n'a jamais lu.
-
-            Le cout reste annonce AVANT envoi, dans le composer (estimation du
-            plan), puis ajuste apres usage.
-        --}}
-
         {{-- Sidebar des conversations --}}
         <aside class="chat-sidebar">
             <div class="chat-sidebar-head">
-                <span class="chat-sidebar-title">Conversations</span>
-                <span class="chat-sidebar-title mono">{{ $sessions->count() }}</span>
+                <span class="chat-sidebar-title">Historique</span>
+                <span class="badge badge-info mono">{{ $sessions->count() }}</span>
             </div>
 
-            <div class="chat-search-bar">
+            <div class="chat-search-bar" style="background:var(--color-surface-2);border-radius:var(--radius-sm);padding:.4rem .65rem;display:flex;align-items:center;gap:.5rem;border:1px solid var(--color-border);margin-bottom:.5rem;">
                 <i data-lucide="search" style="width:14px;height:14px;color:var(--color-text-muted);flex-shrink:0"></i>
-                <input type="text" id="chatSidebarSearch" placeholder="Rechercher une conversation…" aria-label="Rechercher une conversation" />
+                <input type="text" id="chatSidebarSearch" placeholder="Rechercher une conversation…" aria-label="Rechercher une conversation" style="border:none;background:transparent;outline:none;font-size:.82rem;color:var(--color-text);width:100%;" />
             </div>
 
-            <a href="{{ route('chat.index') }}" class="btn btn-secondary btn-sm btn-block" style="margin-bottom:.7rem;margin-top:.55rem;">
-                <i data-lucide="square-pen" style="width:14px;height:14px"></i> Nouvelle conversation
+            <a href="{{ route('chat.index') }}" class="btn btn-primary btn-sm btn-block" style="margin-bottom:.75rem;margin-top:.2rem;border-radius:var(--radius-sm);justify-content:center;gap:.5rem;">
+                <i data-lucide="plus-circle" style="width:15px;height:15px"></i> Nouvelle conversation
             </a>
 
-            <div id="chatSessionList">
+            <div id="chatSessionList" style="display:flex;flex-direction:column;gap:.25rem;">
             @forelse ($sessions as $session)
                 <div class="chat-item {{ (request()->routeIs('chat.show') && optional(request()->route('chatSession'))->id === $session->id) ? 'active' : '' }}" role="button" tabindex="0"
                      onclick="window.location='{{ route('chat.show', $session) }}'"
-                     onkeydown="if(event.key==='Enter')window.location='{{ route('chat.show', $session) }}'">
-                    <span class="chat-item-icon"><i data-lucide="message-circle"></i></span>
+                     onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.location='{{ route('chat.show', $session) }}';}">
+                    <span class="chat-item-icon"><i data-lucide="message-square"></i></span>
                     <span class="chat-item-main">
-                        <span class="chat-item-name">{{ \Illuminate\Support\Str::limit($session->title ?: 'Sans titre', 32) }}</span>
+                        <span class="chat-item-name" style="font-weight:600;">{{ \Illuminate\Support\Str::limit($session->title ?: 'Conversation sans titre', 30) }}</span>
                         <span class="chat-item-sub">{{ $session->messages_count }} msg · {{ $session->updated_at->diffForHumans() }}</span>
                     </span>
                     @if ($session->messages_count > 0)
-                        <span class="badge">{{ $session->messages_count }}</span>
+                        <span class="badge" style="font-size:.68rem;">{{ $session->messages_count }}</span>
                     @endif
                     <form action="{{ route('chat.destroy', $session) }}" method="POST"
                           onsubmit="return confirm('Supprimer cette conversation ? Cette action est irréversible.');">
                         @csrf
                         @method('DELETE')
-                        <button type="submit" class="chat-item-del" aria-label="Supprimer la conversation">
+                        <button type="submit" class="chat-item-del" aria-label="Supprimer la conversation" title="Supprimer">
                             <i data-lucide="trash-2" style="width:13px;height:13px"></i>
                         </button>
                     </form>
                 </div>
             @empty
                 <div class="chat-empty" id="chatEmptyState">
+                    <i data-lucide="message-circle-off" style="width:28px;height:28px;margin:0 auto .5rem;display:block;opacity:.4"></i>
                     Aucune conversation pour le moment.
                 </div>
             @endforelse
@@ -79,21 +65,8 @@
                 Aucune conversation ne correspond.
             </div>
 
-            {{--
-                L'ancien libelle annoncait « Historique conserve 30 jours ».
-                C'ETAIT FAUX, et verifiable : `files:purge-temp` ne supprime que
-                les fichiers temporaires et les pieces jointes de sessions DEJA
-                supprimees. Aucune tache ne purge les conversations par anciennete,
-                et aucune duree de retention n'est configuree.
-
-                Une duree de conservation annoncee et non appliquee est un
-                engagement de confidentialite non tenu : l'utilisateur peut croire
-                ses echanges effaces alors qu'ils restent en base indefiniment.
-                On annonce donc ce qui est vrai — la suppression est manuelle —
-                plutot qu'un delai qui n'existe pas.
-            --}}
             <div class="chat-sidebar-footer mono">
-                Vous supprimez vos conversations quand vous le souhaitez · <span id="chatQuotaFooter"></span>
+                Historique privé · Suppression manuelle à la demande
             </div>
         </aside>
 
@@ -102,55 +75,74 @@
             <div class="chat-main-header">
                 <div class="chat-context">
                     <span class="chat-context-dot"></span>
-                    <strong>Nouvelle conversation</strong>
-                    <span class="chat-context-info">— posez une question ou demandez une action</span>
+                    <strong>Nouvelle session</strong>
+                    <span class="chat-context-info">— Posez votre question ou soumettez une tâche</span>
                 </div>
                 <div class="chat-header-actions">
-                    {{--
-                        Le SELECTEUR DE MODELE a ete retire : il laissait croire qu'on
-                        choisissait le modele, alors qu'aucun champ n'etait envoye au
-                        serveur (ChatController::send() ne lit que `message` et
-                        `attachments`). Une interface qui propose un choix sans effet est
-                        pire qu'une absence d'interface : l'utilisateur croit avoir agi.
-
-                        On affiche donc le routage REEL, en lecture.
-                    --}}
-                    <span class="chat-model-note" title="Le modele est choisi automatiquement selon la tache et votre plan.">
-                        <i data-lucide="cpu" style="width:13px;height:13px"></i>
-                        Routage automatique
+                    <span class="chat-model-note" title="Le modèle est sélectionné dynamiquement pour un résultat optimal conforme aux normes universitaires.">
+                        <i data-lucide="sparkles" style="width:13px;height:13px;color:var(--color-accent)"></i>
+                        Routage IA intelligent
                     </span>
                 </div>
             </div>
 
-            <div class="chat-messages" id="chat-messages" style="align-content:center">
-                <div class="empty-state" style="text-align:center;padding:2rem 1rem;color:var(--color-text-muted)">
-                    <i data-lucide="sparkles" style="width:44px;height:44px;margin:0 auto .8rem;display:block;opacity:.6"></i>
-                    <p style="font-size:1.05rem;font-weight:600;color:var(--color-text)">Comment puis-je vous aider ?</p>
-                    <p style="font-size:.82rem;margin-top:.3rem">L'assistant peut analyser, mettre en forme et agir sur vos documents.</p>
+            <div class="chat-messages" id="chat-messages" style="align-content:center;justify-content:center;display:flex;flex-direction:column;gap:1.5rem;">
+                <div class="empty-state" style="text-align:center;padding:1.5rem 1rem 0;color:var(--color-text-muted);max-width:540px;margin:0 auto;">
+                    <div style="width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg, var(--color-primary-tint), var(--color-accent-tint));color:var(--color-primary);display:inline-flex;align-items:center;justify-content:center;margin-bottom:1rem;box-shadow:var(--shadow-1);border:1px solid var(--color-border);">
+                        <i data-lucide="sparkles" style="width:28px;height:28px;color:var(--color-accent)"></i>
+                    </div>
+                    <h2 style="font-size:1.25rem;font-weight:700;color:var(--color-text);margin-bottom:.4rem;font-family:var(--font-display);">Comment puis-je vous aider aujourd'hui ?</h2>
+                    <p style="font-size:.86rem;line-height:1.5;color:var(--color-text-secondary);margin:0;">
+                        L'assistant FORMADOC vérifie la conformité académique de votre rapport (SOPAL, CAMES, Masters), rédige vos pièces liminaires et structure votre document.
+                    </p>
                 </div>
 
-                <div class="suggest-chips" id="chatSuggest">
-                    <button type="button" class="suggest-chip" data-prompt="Analyse la structure de ma pièce jointe et dis-moi ce que tu y détectes.">Analyser un rapport</button>
-                    <button type="button" class="suggest-chip" data-prompt="Explique-moi comment structurer un rapport de stage de 30 pages.">Structurer un rapport</button>
-                    <button type="button" class="suggest-chip" data-prompt="Cherche des sources récentes sur le changement climatique au Cameroun.">Recherche web</button>
-                    <button type="button" class="suggest-chip" data-prompt="Génère une image pour illustrer mon rapport.">Générer une image</button>
+                {{-- Grille de suggestions élégante --}}
+                <div class="suggest-chips" id="chatSuggest" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:.75rem;max-width:680px;margin:0 auto;width:100%;padding:0 1rem;">
+                    <button type="button" class="suggest-chip" data-prompt="Analyse la structure de ma pièce jointe et dis-moi si elle respecte la norme académique (pièces liminaires en chiffres romains, corps en chiffres arabes, bibliographie, table des matières)." style="text-align:left;padding:.75rem 1rem;border-radius:var(--radius);display:flex;flex-direction:column;gap:.3rem;">
+                        <span style="font-weight:600;font-size:.85rem;color:var(--color-text);display:flex;align-items:center;gap:.4rem;">
+                            <i data-lucide="file-check-2" style="width:14px;height:14px;color:var(--color-accent)"></i> Conformité académique
+                        </span>
+                        <span style="font-size:.74rem;color:var(--color-text-muted);line-height:1.35;">Vérification des pièces liminaires, pagination et hiérarchie.</span>
+                    </button>
+
+                    <button type="button" class="suggest-chip" data-prompt="Rédige une Dédicace, des Remerciements et un Avant-propos académiques pour mon rapport de stage." style="text-align:left;padding:.75rem 1rem;border-radius:var(--radius);display:flex;flex-direction:column;gap:.3rem;">
+                        <span style="font-weight:600;font-size:.85rem;color:var(--color-text);display:flex;align-items:center;gap:.4rem;">
+                            <i data-lucide="feather" style="width:14px;height:14px;color:var(--color-secondary)"></i> Dédicace & Remerciements
+                        </span>
+                        <span style="font-size:.74rem;color:var(--color-text-muted);line-height:1.35;">Rédaction soignée selon les formules universitaires en vigueur.</span>
+                    </button>
+
+                    <button type="button" class="suggest-chip" data-prompt="Rédige un Résumé en français et son Abstract en anglais (avec mots-clés / keywords) pour mon rapport de stage." style="text-align:left;padding:.75rem 1rem;border-radius:var(--radius);display:flex;flex-direction:column;gap:.3rem;">
+                        <span style="font-weight:600;font-size:.85rem;color:var(--color-text);display:flex;align-items:center;gap:.4rem;">
+                            <i data-lucide="languages" style="width:14px;height:14px;color:var(--color-warning)"></i> Résumé & Abstract
+                        </span>
+                        <span style="font-size:.74rem;color:var(--color-text-muted);line-height:1.35;">Synthèse bilingue percutante avec liste de mots-clés normalisés.</span>
+                    </button>
+
+                    <button type="button" class="suggest-chip" data-prompt="Propose un plan détaillé (Première Partie, Deuxième Partie, Chapitres I à IV, Introduction et Conclusion générale) pour mon rapport de stage." style="text-align:left;padding:.75rem 1rem;border-radius:var(--radius);display:flex;flex-direction:column;gap:.3rem;">
+                        <span style="font-weight:600;font-size:.85rem;color:var(--color-text);display:flex;align-items:center;gap:.4rem;">
+                            <i data-lucide="layout" style="width:14px;height:14px;color:var(--color-primary)"></i> Plan académique complet
+                        </span>
+                        <span style="font-size:.74rem;color:var(--color-text-muted);line-height:1.35;">Parties, chapitres, sections et sous-sections normalisées.</span>
+                    </button>
                 </div>
             </div>
 
-            {{-- Composer --}}
+            {{-- Composer moderne --}}
             <form class="chat-composer" action="{{ route('chat.send') }}" method="POST" id="chat-form">
                 @csrf
-                <div class="composer-box">
+                <div class="composer-box" style="box-shadow:var(--shadow-1);">
                     <textarea name="message" id="chat-input" rows="1" required maxlength="12000"
-                              placeholder="Posez une question ou demandez une action…"
+                              placeholder="Posez une question ou demandez une action sur votre rapport…"
                               aria-label="Votre message"></textarea>
                     <div class="composer-tools">
-                        <button type="button" class="composer-tool-btn" title="Outils disponibles (actionnables par l'IA)"
+                        <button type="button" class="composer-tool-btn" title="Outils et actions rapides"
                                 onclick="document.getElementById('tools-hint').style.display = document.getElementById('tools-hint').style.display === 'none' ? 'flex' : 'none'">
                             <i data-lucide="wrench"></i>
                         </button>
                     </div>
-                    <button type="submit" class="composer-send" id="chat-send" aria-label="Envoyer">
+                    <button type="submit" class="composer-send" id="chat-send" aria-label="Envoyer" title="Envoyer le message">
                         <i data-lucide="arrow-up"></i>
                     </button>
                 </div>
@@ -158,7 +150,10 @@
                 <div class="composer-hint">
                     <span class="chat-cost-preview">
                         <i data-lucide="coins"></i>
-                        Coût estimé : <strong>{{ $estimatedCredits ?? 0 }} crédit(s)</strong> — confirmé avant envoi
+                        <span class="cost-label">Coût estimé :</span>
+                        <strong>{{ $estimatedCredits ?? 0 }} crédit(s)</strong>
+                        <span class="cost-precision">(ajusté après usage)</span>
+                        <span class="cost-precision-court">(estimation)</span>
                     </span>
                     <span class="hint-keys">
                         <span class="kbd">Ctrl</span><span class="kbd">⏎</span> pour envoyer
@@ -166,7 +161,7 @@
                 </div>
 
                 <div class="composer-actions" id="tools-hint">
-                    <button type="button" class="chat-action-btn" data-prompt="Analyse la structure de ma pièce jointe.">
+                    <button type="button" class="chat-action-btn" data-prompt="Analyse la structure de ma pièce jointe et vérifie sa conformité.">
                         <i data-lucide="search-check"></i> Analyser
                     </button>
                     <button type="button" class="chat-action-btn" data-prompt="Reconstruis mon document avec la structure détectée.">
@@ -175,7 +170,7 @@
                     <button type="button" class="chat-action-btn" data-prompt="Cherche des sources récentes sur le sujet de mon rapport.">
                         <i data-lucide="globe"></i> Recherche web
                     </button>
-                    <button type="button" class="chat-action-btn" data-prompt="Génère une image pour illustrer mon rapport.">
+                    <button type="button" class="chat-action-btn" data-prompt="Génère une illustration académique pour mon rapport.">
                         <i data-lucide="image"></i> Image
                     </button>
                     @if ($claudeEligible ?? false)
@@ -186,10 +181,7 @@
                 </div>
 
                 <p class="chat-disclaimer">
-                    Une nouvelle conversation sera créée. Chaque message est facturé à son coût réel (ajustement automatique).
-                    @if ($claudeEligible ?? false)
-                        Skills documentaires Claude activés (expérimental) : inclus Standard+, sinon pay-per-use en crédits (×1,5).
-                    @endif
+                    Une nouvelle conversation sera créée. Facturation au coût réel (ajustement automatique). En cas d'échec, vos crédits sont remboursés.
                 </p>
             </form>
         </div>
@@ -214,7 +206,11 @@
         // Actions rapides et chips → remplir le champ
         document.querySelectorAll('.chat-action-btn, .suggest-chip').forEach(btn => {
             btn.addEventListener('click', () => {
-                if (ta) { ta.value = btn.dataset.prompt; ta.dispatchEvent(new Event('input')); ta.focus(); }
+                if (ta) { 
+                    ta.value = btn.dataset.prompt; 
+                    ta.dispatchEvent(new Event('input')); 
+                    ta.focus(); 
+                }
             });
         });
 
@@ -234,10 +230,5 @@
             if (searchEmpty) searchEmpty.style.display = (q && visible === 0) ? 'block' : 'none';
             if (emptyState) emptyState.style.display = (!q && visible === 0) ? '' : 'none';
         });
-
-        // Le selecteur de modele a ete retire : il laissait croire qu'on choisissait
-        // le modele, alors qu'aucun champ n'etait envoye au serveur. Le routage est
-        // fait par ModelRouter selon la tache et le plan.
     </script>
 @endsection
-

@@ -52,7 +52,16 @@
                             <span class="pm-name">MTN MoMo</span>
                             <span class="pm-note">MTN Cameroun</span>
                         </label>
-                        @if (app(\App\Services\Billing\PaymentGatewayRegistry::class)->estProposable(\App\Services\Billing\PaymentGatewayRegistry::GENIUSPAY))
+                        @if ($monetbilProposable ?? app(\App\Services\Billing\PaymentGatewayRegistry::class)->estProposable(\App\Services\Billing\PaymentGatewayRegistry::MONETBIL))
+                            <label class="payment-method" data-method="monetbil" role="button" tabindex="0">
+                                <input type="radio" name="payment_method" value="monetbil" class="pm-radio-input">
+                                <span class="pm-radio"></span>
+                                <span class="pm-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><circle cx="12" cy="18" r="1"/></svg></span>
+                                <span class="pm-name">Monetbil</span>
+                                <span class="pm-note">Orange · MTN Cameroun</span>
+                            </label>
+                        @endif
+                        @if ($geniusPayProposable ?? app(\App\Services\Billing\PaymentGatewayRegistry::class)->estProposable(\App\Services\Billing\PaymentGatewayRegistry::GENIUSPAY))
                             <label class="payment-method" data-method="geniuspay" role="button" tabindex="0">
                                 <input type="radio" name="payment_method" value="geniuspay" class="pm-radio-input">
                                 <span class="pm-radio"></span>
@@ -127,12 +136,15 @@
                 });
             });
 
-            // Soumission : état chargement (conforme au template)
+            // Soumission : état chargement sur soumission de formulaire (ne bloque pas le POST)
+            const form = document.getElementById('checkout-form');
             const confirmBtn = document.getElementById('confirmCheckout');
-            if (confirmBtn) {
-                confirmBtn.addEventListener('click', function () {
-                    this.disabled = true;
-                    this.textContent = 'Redirection vers le paiement…';
+            if (form && confirmBtn) {
+                form.addEventListener('submit', function () {
+                    setTimeout(() => {
+                        confirmBtn.disabled = true;
+                        confirmBtn.innerHTML = '<span style="display:inline-flex;align-items:center;gap:.5rem"><svg style="animation:spin 1s linear infinite;width:16px;height:16px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg> Redirection vers le paiement…</span>';
+                    }, 50);
                 });
             }
         });
